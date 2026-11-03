@@ -1,4 +1,5 @@
 import {createWorldTerrain} from '../src/geography/world-terrain.mjs';
+import {selectTerrainLOD,skirtGeometry} from '../src/geography/terrain-lod.mjs';
 import {createChunkWindow} from '../src/geography/chunk-window.mjs';
 import {createTerrainChunk} from '../src/geography/terrain-chunk.mjs';
 import {humanGait,solveHumanLeg} from '../src/player/human-gait.mjs';
@@ -11,10 +12,10 @@ document.getElementById('settings').open=!matchMedia('(orientation: landscape) a
 const renderer=new THREE.WebGLRenderer({antialias:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.5));
 document.body.appendChild(renderer.domElement);
-const scene=new THREE.Scene();scene.background=new THREE.Color(0xa8c8dc);
+const scene=new THREE.Scene();scene.background=new THREE.Color(0xa8c8dc);scene.fog=new THREE.Fog(0xa8c8dc,1300,2100);
 scene.add(new THREE.HemisphereLight(0xd8efff,0x4b5930,.9));
 const light=new THREE.DirectionalLight(0xffffff,.8);light.position.set(-20,50,-10);scene.add(light);
-const camera=new THREE.PerspectiveCamera(55,1,.1,1200);
+const camera=new THREE.PerspectiveCamera(55,1,.1,3000);
 const raycaster=new THREE.Raycaster();
 const marker=new THREE.Group();
 const markerMaterial=new THREE.MeshLambertMaterial({color:0xe5b348});
@@ -102,7 +103,7 @@ function updateCamera(){
 function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();updateCamera();}
 function clearTerrain(){
   resetInput();crouched=false;crouchButton.classList.remove('active');crouchButton.setAttribute('aria-pressed','false');markerPoint=null;jumpHeight=0;jumpVelocity=0;
-  if(state)state.window.clear();
+  if(state){state.window.clear();for(const entry of state.far.values())releaseMesh(entry);}
   state=null;marker.visible=false;
 }
 function groundAt(xM,yM){
@@ -117,18 +118,36 @@ function placeMarker(xM,yM,render=true){
   markerPoint={xM,yM,elevationM:p.elevationM};
   const q=state.terrain.toLocal(xM,yM,p.elevationM,state.origin);
   marker.position.set(q.x,q.y+jumpHeight,q.z);marker.visible=true;
-  status.textContent=`${state.label}｜標高 ${p.elevationM.toFixed(2)}m・斜面 ${p.slopeDegrees.toFixed(1)}°｜${state.entries.length}チャンク`;
+  status.textContent=`${state.label}｜標高 ${p.elevationM.toFixed(2)}m・斜面 ${p.slopeDegrees.toFixed(1)}°｜${state.entries.length}近景・${state.far.size}遠景チャンク`;
   if(render)updateCamera();
+}
+function releaseMesh({mesh}){scene.remove(mesh);mesh.traverse(o=>{if(o.geometry)o.geometry.dispose();});mesh.material.dispose();}
+function makeTerrainMesh(chunk){
+ const skirt=skirtGeometry(chunk),count=chunk.positions.length/3,positions=new Float32Array(chunk.positions.length+skirt.positions.length);
+ positions.set(chunk.positions);positions.set(skirt.positions,chunk.positions.length);
+ const indices=new Uint16Array(chunk.indices.length+skirt.indices.length);indices.set(chunk.indices);indices.set(skirt.indices.map(i=>i+count),chunk.indices.length);
+ const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));geometry.setIndex(new THREE.BufferAttribute(indices,1));geometry.computeVertexNormals();
+ // Preserve consistent terrain normals; skirts have their own vertices.
+ geometry.attributes.normal.array.set(chunk.normals);
+ const material=new THREE.MeshLambertMaterial({color:0x72945b,side:THREE.DoubleSide,wireframe:document.getElementById('wire').checked});
+ const mesh=new THREE.Mesh(geometry,material);scene.add(mesh);return {chunk,mesh};
 }
 function refreshChunks(xM,yM){
  state.window.update(xM,yM);
+ const lodKey=Math.floor(xM/64)+','+Math.floor(yM/64);
+ if(state.lodKey!==lodKey){
+  const plan=selectTerrainLOD(state.terrain,xM,yM),wanted=new Set(plan.map(q=>q.key));
+  for(const q of plan)if(!state.far.has(q.key)){const chunk=createTerrainChunk(state.terrain,q);if(chunk)state.far.set(q.key,makeTerrainMesh(chunk));}
+  for(const [key,entry]of state.far)if(!wanted.has(key)){releaseMesh(entry);state.far.delete(key);}
+  state.lodKey=lodKey;
+ }
  const old=state.origin;
  if(Math.hypot(xM-old.xM,yM-old.yM)>512){
   const origin={xM:Math.floor(xM/64)*64,yM:Math.floor(yM/64)*64,elevationM:state.terrain.sampleBase(xM,yM).baseElevationM};
   overviewView.target.x-=origin.xM-old.xM;overviewView.target.z-=origin.yM-old.yM;overviewView.target.y-=origin.elevationM-old.elevationM;
   state.origin=origin;
  }
- for(const {chunk,mesh}of state.entries){const q=state.terrain.toLocal(chunk.originM.xM,chunk.originM.yM,chunk.originM.elevationM,state.origin);mesh.position.set(q.x,q.y,q.z);}
+ for(const {chunk,mesh}of [...state.entries,...state.far.values()]){const q=state.terrain.toLocal(chunk.originM.xM,chunk.originM.yM,chunk.originM.elevationM,state.origin);mesh.position.set(q.x,q.y,q.z);}
  scene.updateMatrixWorld(true);
 }
 function showWorld(world,point,label){
@@ -137,16 +156,9 @@ function showWorld(world,point,label){
   const origin={...point,elevationM:p.baseElevationM};
   const window=createChunkWindow(terrain,(tx,ty)=>{
     const chunk=createTerrainChunk(terrain,{tileX:tx,tileY:ty});if(!chunk)return null;
-    const geometry=new THREE.BufferGeometry();
-    geometry.setAttribute('position',new THREE.BufferAttribute(chunk.positions,3));
-    geometry.setAttribute('normal',new THREE.BufferAttribute(chunk.normals,3));
-    geometry.setIndex(new THREE.BufferAttribute(chunk.indices,1));
-    const material=new THREE.MeshLambertMaterial({color:((tx+ty)%2)?0x789c5f:0x72945b,
-      wireframe:document.getElementById('wire').checked});
-    const mesh=new THREE.Mesh(geometry,material),o=terrain.toLocal(chunk.originM.xM,chunk.originM.yM,chunk.originM.elevationM,origin);
-    mesh.position.set(o.x,o.y,o.z);scene.add(mesh);return {chunk,mesh};
-  },({mesh})=>{scene.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();});
-  state={terrain,origin,window,get entries(){return window.entries;},label};
+    return makeTerrainMesh(chunk);
+  },releaseMesh);
+  state={terrain,origin,window,far:new Map(),lodKey:'',get entries(){return window.entries;},label};
   if(overview)overviewView.target.set(0,1.2,0);
   placeMarker(point.xM,point.yM);
   if(matchMedia('(orientation: landscape) and (max-height: 500px)').matches)document.getElementById('settings').open=false;
@@ -295,7 +307,7 @@ document.getElementById('fixture').onclick=showFixture;
 generateButton.onclick=generateWorld;
 document.getElementById('distance').oninput=updateCamera;
 document.getElementById('wire').onchange=e=>{
-  if(state)for(const {mesh}of state.entries){mesh.material.wireframe=e.target.checked;}draw();
+  if(state)for(const {mesh}of [...state.entries,...state.far.values()]){mesh.material.wireframe=e.target.checked;}draw();
 };
 window.addEventListener('resize',resize);
 window.visualViewport?.addEventListener('resize',resize);

@@ -16,7 +16,7 @@ const generator=['generator-src','fauna-src'].map(id=>{
   const match=original.match(new RegExp('<script id="'+id+'"[^>]*>([\\s\\S]*?)<\\/script>'));
   if(!match)throw new Error('Missing '+id);return match[1];
 }).join('\n');
-const sources=await Promise.all(['src/geography/world-terrain.mjs','src/geography/terrain-chunk.mjs','src/geography/chunk-window.mjs','src/player/terrain-walker.mjs','src/player/human-gait.mjs','previews/terrain-chunks.mjs'].map(read));
+const sources=await Promise.all(['src/geography/world-terrain.mjs','src/geography/terrain-chunk.mjs','src/geography/chunk-window.mjs','src/geography/terrain-lod.mjs','src/player/terrain-walker.mjs','src/player/human-gait.mjs','previews/terrain-chunks.mjs'].map(read));
 const app=sources.map(s=>s.replace(/^import .*;\r?\n/gm,'').replace(/^export /gm,'')).join('\n');
 if(/<\/script/i.test(app))throw new Error('Unsafe application embedding');
 let html=await read('previews/terrain-chunks.html');
