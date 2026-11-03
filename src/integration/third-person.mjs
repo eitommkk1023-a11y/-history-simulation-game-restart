@@ -124,13 +124,16 @@ function placeMarker(xM,yM,render=true){
   const q=state.terrain.toLocal(xM,yM,p.elevationM,state.origin);
   marker.position.set(q.x,q.y+jumpHeight,q.z);marker.visible=true;
   status.textContent=`${state.label}｜標高 ${p.elevationM.toFixed(2)}m・斜面 ${p.slopeDegrees.toFixed(1)}°｜${state.entries.length}近景・${state.far.size}遠景チャンク`;
-  state.map?.player(markerPoint);if(render)updateCamera();
+  bridge.map.player(markerPoint);if(render)updateCamera();
 }
 function releaseMesh({mesh}){scene.remove(mesh);mesh.traverse(o=>{if(o.geometry)o.geometry.dispose();});mesh.material.dispose();}
 function makeTerrainMesh(chunk,far=false){
  const data=far?seamGeometry(state.terrain,chunk):{positions:chunk.positions.slice(),normals:chunk.normals.slice(),indices:chunk.indices,boundary:new Set()};
  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(data.positions,3));geometry.setAttribute('normal',new THREE.BufferAttribute(data.normals,3));geometry.setIndex(new THREE.BufferAttribute(data.indices,1));
- const material=new THREE.MeshLambertMaterial({color:0x72945b,side:THREE.FrontSide,wireframe:document.getElementById('wire').checked});
+ const uv=new Float32Array(data.positions.length/3*2);
+ for(let i=0;i<data.positions.length/3;i++){uv[i*2]=(chunk.originM.xM+data.positions[i*3])/state.terrain.widthM;uv[i*2+1]=1-(chunk.originM.yM+data.positions[i*3+2])/state.terrain.heightM;}
+ geometry.setAttribute('uv',new THREE.BufferAttribute(uv,2));
+ const material=new THREE.MeshLambertMaterial({map:bridge.texture,color:0xffffff,side:THREE.FrontSide,wireframe:document.getElementById('wire').checked});
   const hole={value:new THREE.Vector4(0,0,0,0)};
  if(far){material.onBeforeCompile=shader=>{
    shader.uniforms.nearHole=hole;
@@ -210,11 +213,11 @@ function showWorld(world,point,label){
     const chunk=createTerrainChunk(terrain,{tileX:tx,tileY:ty});if(!chunk)return null;
     return makeTerrainMesh(chunk);
   },entry=>{if(state&&!state.clearing){const key=entry.chunk.tileX+','+entry.chunk.tileY;if(state.fallback.has(key))releaseMesh(state.fallback.get(key));state.fallback.set(key,entry);}else releaseMesh(entry);});
-  state={terrain,origin,window,world,map:null,water:createWaterSurface(terrain,world),waterKey:null,waterMesh:null,far:new Map(),fallback:new Map(),clearing:false,lodKey:'',nearCenter:{x:0,y:0},settle:.6,drawDirty:false,morphSources:[],lastJobs:0,get entries(){return window.entries;},label};
+  state={terrain,origin,window,world,map:null,water:createWaterSurface(terrain,world),waterKey:null,waterMesh:null,far:new Map(),fallback:new Map(),clearing:false,lodKey:'',nearCenter:{x:0,y:0},settle:.6,drawDirty:false,morphSources:[],lastJobs:0,lastTexture:bridge.texture,get entries(){return window.entries;},label};
   state.work=createTerrainWorkQueue({build:q=>{
    const entry=makeTerrainMesh(createTerrainChunk(terrain,q),true);prepareMorph(entry,state.morphSources);positionTerrain(entry);setNearHole(entry);return entry;
   },release:releaseMesh,commit:(next)=>{
-   state.drawDirty=true;state.far=next;for(const entry of next.values()){entry.mesh.visible=true;positionTerrain(entry);setNearHole(entry);}
+   state.drawDirty=true;state.far=next;for(const entry of next.values()){entry.mesh.material.map=bridge.texture;entry.mesh.material.needsUpdate=true;entry.mesh.visible=true;positionTerrain(entry);setNearHole(entry);}
    for(const entry of state.fallback.values())releaseMesh(entry);state.fallback.clear();state.morphSources=[];
   }});
 
@@ -224,15 +227,18 @@ function showWorld(world,point,label){
 }
 function findDryPoint(terrain,world){
   const width=terrain.width,height=terrain.height;
+  const preferred=terrain.overviewToMeters(bridge.cam.tx,bridge.cam.tz);let best=null,bestDistance=Infinity;
   for(let y=4;y<height-4;y+=8)for(let x=4;x<width-4;x+=8){
+    const point=terrain.gridToMeters(x,y),distance=Math.hypot(point.xM-preferred.xM,point.yM-preferred.yM);if(distance>=bestDistance)continue;
     let dry=true;
     for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
       const i=(y+dy)*width+x+dx;if(!world.type[i]||world.water[i])dry=false;
     }
     if(!dry)continue;
-    const point=terrain.gridToMeters(x,y),p=terrain.sampleBase(point.xM,point.yM);
-    if(p.baseElevationM>10 && p.baseElevationM<1800 && p.slopeDegrees<15)return point;
+    const p=terrain.sampleBase(point.xM,point.yM);
+    if(p.baseElevationM>10 && p.baseElevationM<1800 && p.slopeDegrees<15){best=point;bestDistance=distance;}
   }
+  if(best)return best;
   throw new Error('検証用の乾いた地点が見つかりません。別のSeedを試してください。');
 }
 let drag=null,stickId=null,sprintOn=false,wasMoving=false;
@@ -287,10 +293,16 @@ state.map.player(markerPoint);
 document.getElementById('viewMode').onclick=()=>{
  if(!state)return;overview=!overview;bridge.overview=overview;bridge.clearTouches();document.body.classList.toggle('integration-third',!overview);resetInput();jumpHeight=0;jumpVelocity=0;
  if(markerPoint)marker.position.y=markerPoint.elevationM-state.origin.elevationM;
- document.getElementById('overviewDistance').hidden=!overview;document.getElementById('actions').hidden=overview;
+ document.getElementById('enterMapCenter').hidden=!overview;document.getElementById('overviewDistance').hidden=!overview;document.getElementById('actions').hidden=overview;
  joystick.setAttribute('aria-label',overview?'世界地図の移動':'移動スティック');
  document.getElementById('viewMode').textContent=overview?'三人称に戻る':'世界を俯瞰';
  if(overview)activateWorldOverview();else{state.settle=.6;updateCamera();}
+};
+document.getElementById('enterMapCenter').onclick=()=>{
+ if(!overview||!state)return;
+ const p=state.terrain.overviewToMeters(bridge.cam.tx,bridge.cam.tz),ground=state.terrain.sampleBase(p.xM,p.yM);
+ if(!ground.land||ground.water||ground.baseElevationM<0||ground.slopeDegrees>40){document.getElementById('movementNotice').textContent='中央を平らな陸地に合わせてください';return;}
+ placeMarker(p.xM,p.yM,false);document.getElementById('viewMode').click();
 };
 let lastTime=null;
 function frame(time){
@@ -319,6 +331,7 @@ function frame(time){
     marker.position.y=markerPoint.elevationM-state.origin.elevationM+jumpHeight;
   }
   if(state&&!document.hidden){
+    if(state.lastTexture!==bridge.texture){for(const entry of [...state.entries,...state.far.values(),...state.fallback.values()]){entry.mesh.material.map=bridge.texture;entry.mesh.material.needsUpdate=true;}state.lastTexture=bridge.texture;state.drawDirty=true;}
     state.lastJobs=state.work.tick(3,2);let terrainChanged=state.drawDirty;state.drawDirty=false;
     for(const entry of state.far.values())if(entry.morph){
       terrainChanged=true;
