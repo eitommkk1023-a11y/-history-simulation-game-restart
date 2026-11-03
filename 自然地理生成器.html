@@ -213,7 +213,19 @@
 </style>
 
 
-<div id="view"></div>
+<div id="view"></div><style>  #joystick{position:fixed;z-index:3;left:max(20px,env(safe-area-inset-left));bottom:max(20px,env(safe-area-inset-bottom));width:112px;height:112px;border-radius:50%;background:#14253688;border:2px solid #ffffff88;touch-action:none;user-select:none;display:grid;place-items:center;padding:0}
+  #stick{width:46px;height:46px;border-radius:50%;background:#d9e9f4bb;pointer-events:none}
+  #sprint.active{background:#aa7821}#movementNotice{position:fixed;bottom:26px;left:150px;right:120px;text-align:center;pointer-events:none;text-shadow:0 1px 4px #000;color:white}
+  [hidden]{display:none!important}
+  #uiToggle{position:fixed;right:max(8px,env(safe-area-inset-right));top:max(8px,env(safe-area-inset-top));z-index:5;background:#183d5ccc}
+  #sprint.active{background:#efb52c;color:#172436;box-shadow:0 0 12px 5px #ffd34eaa}
+  #actions{position:fixed;z-index:3;right:calc(16px + env(safe-area-inset-right));bottom:calc(16px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(2,64px);gap:12px}
+  #actions button{width:64px;height:64px;border-radius:50%;background:#183d5ce8;touch-action:none;user-select:none;padding:4px;font-size:12px}
+  #actions #jump{grid-column:2;grid-row:1}#actions #sprint{grid-column:1;grid-row:2}#actions #crouch{grid-column:2;grid-row:2}
+  #actions button.active{background:#efb52c;color:#172436;box-shadow:0 0 8px 3px #ffd34e88}
+
+.integration-ui-hidden #toolbar,.integration-ui-hidden #info,.integration-ui-hidden #legend,.integration-ui-hidden #lab,.integration-ui-hidden #timebar,.integration-ui-hidden #toasts,.integration-ui-hidden #labels,.integration-ui-hidden #hist,.integration-ui-hidden #menu,.integration-ui-hidden #movementNotice{display:none!important}.integration-third #labels{display:none!important}#uiToggle{z-index:100;min-height:44px;min-width:80px;padding:8px;border:1px solid #ffffff88;border-radius:8px;color:white;font:14px system-ui;top:calc(8px + env(safe-area-inset-top))}#toolbar{padding-right:105px;max-height:45vh;overflow:auto}#actions,#joystick{z-index:20}#loading{z-index:200}#integrationCompat{display:none!important}</style>
+<button id="uiToggle">UIを表示</button><button id="joystick" aria-label="移動スティック"><span id="stick"></span></button><div id="actions"><button id="sprint" aria-pressed="false">ダッシュ</button><button id="jump">ジャンプ</button><button id="crouch" aria-pressed="false">しゃがむ</button></div><div id="movementNotice"></div><div id="integrationCompat"><details id="settings"></details><p id="status"></p><button id="generate"></button><input id="wire" type="checkbox"></div>
 
 <div id="toolbar">
   <button id="btnRegen" class="primary">大陸を再生成</button>
@@ -221,7 +233,7 @@
   <input id="seedInput" type="text" inputmode="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Seed">
   <button id="btnSeed">Seed指定</button>
   <button id="btnReset">視点リセット</button>
-  <button id="btnView">表示：植生</button>
+  <button id="btnView">表示：植生</button><button id="viewMode">世界を俯瞰</button><label id="overviewDistance" hidden>広域距離<input id="distance" type="range" min="60" max="6600" value="3450"></label>
   <button id="btnLab">実験</button>
   <button id="btnInfo">情報</button>
   <button id="btnMenu" aria-label="メニュー">≡</button>
@@ -5333,6 +5345,7 @@ function pinchDistance() {
 }
 const canvas = renderer.domElement;
 canvas.addEventListener('touchstart', (e) => {
+  if (window.__wohNative && !window.__wohNative.overview) return;
   e.preventDefault();
   for (const t of e.changedTouches) {
     touches.set(t.identifier, { x: t.clientX, y: t.clientY, x0: t.clientX, y0: t.clientY, t0: Date.now(), role: t.clientX < window.innerWidth / 2 ? 'pan' : 'rotate' });
@@ -5340,6 +5353,7 @@ canvas.addEventListener('touchstart', (e) => {
   if (touches.size >= 2) pinchDist = pinchDistance();
 }, { passive: false });
 canvas.addEventListener('touchmove', (e) => {
+  if (window.__wohNative && !window.__wohNative.overview) return;
   e.preventDefault();
   const prev = new Map();
   for (const t of e.changedTouches) {
@@ -5438,6 +5452,7 @@ function generate(seedStr) {
     showInfo(seedStr, m.stats);
     busy = false; setButtons();
     loading.classList.remove('show');
+    window.dispatchEvent(new Event('woh-world-ready'));
   };
   // 表示を更新してから重い処理を投げる
   setTimeout(() => worker.postMessage({ id, seed: seedToInt(seedStr) }), 30);
@@ -5977,6 +5992,7 @@ function mulberry32Main(a) {
 
 // 地形メッシュの一部の高さを、変更した標高から作り直す
 function labUpdateMeshRegion(x0, y0, x1, y1, skipNormals) {
+  window.__wohNative?.changed();
   if (!terrainMesh) return;
   const pos = terrainMesh.geometry.attributes.position, sg = W / MESH_RES, nV = MESH_RES + 1;
   const i0 = Math.max(0, Math.floor(x0 / sg) - 1), i1 = Math.min(MESH_RES, Math.ceil(x1 / sg) + 1);
@@ -7118,9 +7134,11 @@ function serializeState() {
       terrain: { idx, cur, curT, curR, org, orgT, orgR }, lava: Int32Array.from(lavaIdx),
     };
   }
+  st.player = window.__wohPlayerSave ? window.__wohPlayerSave() : null;
   return st;
 }
 function applyState(st) {
+  if(window.__wohNative)window.__wohNative.pendingPlayer=st.player||null;
   clock.day = st.clock.day; clock.mode = st.clock.mode || 0; clock.speed = st.clock.speed || 0; clock.playing = false;
   history.list = st.history.list || []; history.nextId = st.history.nextId || 1;
   names.overrides = st.names || {};
@@ -7396,12 +7414,13 @@ function loop(now) {
   if (!needsRender) return;   // 変化がないときは描画しない（省電力）
   needsRender = false;
   labelsUpdate();
-  renderer.render(scene, camera);
+  if (!window.__wohNative || window.__wohNative.overview) renderer.render(scene, camera);
 }
 
 // テスト・将来の拡張用に現在の世界データを参照できるようにする
 window.__geo = { get world() { return world; }, get seed() { return currentSeed; }, generate, seedToInt, cam, updateCamera, get sim() { return sim; }, clock, history, names, serializeState, loadState, saveTo };
 
+window.__wohNative={renderer,scene,camera,cam,updateCamera,overview:false,revision:0,seenRevision:0,lastChange:0,pendingPlayer:null,changed(){this.revision++;this.lastChange=performance.now();},clearTouches(){touches.clear();},get world(){return world;},get seed(){return currentSeed;},get map(){return {scene,camera,cam,update:updateCamera,player(){},dispose(){},get mesh(){return terrainMesh;},get world(){return world;}};}};
 updateRiverPix();
 resetCamera();
 coreSetup();
@@ -7415,4 +7434,4 @@ dbDo('readonly', st => st.get('auto')).then(st => {
 
 
 
-</body></html>
+<script type="module" src="./src/integration/third-person.mjs"></script></body></html>
