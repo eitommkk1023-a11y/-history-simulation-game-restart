@@ -124,9 +124,10 @@ export function createTransportNetwork(world, { width = 3000, height = 3000, kmP
   }
   function validOnTerrain(link) {
     const path = link.path;
-    return link.kind === 'road'
-      ? path.every(dry)
-      : path.every((p, k) => k === 0 || k === path.length - 1 ? dry(p) : land(p) && world.water[index(p)] !== 0);
+    // Land road edges are checked by the route at each step. A flooded section
+    // must not disable unrelated sections of a long road.
+    return link.kind === 'road' ? true :
+      path.every((p, k) => k === 0 || k === path.length - 1 ? dry(p) : land(p) && world.water[index(p)] !== 0);
   }
   function usable(link, { mode = 'foot', loadKg = 0, knowsFacility, canUse } = {}) {
     return link.status === 'open' && validOnTerrain(link) &&
@@ -142,7 +143,8 @@ export function createTransportNetwork(world, { width = 3000, height = 3000, kmP
       const link = links.get(id);
       if (usable(link, context) && (!best || best.speedFactor < link.speedFactor)) best = link;
     }
-    return best ? clone(best) : null;
+    // Avoid copying an entire road polyline for every routing expansion.
+    return best ? { id: best.id, kind: best.kind, speedFactor: best.speedFactor } : null;
   }
   function crossingsFrom(from, context) {
     const result = [];
