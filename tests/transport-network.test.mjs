@@ -139,3 +139,11 @@ test('an abandoned bridge remains loadable after the river becomes impassable',(
   const route=createGeographyAdapter(f.world,{...f.options,infrastructure:restored});
   assert.equal(route.route({x:0,y:0},{x:2,y:0},{knows:known,knowsFacility:()=>true}).status,'unreachable');
 });
+
+test('a damaged remote road section does not disable still usable segments',()=>{
+  const f=fixture(4,1);
+  f.network.add({id:'long',kind:'road',path:[{x:0,y:0},{x:1,y:0},{x:2,y:0},{x:3,y:0}],speedFactor:2});
+  f.set(3,0,'water',1);
+  const r=f.route({x:0,y:0},{x:1,y:0});
+  assert.equal(r.status,'ok');assert.equal(r.legs[0].id,'long');
+});
