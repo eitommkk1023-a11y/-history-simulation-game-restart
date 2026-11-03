@@ -39,12 +39,13 @@ function heapPop(q) {
   }
   return result;
 }
-export function createGeographyAdapter(world, { width=3000, height=3000, kmPerBlock=3.33 } = {}) {
+export function createGeographyAdapter(world, { width=3000, height=3000, kmPerBlock=3.33, infrastructure=null } = {}) {
   if (!world || !Number.isInteger(width) || !Number.isInteger(height) || width<1 || height<1 || !Number.isFinite(kmPerBlock) || kmPerBlock<=0) throw new TypeError('Invalid world dimensions');
   const n=width*height;
   for (const k of ['elev','type','biome','water']) {
     if (!world[k] || world[k].length!==n) throw new TypeError(`Expected ${k} with ${n} cells`);
   }
+  if (infrastructure && (typeof infrastructure.roadFor !== 'function' || typeof infrastructure.crossingsFrom !== 'function')) throw new TypeError('Invalid transport network');
   const ix=(x,y)=>y*width+x;
   const inBounds=(x,y)=>x>=0 && y>=0 && x<width && y<height;
   // 0=none, 1=river, 2=lake in the current generator. Bridge/ford edges
@@ -55,46 +56,72 @@ export function createGeographyAdapter(world, { width=3000, height=3000, kmPerBl
     const i=ix(x,y);
     return {x,y,index:i,elevationM:world.elev[i],land:world.type[i]!==0,water:world.water[i],biome:world.biome[i],traversable:traversable(x,y)};
   }
-  function route(start,finish,{knows,baseKmH=5,maxSlopeDeg=Infinity,maxExpanded=30000}={}) {
+  function route(start,finish,{knows,baseKmH=5,maxSlopeDeg=Infinity,maxExpanded=30000,
+    mode='foot',loadKg=0,knowsFacility=()=>false,canUse=()=>true,terrainPassable=()=>true}={}) {
     assertPosition(start,width,height); assertPosition(finish,width,height);
     if (typeof knows!=='function') throw new TypeError('A per-actor knows(x, y) function is required; do not use omniscient terrain knowledge');
-    if (!Number.isFinite(baseKmH) || baseKmH<=0 || !(maxSlopeDeg>0) || !Number.isInteger(maxExpanded) || maxExpanded<1) throw new RangeError('Invalid travel profile or search budget');
+    if (!Number.isFinite(baseKmH) || baseKmH<=0 || !(maxSlopeDeg>0) || !Number.isInteger(maxExpanded) || maxExpanded<1 || !Number.isFinite(loadKg) || loadKg<0 ||
+      typeof knowsFacility!=='function' || typeof canUse!=='function' || typeof terrainPassable!=='function') throw new RangeError('Invalid travel profile or search budget');
     if (!knows(start.x,start.y) || !knows(finish.x,finish.y)) return {status:'unknown'};
-    if (!traversable(start.x,start.y) || !traversable(finish.x,finish.y)) return {status:'blocked'};
+    if (!traversable(start.x,start.y) || !traversable(finish.x,finish.y) ||
+        !terrainPassable(start.x,start.y,mode) || !terrainPassable(finish.x,finish.y,mode)) return {status:'blocked'};
     const source=ix(start.x,start.y), target=ix(finish.x,finish.y);
     const g=new Map([[source,0]]), prev=new Map(), open=[];
-    const heuristic=(x,y)=>Math.hypot(finish.x-x,finish.y-y)*kmPerBlock/(baseKmH*1.125);
+    // With arbitrary crossing links or roads, Euclidean distance is no longer a safe
+    // admissible heuristic; use Dijkstra while infrastructure is present.
+    const heuristic=infrastructure ? ()=>0 :
+      (x,y)=>Math.hypot(finish.x-x,finish.y-y)*kmPerBlock/(baseKmH*1.125);
     heapPush(open,{i:source,g:0,f:heuristic(start.x,start.y)});
     let expanded=0;
+    function relax(curr,to,time,leg) {
+      const ng=curr.g+time;
+      if (ng<(g.get(to)??Infinity)) {
+        g.set(to,ng); prev.set(to,{from:curr.i,leg});
+        const x=to%width,y=Math.floor(to/width);
+        heapPush(open,{i:to,g:ng,f:ng+heuristic(x,y)});
+      }
+    }
+    const ctx={mode,loadKg,knowsFacility,canUse};
     while (open.length) {
       const curr=heapPop(open);
       if (curr.g!==g.get(curr.i)) continue;
       if (curr.i===target) {
-        const indices=[target];
-        while (indices[indices.length-1]!==source) indices.push(prev.get(indices[indices.length-1]));
-        indices.reverse();
+        const indices=[target],legs=[];
+        while (indices.at(-1)!==source) {
+          const p=prev.get(indices.at(-1));
+          indices.push(p.from);legs.push(p.leg);
+        }
+        indices.reverse();legs.reverse();
         const path=indices.map(i=>({x:i%width,y:Math.floor(i/width)}));
-        const distanceKm=path.slice(1).reduce((s,p,k)=>s+kmPerBlock*Math.hypot(p.x-path[k].x,p.y-path[k].y),0);
-        return {status:'ok',path,hours:curr.g,distanceKm,expanded};
+        const distanceKm=legs.reduce((s,leg)=>s+leg.distanceKm,0);
+        return {status:'ok',path,legs,hours:curr.g,distanceKm,expanded};
       }
       if (++expanded>maxExpanded) return {status:'budget-exceeded',expanded};
       const x=curr.i%width,y=Math.floor(curr.i/width),elev=world.elev[curr.i];
       for (const [dx,dy] of DIRECTIONS) {
         const nx=x+dx,ny=y+dy;
-        if (!traversable(nx,ny) || !knows(nx,ny)) continue;
-        // A diagonal must not cut through the corners of blocked/unknown cells.
-        if (dx && dy && (!traversable(x+dx,y) || !traversable(x,y+dy) || !knows(x+dx,y) || !knows(x,y+dy))) continue;
+        if (!traversable(nx,ny) || !knows(nx,ny) || !terrainPassable(nx,ny,mode)) continue;
+        if (dx && dy && (!traversable(x+dx,y) || !traversable(x,y+dy) ||
+          !knows(x+dx,y) || !knows(x,y+dy) ||
+          !terrainPassable(x+dx,y,mode) || !terrainPassable(x,y+dy,mode))) continue;
         const j=ix(nx,ny),length=kmPerBlock*Math.hypot(dx,dy);
         const slope=Math.atan2(world.elev[j]-elev,length*1000)*180/Math.PI;
         if (Math.abs(slope)>maxSlopeDeg) continue;
-        const slopeFactor=slope>=0 ? Math.exp(-0.065*slope) : Math.max(0.15, Math.min(1.125, 1.125-0.035*(Math.abs(slope)-5)));
+        const slopeFactor=slope>=0 ? Math.exp(-0.065*slope) : Math.max(0.15,Math.min(1.125,1.125-0.035*(Math.abs(slope)-5)));
         const biomeFactor=BIOME_SPEED[world.biome[j]]??1;
-        const time=length/(baseKmH*slopeFactor*biomeFactor);
-        const ng=curr.g+time;
-        if (ng<(g.get(j)??Infinity)) {
-          g.set(j,ng); prev.set(j,curr.i);
-          heapPush(open,{i:j,g:ng,f:ng+heuristic(nx,ny)});
-        }
+        const eligibleRoad=infrastructure?.roadFor(curr.i,j,ctx);
+        const road=eligibleRoad?.speedFactor>1?eligibleRoad:null;
+        const hours=length/(baseKmH*slopeFactor*biomeFactor*(road?.speedFactor??1));
+        relax(curr,j,hours,{kind:road?'road':'terrain',id:road?.id??null,
+          distanceKm:length,hours,path:[{x,y},{x:nx,y:ny}]});
+      }
+      if (infrastructure) for (const {to,link} of infrastructure.crossingsFrom(curr.i,ctx)) {
+        const tx=to%width,ty=Math.floor(to/width);
+        if (!knows(tx,ty) || !terrainPassable(tx,ty,mode)) continue;
+        const totalDist=link.path.slice(1).reduce((sum,p,k)=>sum+kmPerBlock*Math.hypot(p.x-link.path[k].x,p.y-link.path[k].y),0);
+        const hours=link.travelHours??(totalDist/(baseKmH*link.speedFactor));
+        relax(curr,to,hours,{kind:link.kind,id:link.id,distanceKm:totalDist,hours,
+          path:link.path[0].x===x&&link.path[0].y===y?link.path:link.path.slice().reverse()});
       }
     }
     return {status:'unreachable',expanded};
