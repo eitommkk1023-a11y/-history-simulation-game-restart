@@ -128,6 +128,7 @@ function placeMarker(xM,yM,render=true){
 }
 function releaseMesh({mesh}){scene.remove(mesh);mesh.traverse(o=>{if(o.geometry)o.geometry.dispose();});mesh.material.dispose();}
 function makeTerrainMesh(chunk,far=false){
+ if(state)state.terrainBuilds++;
  const data=far?seamGeometry(state.terrain,chunk):{positions:chunk.positions.slice(),normals:chunk.normals.slice(),indices:chunk.indices,boundary:new Set()};
  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(data.positions,3));geometry.setAttribute('normal',new THREE.BufferAttribute(data.normals,3));geometry.setIndex(new THREE.BufferAttribute(data.indices,1));
  const uv=new Float32Array(data.positions.length/3*2);
@@ -184,18 +185,26 @@ function refreshWater(xM,yM){
  const q=state.terrain.toLocal(state.waterAnchor.xM,state.waterAnchor.yM,0,state.origin);state.waterMesh.position.set(q.x,q.y,q.z);
 }
 function refreshChunks(xM,yM){
+ const fast=!!bridge.debugFastActive&&wasMoving;
+ if(state.fastRender!==fast){
+  state.dropOldChunks=fast;
+  state.window.clear();state.work.clear();state.far=new Map();
+  if(fast){for(const e of state.fallback.values())releaseMesh(e);state.fallback.clear();}
+  state.window=makeWindow(state.terrain,fast);state.fastRender=fast;state.lodKey='';
+  scene.fog.near=fast?350:1300;scene.fog.far=fast?700:2100;
+ }
  const previousNear=[...state.entries,...state.fallback.values()];
  state.window.update(xM,yM);
- for(const e of state.entries){const key=e.chunk.tileX+','+e.chunk.tileY;if(state.fallback.has(key)){releaseMesh(state.fallback.get(key));state.fallback.delete(key);}}
+ for(const e of state.entries){const key=e.chunk.sizeM+','+e.chunk.tileX+','+e.chunk.tileY;if(state.fallback.has(key)){releaseMesh(state.fallback.get(key));state.fallback.delete(key);}}
  const cx=Math.floor(xM/64),cy=Math.floor(yM/64),lodKey=cx+','+cy;
  state.nearCenter={x:cx,y:cy};
- if(state.lodKey!==lodKey){
+ if(!fast&&state.lodKey!==lodKey){
   state.morphSources=[...previousNear,...state.entries,...state.far.values()];
   const plan=selectTerrainLOD(state.terrain,xM,yM);
   plan.sort((a,b)=>Math.hypot((a.tileX+.5)*a.sizeM-xM,(a.tileY+.5)*a.sizeM-yM)-Math.hypot((b.tileX+.5)*b.sizeM-xM,(b.tileY+.5)*b.sizeM-yM));
   state.work.request(plan);state.lodKey=lodKey;
  }
- for(const entry of state.far.values())setNearHole(entry);
+ for(const entry of [...state.far.values(),...state.fallback.values()])setNearHole(entry);
  const old=state.origin;
  if(Math.hypot(xM-old.xM,yM-old.yM)>512){
   const origin={xM:Math.floor(xM/64)*64,yM:Math.floor(yM/64)*64,elevationM:state.terrain.sampleBase(xM,yM).baseElevationM};
@@ -205,15 +214,18 @@ function refreshChunks(xM,yM){
  for(const {chunk,mesh}of [...state.entries,...state.far.values(),...state.fallback.values()]){const q=state.terrain.toLocal(chunk.originM.xM,chunk.originM.yM,chunk.originM.elevationM,state.origin);mesh.position.set(q.x,q.y,q.z);}
  refreshWater(xM,yM);scene.updateMatrixWorld(true);
 }
+function makeWindow(terrain,fast){
+ const sizeM=fast?512:64,segments=fast?16:32;
+ return createChunkWindow(terrain,(tx,ty)=>{
+   const chunk=createTerrainChunk(terrain,{tileX:tx,tileY:ty,sizeM,segments});
+   return makeTerrainMesh(chunk,fast);
+ },entry=>{if(state&&!state.clearing&&!state.dropOldChunks){const key=entry.chunk.sizeM+','+entry.chunk.tileX+','+entry.chunk.tileY;if(state.fallback.has(key))releaseMesh(state.fallback.get(key));state.fallback.set(key,entry);}else releaseMesh(entry);},{sizeM});
+}
 function showWorld(world,point,label){
   clearTerrain();
   const terrain=createWorldTerrain(world),p=terrain.sampleBase(point.xM,point.yM);
-  const origin={...point,elevationM:p.baseElevationM};
-  const window=createChunkWindow(terrain,(tx,ty)=>{
-    const chunk=createTerrainChunk(terrain,{tileX:tx,tileY:ty});if(!chunk)return null;
-    return makeTerrainMesh(chunk);
-  },entry=>{if(state&&!state.clearing&&!bridge.debugFastActive){const key=entry.chunk.tileX+','+entry.chunk.tileY;if(state.fallback.has(key))releaseMesh(state.fallback.get(key));state.fallback.set(key,entry);}else releaseMesh(entry);});
-  state={terrain,origin,window,world,map:null,water:createWaterSurface(terrain,world),waterKey:null,waterMesh:null,far:new Map(),fallback:new Map(),clearing:false,lodKey:'',nearCenter:{x:0,y:0},settle:.6,drawDirty:false,morphSources:[],lastJobs:0,lastTexture:bridge.texture,get entries(){return window.entries;},label};
+  const origin={...point,elevationM:p.baseElevationM},window=makeWindow(terrain,false);
+  state={terrain,origin,window,world,map:null,fastRender:false,dropOldChunks:false,idleFast:0,terrainBuilds:0,water:createWaterSurface(terrain,world),waterKey:null,waterMesh:null,far:new Map(),fallback:new Map(),clearing:false,lodKey:'',nearCenter:{x:0,y:0},settle:.6,drawDirty:false,morphSources:[],lastJobs:0,lastTexture:bridge.texture,get entries(){return this.window.entries;},label};
   state.work=createTerrainWorkQueue({build:q=>{
    const entry=makeTerrainMesh(createTerrainChunk(terrain,q),true);prepareMorph(entry,state.morphSources);positionTerrain(entry);setNearHole(entry);return entry;
   },release:releaseMesh,commit:(next)=>{
@@ -332,8 +344,9 @@ function frame(time){
     marker.position.y=markerPoint.elevationM-state.origin.elevationM+jumpHeight;
   }
   if(state&&!document.hidden){
+    if(!wasMoving&&state.fastRender){state.idleFast+=Math.min(dt,.05);if(state.idleFast>.15){placeMarker(markerPoint.xM,markerPoint.yM,false);state.drawDirty=true;}}else state.idleFast=0;
     if(state.lastTexture!==bridge.texture){for(const entry of [...state.entries,...state.far.values(),...state.fallback.values()]){entry.mesh.material.map=bridge.texture;entry.mesh.material.needsUpdate=true;}state.lastTexture=bridge.texture;state.drawDirty=true;}
-    if(bridge.debugFastActive&&state.fallback.size){for(const entry of state.fallback.values())releaseMesh(entry);state.fallback.clear();}
+    if(state.fastRender&&state.fallback.size){for(const entry of state.fallback.values())releaseMesh(entry);state.fallback.clear();}
     state.lastJobs=state.work.tick(3,2);let terrainChanged=state.drawDirty;state.drawDirty=false;
     for(const entry of state.far.values())if(entry.morph){
       terrainChanged=true;

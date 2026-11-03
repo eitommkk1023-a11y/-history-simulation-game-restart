@@ -224,7 +224,7 @@
   #actions #jump{grid-column:2;grid-row:1}#actions #sprint{grid-column:1;grid-row:2}#actions #crouch{grid-column:2;grid-row:2}
   #actions button.active{background:#efb52c;color:#172436;box-shadow:0 0 8px 3px #ffd34e88}
 
-.integration-ui-hidden #toolbar,.integration-ui-hidden #info,.integration-ui-hidden #legend,.integration-ui-hidden #lab,.integration-ui-hidden #timebar,.integration-ui-hidden #toasts,.integration-ui-hidden #labels,.integration-ui-hidden #hist,.integration-ui-hidden #menu,.integration-ui-hidden #movementNotice{display:none!important}.integration-third #labels{display:none!important}#uiToggle{z-index:100;min-height:44px;min-width:80px;padding:8px;border:1px solid #ffffff88;border-radius:8px;color:white;font:14px system-ui;top:calc(8px + env(safe-area-inset-top))}#toolbar{padding-right:105px;max-height:45vh;overflow:auto}#actions,#joystick{z-index:20}#loading{z-index:200}#integrationCompat{display:none!important}</style>
+.integration-ui-hidden #toolbar,.integration-ui-hidden #info,.integration-ui-hidden #legend,.integration-ui-hidden #lab,.integration-ui-hidden #timebar,.integration-ui-hidden #toasts,.integration-ui-hidden #labels,.integration-ui-hidden #hist,.integration-ui-hidden #menu,.integration-ui-hidden #movementNotice{display:none!important}.integration-third #labels{display:none!important}#uiToggle{z-index:100;min-height:44px;min-width:80px;padding:8px;border:1px solid #ffffff88;border-radius:8px;color:white;font:14px system-ui;top:calc(8px + env(safe-area-inset-top))}#toolbar{padding-right:105px;max-height:45vh;overflow:auto}#actions,#joystick{z-index:20}#loading{z-index:200}#integrationCompat{display:none!important}#displayChoices{position:fixed;left:8px;z-index:130;display:grid;grid-template-columns:repeat(4,minmax(65px,1fr));gap:6px;max-width:calc(100vw - 16px);padding:10px;background:#142a40f5;border:1px solid #8badcb;border-radius:10px}#displayChoices[hidden],.integration-ui-hidden #displayChoices{display:none!important}#displayChoices button{min-height:44px;padding:8px;background:#294e70;color:white;border:1px solid #8badcb;border-radius:6px;font:14px system-ui}#displayChoices button.selected{background:#8b601d}</style>
 <button id="uiToggle">UIを表示</button><button id="joystick" aria-label="移動スティック"><span id="stick"></span></button><div id="actions"><button id="sprint" aria-pressed="false">ダッシュ</button><button id="jump">ジャンプ</button><button id="crouch" aria-pressed="false">しゃがむ</button></div><div id="movementNotice"></div><div id="integrationCompat"><details id="settings"></details><p id="status"></p><button id="generate"></button><input id="wire" type="checkbox"></div>
 
 <div id="toolbar">
@@ -5517,14 +5517,13 @@ bindTap(btnSeed, applySeed);
 seedInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') applySeed(); });
 bindTap(btnReset, resetCamera);
 const btnView = document.getElementById('btnView');
-bindTap(btnView, () => {
-  viewMode = VIEW_MODES[(VIEW_MODES.indexOf(viewMode) + 1) % VIEW_MODES.length];
-  btnView.textContent = VIEW_LABELS[viewMode];
-  buildLegend();
-  rebuildTexture();
-  faDirty = true; faunaUpdateOverlay();
-  if (depMarks) depMarks.visible = viewMode === 'res';
-});
+const displayChoices=document.createElement('div');displayChoices.id='displayChoices';displayChoices.hidden=true;displayChoices.setAttribute('role','group');displayChoices.setAttribute('aria-label','表示を選択');document.body.appendChild(displayChoices);
+function closeDisplayChoices(){displayChoices.hidden=true;btnView.setAttribute('aria-expanded','false');}
+for(const mode of VIEW_MODES){const option=document.createElement('button');option.dataset.view=mode;option.textContent=VIEW_LABELS[mode].replace('表示：','');displayChoices.appendChild(option);bindTap(option,()=>{
+ closeDisplayChoices();if(mode===viewMode)return;viewMode=mode;btnView.textContent=VIEW_LABELS[viewMode];buildLegend();rebuildTexture();faDirty=true;faunaUpdateOverlay();if(depMarks)depMarks.visible=viewMode==='res';requestRender();
+});}
+bindTap(btnView,()=>{displayChoices.hidden=!displayChoices.hidden;btnView.setAttribute('aria-expanded',String(!displayChoices.hidden));displayChoices.style.top=Math.min(window.innerHeight-110,document.getElementById('toolbar').getBoundingClientRect().bottom+4)+'px';for(const b of displayChoices.children)b.classList.toggle('selected',b.dataset.view===viewMode);});
+document.addEventListener('pointerdown',e=>{if(!displayChoices.contains(e.target)&&e.target!==btnView)closeDisplayChoices();});
 
 // ------------------------------------------------------------ 実験：時間経過・天候・噴火
 // 気候データ（月ごとの平年値）をもとに、1日ずつ天気を決めて積雪・土の水分・洪水・湖の水位・火山灰を計算する。

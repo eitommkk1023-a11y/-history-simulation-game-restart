@@ -5,3 +5,4 @@ test('keeps shared chunks, releases departed entries and bounds cache size',()=>
  for(let x=256;x<1800;x+=64){w.update(x,128);assert.equal(w.entries.length,9);}w.clear();assert.equal(w.entries.length,0);assert.equal(freed.length,made);
 });
 test('clips the cache at true world boundaries',()=>{const w=createChunkWindow({widthM:128,heightM:128},(x,y)=>({x,y}),()=>{});w.update(0,0);assert.equal(w.entries.length,4);assert.ok(w.entries.every(e=>e.x<2&&e.y<2));});
+test('fast travel uses larger tiles and avoids rebuilding on every 64m crossing',()=>{let made=0;const w=createChunkWindow({widthM:100000,heightM:100000},(x,y)=>({x,y,id:++made}),()=>{},{sizeM:512});w.update(1024,1024);for(let x=1088;x<1536;x+=64)w.update(x,1024);assert.equal(made,9);w.update(1537,1024);assert.equal(made,12);});
