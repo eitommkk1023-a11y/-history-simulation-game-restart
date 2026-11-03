@@ -1,3 +1,4 @@
+import {createLegacyOverview} from '../src/geography/legacy-overview.mjs';
 import {createWaterSurface} from '../src/geography/water-surface.mjs';
 import {seamGeometry} from '../src/geography/terrain-seams.mjs';
 import {createTerrainWorkQueue} from '../src/geography/terrain-work-queue.mjs';
@@ -84,11 +85,12 @@ scene.add(marker);
 let state=null,worker=null,requestId=0,yaw=.7,pitch=.4;
 let markerPoint=null,overview=false;
 let jumpHeight=0,jumpVelocity=0;
-const overviewView={yaw:.7,pitch:1.35,target:new THREE.Vector3()};
-function draw(){renderer.render(scene,camera);}
+
+function draw(){const map=overview?state?.map:null;renderer.render(map?.scene||scene,map?.camera||camera);}
 function updateCamera(){
-  const r=overview?Number(document.getElementById('distance').value):4,target=overview?overviewView.target.clone():marker.position.clone();if(!overview)target.y+=1.2;
-  const angle=overview?overviewView.pitch:pitch,viewYaw=overview?overviewView.yaw:yaw;
+  if(overview&&state?.map){state.map.update();draw();return;}
+  const r=4,target=marker.position.clone();target.y+=1.2;
+  const angle=pitch,viewYaw=yaw;
   const offset=new THREE.Vector3(r*Math.cos(angle)*Math.sin(viewYaw),r*Math.sin(angle),r*Math.cos(angle)*Math.cos(viewYaw));
   // Pull in along the viewing segment when terrain obscures the player.
   if(state){
@@ -103,10 +105,10 @@ function updateCamera(){
     if(ground)camera.position.y=Math.max(camera.position.y,ground.elevationM-state.origin.elevationM+.4);}
   camera.lookAt(target);draw();
 }
-function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();updateCamera();}
+function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();if(state?.map){state.map.camera.aspect=innerWidth/innerHeight;state.map.camera.updateProjectionMatrix();}updateCamera();}
 function clearTerrain(){
   resetInput();crouched=false;crouchButton.classList.remove('active');crouchButton.setAttribute('aria-pressed','false');markerPoint=null;jumpHeight=0;jumpVelocity=0;
-  if(state){state.clearing=true;state.window.clear();state.work.clear();if(state.waterMesh){scene.remove(state.waterMesh);state.waterMesh.geometry.dispose();state.waterMesh.material.dispose();}for(const entry of state.fallback.values())releaseMesh(entry);}
+  if(state){state.map?.dispose();state.clearing=true;state.window.clear();state.work.clear();if(state.waterMesh){scene.remove(state.waterMesh);state.waterMesh.geometry.dispose();state.waterMesh.material.dispose();}for(const entry of state.fallback.values())releaseMesh(entry);}
   state=null;marker.visible=false;
 }
 function groundAt(xM,yM){
@@ -122,7 +124,7 @@ function placeMarker(xM,yM,render=true){
   const q=state.terrain.toLocal(xM,yM,p.elevationM,state.origin);
   marker.position.set(q.x,q.y+jumpHeight,q.z);marker.visible=true;
   status.textContent=`${state.label}｜標高 ${p.elevationM.toFixed(2)}m・斜面 ${p.slopeDegrees.toFixed(1)}°｜${state.entries.length}近景・${state.far.size}遠景チャンク`;
-  if(render)updateCamera();
+  state.map?.player(markerPoint);if(render)updateCamera();
 }
 function releaseMesh({mesh}){scene.remove(mesh);mesh.traverse(o=>{if(o.geometry)o.geometry.dispose();});mesh.material.dispose();}
 function makeTerrainMesh(chunk,far=false){
@@ -194,7 +196,7 @@ function refreshChunks(xM,yM){
  const old=state.origin;
  if(Math.hypot(xM-old.xM,yM-old.yM)>512){
   const origin={xM:Math.floor(xM/64)*64,yM:Math.floor(yM/64)*64,elevationM:state.terrain.sampleBase(xM,yM).baseElevationM};
-  overviewView.target.x-=origin.xM-old.xM;overviewView.target.z-=origin.yM-old.yM;overviewView.target.y-=origin.elevationM-old.elevationM;
+
   state.origin=origin;
  }
  for(const {chunk,mesh}of [...state.entries,...state.far.values(),...state.fallback.values()]){const q=state.terrain.toLocal(chunk.originM.xM,chunk.originM.yM,chunk.originM.elevationM,state.origin);mesh.position.set(q.x,q.y,q.z);}
@@ -208,15 +210,16 @@ function showWorld(world,point,label){
     const chunk=createTerrainChunk(terrain,{tileX:tx,tileY:ty});if(!chunk)return null;
     return makeTerrainMesh(chunk);
   },entry=>{if(state&&!state.clearing){const key=entry.chunk.tileX+','+entry.chunk.tileY;if(state.fallback.has(key))releaseMesh(state.fallback.get(key));state.fallback.set(key,entry);}else releaseMesh(entry);});
-  state={terrain,origin,window,water:createWaterSurface(terrain,world),waterKey:null,waterMesh:null,far:new Map(),fallback:new Map(),clearing:false,lodKey:'',nearCenter:{x:0,y:0},settle:.6,drawDirty:false,morphSources:[],lastJobs:0,get entries(){return window.entries;},label};
+  state={terrain,origin,window,world,map:null,water:createWaterSurface(terrain,world),waterKey:null,waterMesh:null,far:new Map(),fallback:new Map(),clearing:false,lodKey:'',nearCenter:{x:0,y:0},settle:.6,drawDirty:false,morphSources:[],lastJobs:0,get entries(){return window.entries;},label};
   state.work=createTerrainWorkQueue({build:q=>{
    const entry=makeTerrainMesh(createTerrainChunk(terrain,q),true);prepareMorph(entry,state.morphSources);positionTerrain(entry);setNearHole(entry);return entry;
   },release:releaseMesh,commit:(next)=>{
    state.drawDirty=true;state.far=next;for(const entry of next.values()){entry.mesh.visible=true;positionTerrain(entry);setNearHole(entry);}
    for(const entry of state.fallback.values())releaseMesh(entry);state.fallback.clear();state.morphSources=[];
   }});
-  if(overview)overviewView.target.set(0,1.2,0);
+
   placeMarker(point.xM,point.yM);
+  if(overview)activateWorldOverview();
   if(matchMedia('(orientation: landscape) and (max-height: 500px)').matches)document.getElementById('settings').open=false;
 }
 function cancelGeneration(){requestId++;if(worker){worker.terminate();worker=null;}generateButton.disabled=false;}
@@ -323,8 +326,21 @@ window.addEventListener('keydown',e=>{if(/INPUT|TEXTAREA|SELECT/.test(e.target.t
 window.addEventListener('keyup',e=>keys.delete(e.code));
 window.addEventListener('blur',resetInput);
 document.addEventListener('visibilitychange',()=>{if(document.hidden)resetInput();});
-document.getElementById('viewMode').onclick=()=>{overview=!overview;resetInput();jumpHeight=0;jumpVelocity=0;if(markerPoint)marker.position.y=markerPoint.elevationM-state.origin.elevationM;if(overview){overviewView.target.copy(marker.position);overviewView.target.y+=1.2;}
-  document.getElementById('overviewDistance').hidden=!overview;document.getElementById('actions').hidden=overview;joystick.setAttribute('aria-label',overview?'俯瞰カメラ移動':'移動スティック');document.getElementById('viewMode').textContent=overview?'三人称に戻る':'周辺を俯瞰';updateCamera();};
+function activateWorldOverview(){
+ if(!state)return;
+ if(!state.map)state.map=createLegacyOverview(state.world,renderer,state.terrain);
+ state.map.mesh.material.wireframe=document.getElementById('wire').checked;state.map.player(markerPoint);
+ document.getElementById('distance').value=state.map.cam.dist;
+ updateCamera();
+}
+document.getElementById('viewMode').onclick=()=>{
+ if(!state)return;overview=!overview;resetInput();jumpHeight=0;jumpVelocity=0;
+ if(markerPoint)marker.position.y=markerPoint.elevationM-state.origin.elevationM;
+ document.getElementById('overviewDistance').hidden=!overview;document.getElementById('actions').hidden=overview;
+ joystick.setAttribute('aria-label',overview?'世界地図の移動':'移動スティック');
+ document.getElementById('viewMode').textContent=overview?'三人称に戻る':'世界を俯瞰';
+ if(overview)activateWorldOverview();else{state.settle=.6;updateCamera();}
+};
 let lastTime=null;
 function frame(time){
   const dt=lastTime===null?0:(time-lastTime)/1000;lastTime=time;
@@ -333,9 +349,9 @@ function frame(time){
     const y=stickInput.y+Number(keys.has('KeyS')||keys.has('ArrowDown'))-Number(keys.has('KeyW')||keys.has('ArrowUp'));
     if(overview){
       if(Math.hypot(x,y)>.08){
-        const scale=Math.min(dt,.05)*Number(document.getElementById('distance').value)*.4/Math.max(1,Math.hypot(x,y));
-        overviewView.target.x+=(x*Math.cos(overviewView.yaw)+y*Math.sin(overviewView.yaw))*scale;
-        overviewView.target.z+=(-x*Math.sin(overviewView.yaw)+y*Math.cos(overviewView.yaw))*scale;updateCamera();
+        const cam=state.map.cam,scale=Math.min(dt,.05)*cam.dist*.6/Math.max(1,Math.hypot(x,y));
+        cam.tx+=(x*Math.cos(cam.yaw)+y*Math.sin(cam.yaw))*scale;
+        cam.tz+=(-x*Math.sin(cam.yaw)+y*Math.cos(cam.yaw))*scale;updateCamera();
       }
     }else if(Math.hypot(x,y)>.08){
       const next=stepTerrainWalker(markerPoint,{x,y,yaw,sprint:sprintOn,crouch:crouched},dt,groundAt);
@@ -372,7 +388,7 @@ renderer.domElement.addEventListener('pointerdown',e=>{
 });
 renderer.domElement.addEventListener('pointermove',e=>{
   if(!drag||drag.id!==e.pointerId)return;
-  if(overview){overviewView.yaw-=(e.clientX-drag.x)*.006;overviewView.pitch=Math.max(.2,Math.min(1.5,overviewView.pitch+(e.clientY-drag.y)*.005));}
+  if(overview&&state?.map){state.map.cam.yaw-=(e.clientX-drag.x)*.006;state.map.cam.pitch+=(e.clientY-drag.y)*.005;}
   else{yaw-=(e.clientX-drag.x)*.006;pitch=Math.max(.15,Math.min(1.4,pitch+(e.clientY-drag.y)*.005));}
   drag.x=e.clientX;drag.y=e.clientY;updateCamera();
 });
@@ -381,12 +397,13 @@ document.getElementById('fixture').onclick=showFixture;
 document.getElementById('waterFixture').onclick=showWaterFixture;
 document.getElementById('lakeVisit').onclick=()=>{if(state?.label!=='海・湖テスト')showWaterFixture();placeMarker(1280,1024);};
 generateButton.onclick=generateWorld;
-document.getElementById('distance').oninput=updateCamera;
+document.getElementById('distance').oninput=e=>{if(overview&&state?.map){state.map.cam.dist=Number(e.target.value);updateCamera();}};
 document.getElementById('wire').onchange=e=>{
+  if(state?.map)state.map.mesh.material.wireframe=e.target.checked;
   if(state)for(const {mesh}of [...state.entries,...state.far.values()]){mesh.material.wireframe=e.target.checked;}draw();
 };
 window.addEventListener('resize',resize);
 window.visualViewport?.addEventListener('resize',resize);
 // The preview's diagnostic state supports inspection of the rendered ground surface.
-globalThis.__chunkPreview={get character(){return marker;},get camera(){return camera;},get motion(){return {mode:motionMode,leg:legs[0].rotation.x,hip:hips.position.y};},get air(){return {height:jumpHeight,velocity:jumpVelocity};},get view(){return {overview,yaw,pitch,target:overviewView.target.toArray()};},get state(){return state;},get markerPoint(){return markerPoint;},groundAt,placeMarker};
+globalThis.__chunkPreview={get character(){return marker;},get camera(){return overview&&state?.map?state.map.camera:camera;},get motion(){return {mode:motionMode,leg:legs[0].rotation.x,hip:hips.position.y};},get air(){return {height:jumpHeight,velocity:jumpVelocity};},get view(){return {overview,yaw,pitch,target:state?.map?[state.map.cam.tx,0,state.map.cam.tz]:[0,0,0]};},get state(){return state;},get markerPoint(){return markerPoint;},groundAt,placeMarker};
 animatePlayer(0);resize();showFixture();

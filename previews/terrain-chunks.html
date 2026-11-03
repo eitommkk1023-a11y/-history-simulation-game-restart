@@ -29,16 +29,16 @@
   <details id="settings" open>
   <summary>設定・地形生成 ▾</summary>
   <div class="controls">
-    <button id="viewMode">周辺を俯瞰</button>
+    <button id="viewMode">世界を俯瞰</button>
     <button id="fixture">固定テスト地形</button>
     <button id="waterFixture">海・湖テスト</button>
     <button id="lakeVisit">湖畔へ</button>
     <input id="seed" type="number" inputmode="numeric" min="0" max="4294967295" value="12345" aria-label="数値Seed">
     <button id="generate">既存世界を生成</button>
     <label><input id="wire" type="checkbox">格子を表示</label>
-    <label id="overviewDistance" hidden>俯瞰距離<input id="distance" type="range" min="20" max="300" value="100"></label>
+    <label id="overviewDistance" hidden>俯瞰距離<input id="distance" type="range" min="60" max="6600" value="3450"></label>
   </div>
-  <p>三人称：左で歩行・右で見回し。ダッシュはタップで切替、停止すると解除。俯瞰：左でカメラ移動・右で回転、距離バーで拡縮。ジャンプボタン／Spaceでジャンプ。しゃがみはボタン／Cで切替。PCはWASD／矢印・Shift。</p>
+  <p>三人称：左で歩行・右で見回し。ダッシュはタップで切替、停止すると解除。世界俯瞰：左で地図移動・右で回転、バーで拡縮。黄点が現在地。ジャンプボタン／Spaceでジャンプ。しゃがみはボタン／Cで切替。PCはWASD／矢印・Shift。</p>
   <p id="status" role="status">準備中…</p>
   </details>
   <p id="orientationHint">端末を横向きにすると、広く見渡せます。</p>
