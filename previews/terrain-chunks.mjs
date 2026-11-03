@@ -1,5 +1,6 @@
 import {createWorldTerrain} from '../src/geography/world-terrain.mjs';
 import {createTerrainChunk} from '../src/geography/terrain-chunk.mjs';
+import {legPose} from '../src/player/leg-pose.mjs';
 import {stepTerrainWalker} from '../src/player/terrain-walker.mjs';
 
 const THREE=globalThis.THREE;
@@ -44,26 +45,29 @@ for(const [side,x]of [['left',-.13],['right',.13]]){
   const wrist=joint(elbow,side+'Wrist',0,-.24,0,.038);cylinder(wrist,.1,.035,.03);
   arms.push(shoulder);elbows.push(elbow);wrists.push(wrist);
 }
-let crouched=false,gaitPhase=0,motionMode='idle';
+let crouched=false,gaitPhase=0,gaitDistance=0,motionMode='idle';
 function animatePlayer(dt){
   const airborne=jumpHeight>0||jumpVelocity!==0;
   motionMode=airborne?(wasMoving?(sprintOn?'run-jump':'walk-jump'):'jump'):
     crouched?(wasMoving?'crouch-walk':'crouch'):wasMoving?(sprintOn?'run':'walk'):'idle';
   const blend=dt>0?1-Math.exp(-16*Math.min(dt,.05)):1;
   const ease=(current,target)=>current+(target-current)*blend;
-  if(wasMoving&&!airborne)gaitPhase+=Math.min(dt,.05)*(crouched?5:sprintOn?13:8);
-  const stride=wasMoving?Math.sin(gaitPhase)*(crouched?.22:sprintOn?.75:.42):0;
+  const stepLength=crouched?.12:sprintOn?.35:.23;
+  const liftHeight=crouched?.07:sprintOn?.26:.14;
+  if(wasMoving&&!airborne)gaitPhase+=gaitDistance/(4*stepLength);
+  gaitDistance=0;
+  const hipTarget=airborne?.735:crouched?.49:wasMoving?(sprintOn?.59:.66):.735;
+  hips.position.y=ease(hips.position.y,hipTarget);
   for(let i=0;i<2;i++){
-    const wave=i===0?stride:-stride;
-    legs[i].rotation.x=ease(legs[i].rotation.x,airborne?-.45+(i?.15:0):(crouched?-.85:0)+wave);
-    knees[i].rotation.x=ease(knees[i].rotation.x,airborne?.9:crouched?1.5:Math.max(0,-wave)*.9);
-    arms[i].rotation.x=ease(arms[i].rotation.x,airborne?-1.1:-wave*.9+(crouched?-.45:0));
+    const pose=legPose(gaitPhase+i*.5,hips.position.y,wasMoving?stepLength:0,wasMoving?liftHeight:0);
+    legs[i].rotation.x=airborne?-.45+(i?.15:0):pose.hip;
+    knees[i].rotation.x=airborne?.9:pose.knee;
+    const wave=wasMoving?Math.sin((gaitPhase+i*.5)*Math.PI*2)*(sprintOn?.8:.4):0;
+    arms[i].rotation.x=ease(arms[i].rotation.x,airborne?-1.1:wave+(crouched?-.45:0));
     elbows[i].rotation.x=ease(elbows[i].rotation.x,airborne?-1:crouched?-.7:sprintOn&&wasMoving?-1.3:-.18);
     wrists[i].rotation.x=ease(wrists[i].rotation.x,airborne?-.15:0);
-    // Counter-rotate the ankle so the cylindrical foot stays level.
     ankles[i].rotation.x=airborne?.1:-(legs[i].rotation.x+knees[i].rotation.x);
   }
-  hips.position.y=airborne?.735:Math.max(...legs.map((leg,i)=>.35*Math.cos(leg.rotation.x)+.35*Math.cos(leg.rotation.x+knees[i].rotation.x)))+.035;
   torso.rotation.x=ease(torso.rotation.x,crouched?.3:sprintOn&&wasMoving?.12:0);
 }
 scene.add(marker);
@@ -73,7 +77,7 @@ let jumpHeight=0,jumpVelocity=0;
 const overviewView={yaw:.7,pitch:1.35,target:new THREE.Vector3()};
 function draw(){renderer.render(scene,camera);}
 function updateCamera(){
-  const r=overview?Number(document.getElementById('distance').value):12,target=overview?overviewView.target.clone():marker.position.clone();if(!overview)target.y+=1.2;
+  const r=overview?Number(document.getElementById('distance').value):4,target=overview?overviewView.target.clone():marker.position.clone();if(!overview)target.y+=1.2;
   const angle=overview?overviewView.pitch:pitch,viewYaw=overview?overviewView.yaw:yaw;
   const offset=new THREE.Vector3(r*Math.cos(angle)*Math.sin(viewYaw),r*Math.sin(angle),r*Math.cos(angle)*Math.cos(viewYaw));
   // Pull in along the viewing segment when terrain obscures the player.
@@ -243,7 +247,7 @@ function frame(time){
       const next=stepTerrainWalker(markerPoint,{x,y,yaw,sprint:sprintOn,crouch:crouched},dt,groundAt);
       const dx=next.xM-markerPoint.xM,dy=next.yM-markerPoint.yM;
       wasMoving=Math.hypot(dx,dy)>0;if(!wasMoving)setSprint(false);
-      if(wasMoving){marker.rotation.y=Math.atan2(dx,dy);placeMarker(next.xM,next.yM,false);}
+      if(wasMoving){gaitDistance+=Math.hypot(dx,dy);marker.rotation.y=Math.atan2(dx,dy);placeMarker(next.xM,next.yM,false);}
       document.getElementById('movementNotice').textContent=next.blocked?'ここから先は範囲外、または急な地形です':'';
     }else{if(wasMoving)setSprint(false);wasMoving=false;document.getElementById('movementNotice').textContent='';}
   }
@@ -276,5 +280,5 @@ document.getElementById('wire').onchange=e=>{
 window.addEventListener('resize',resize);
 window.visualViewport?.addEventListener('resize',resize);
 // The preview's diagnostic state supports inspection of the rendered ground surface.
-globalThis.__chunkPreview={get character(){return marker;},get motion(){return {mode:motionMode,leg:legs[0].rotation.x,hip:hips.position.y};},get air(){return {height:jumpHeight,velocity:jumpVelocity};},get view(){return {overview,yaw,pitch,target:overviewView.target.toArray()};},get state(){return state;},get markerPoint(){return markerPoint;},groundAt,placeMarker};
+globalThis.__chunkPreview={get character(){return marker;},get camera(){return camera;},get motion(){return {mode:motionMode,leg:legs[0].rotation.x,hip:hips.position.y};},get air(){return {height:jumpHeight,velocity:jumpVelocity};},get view(){return {overview,yaw,pitch,target:overviewView.target.toArray()};},get state(){return state;},get markerPoint(){return markerPoint;},groundAt,placeMarker};
 animatePlayer(0);resize();showFixture();
