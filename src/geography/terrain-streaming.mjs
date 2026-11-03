@@ -154,21 +154,35 @@ export function createTerrainSystem(world, options = {}) {
     assertPoint(xM,yM); positive('radiusM',radiusM); positive('detailFactor',detailFactor);
     if (!Number.isInteger(maxTiles) || maxTiles < 4 || maxTiles > 2048) throw new RangeError('Invalid maxTiles');
     const maxLevel = Math.max(0, Math.ceil(Math.log2(Math.max(worldWidthM,worldHeightM) / tileSizeM)));
-    const selected = [];
-    function visit(level,tx,ty) {
-      const t = makeTile(level,tx,ty);
-      if (!t || boundsDistance(xM,yM,t.xM,t.yM,t.xM+t.widthM,t.yM+t.heightM) > radiusM) return;
-      const dist = boundsDistance(xM,yM,t.xM,t.yM,t.xM+t.widthM,t.yM+t.heightM);
-      if (level>0 && dist < tileSizeM*2**level*detailFactor && selected.length+4 < maxTiles) {
-        const old=selected.length;
-        for(let dy=0;dy<2;dy++)for(let dx=0;dx<2;dx++)visit(level-1,tx*2+dx,ty*2+dy);
-        if (selected.length <= maxTiles) return;
-        selected.length=old;
+    // Refine nearest tiles first. Depth-first traversal can exhaust the budget
+    // on remote quadrants before producing any 2m tiles at the player.
+    const root = makeTile(maxLevel, 0, 0);
+    const selected = root ? [root] : [];
+    const blocked = new Set();
+    for (;;) {
+      let best = -1, bestDistance = Infinity, bestLevel = -1;
+      for (let i = 0; i < selected.length; i++) {
+        const t = selected[i];
+        if (t.level === 0 || blocked.has(t.key)) continue;
+        const dist = boundsDistance(xM,yM,t.xM,t.yM,t.xM+t.widthM,t.yM+t.heightM);
+        if (dist > radiusM || dist >= tileSizeM*2**t.level*detailFactor) continue;
+        if (dist < bestDistance || (dist === bestDistance && t.level > bestLevel)) {
+          best = i; bestDistance = dist; bestLevel = t.level;
+        }
       }
-      selected.push(t);
+      if (best < 0) break;
+      const parent = selected[best], children = [];
+      for(let dy=0;dy<2;dy++)for(let dx=0;dx<2;dx++) {
+        const child=makeTile(parent.level-1,parent.tx*2+dx,parent.ty*2+dy);
+        if(child && boundsDistance(xM,yM,child.xM,child.yM,child.xM+child.widthM,child.yM+child.heightM)<=radiusM)children.push(child);
+      }
+      if (!children.length || selected.length + children.length - 1 > maxTiles) {
+        blocked.add(parent.key);
+      } else {
+        selected.splice(best,1,...children);
+      }
     }
-    visit(maxLevel,0,0);
-    return selected;
+    return selected.filter(t => boundsDistance(xM,yM,t.xM,t.yM,t.xM+t.widthM,t.yM+t.heightM)<=radiusM);
   }
   function buildMesh(tile) {
     if (!tile || !tile.key || !Number.isFinite(tile.widthM) || !Number.isFinite(tile.heightM)) throw new TypeError('Invalid tile');
