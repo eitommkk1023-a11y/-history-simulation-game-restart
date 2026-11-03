@@ -16,7 +16,11 @@
   #stick{width:46px;height:46px;border-radius:50%;background:#d9e9f4bb;pointer-events:none}
   #sprint{position:fixed;z-index:3;right:max(24px,env(safe-area-inset-right));bottom:max(24px,env(safe-area-inset-bottom));border-radius:50%;width:76px;height:76px;background:#183d5ccc;touch-action:none;user-select:none}
   #sprint.active{background:#aa7821}#movementNotice{position:fixed;bottom:26px;left:150px;right:120px;text-align:center;pointer-events:none;text-shadow:0 1px 4px #000;color:white}
+  [hidden]{display:none!important}body.ui-hidden header,body.ui-hidden #joystick,body.ui-hidden #sprint,body.ui-hidden #movementNotice{display:none!important}
+  #uiToggle{position:fixed;right:max(8px,env(safe-area-inset-right));top:max(8px,env(safe-area-inset-top));z-index:5;background:#183d5ccc}
+  header{right:100px}#sprint.active{background:#efb52c;color:#172436;box-shadow:0 0 12px 5px #ffd34eaa}
 </style>
+<button id="uiToggle" aria-pressed="false">UIを隠す</button>
 <header>
   <h1>World of History · 歩行プレビュー</h1>
   <details id="settings" open>
@@ -27,15 +31,15 @@
     <input id="seed" type="number" inputmode="numeric" min="0" max="4294967295" value="12345" aria-label="数値Seed">
     <button id="generate">既存世界を生成</button>
     <label><input id="wire" type="checkbox">格子を表示</label>
-    <label>距離<input id="distance" type="range" min="5" max="120" value="12"></label>
+    <label id="overviewDistance" hidden>俯瞰距離<input id="distance" type="range" min="20" max="300" value="100"></label>
   </div>
-  <p>左スティックで移動、右側ドラッグで見回し。PCはWASD／矢印・Shift。現在は表示範囲内を歩く検証版です。</p>
+  <p>三人称：左で歩行・右で見回し。ダッシュはタップで切替、停止すると解除。俯瞰：左でカメラ移動・右で回転、距離バーで拡縮。PCはWASD／矢印・Shift。</p>
   <p id="status" role="status">準備中…</p>
   </details>
   <p id="orientationHint">端末を横向きにすると、広く見渡せます。</p>
 </header>
 <button id="joystick" aria-label="移動スティック"><span id="stick"></span></button>
-<button id="sprint" aria-label="押している間ダッシュ">ダッシュ</button>
+<button id="sprint" aria-label="ダッシュ切替" aria-pressed="false">ダッシュ</button>
 <div id="movementNotice" role="status"></div>
 <script>
   window.addEventListener('error',e=>document.getElementById('status').textContent='エラー: '+e.message);

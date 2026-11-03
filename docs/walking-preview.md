@@ -17,3 +17,9 @@ PCではWASD/矢印、Shift、画面ドラッグ。設定内の「周辺を俯�
 ビルド: `node tools/build-terrain-preview.mjs /tmp/geo-three-r128.min.js`
 テスト: `node --test --test-isolation=none tests/*.test.mjs` / `node tests/walking.browser.cjs`
 既存回帰: `THREE_R128_PATH=/tmp/geo-three-r128.min.js node tests/terrain-chunks.browser.cjs` / `node tests/offline-landscape.browser.cjs`
+
+## v4 操作変更
+UIを隠す／表示で設定・スティック・ダッシュを切替（再表示ボタンは残す）。
+ダッシュはタップまたはShiftで切替。移動停止・障害物で停止・視点切替・フォーカス喪失で解除。待機中に押すと次の移動をダッシュにできる。
+三人称の距離は12m固定。俯瞰だけ20〜300mのバーを利用し、左スティック／WASDはカメラを平行移動、右ドラッグは俯瞰カメラを回転する。人物は停止し、三人称の向きも保持。
+検証: view-controls.browser.cjsで844×390 / 1180×820のUI切替、ダッシュ再押し・停止解除、俯瞰中の人物不動とカメラ移動を確認。既存歩行・同時タッチ検証とNode40件もPASS。Safari実機は未確認。

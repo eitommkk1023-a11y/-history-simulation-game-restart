@@ -24,11 +24,12 @@ part(new THREE.BoxGeometry(.16,.7,.18),.13,.35,0);
 scene.add(marker);
 let state=null,worker=null,requestId=0,yaw=.7,pitch=.4;
 let markerPoint=null,overview=false;
+const overviewView={yaw:.7,pitch:1.35,target:new THREE.Vector3()};
 function draw(){renderer.render(scene,camera);}
 function updateCamera(){
-  const r=overview?100:Number(document.getElementById('distance').value),target=marker.position.clone();target.y+=1.2;
-  const angle=overview?1.35:pitch;
-  const offset=new THREE.Vector3(r*Math.cos(angle)*Math.sin(yaw),r*Math.sin(angle),r*Math.cos(angle)*Math.cos(yaw));
+  const r=overview?Number(document.getElementById('distance').value):12,target=overview?overviewView.target.clone():marker.position.clone();if(!overview)target.y+=1.2;
+  const angle=overview?overviewView.pitch:pitch,viewYaw=overview?overviewView.yaw:yaw;
+  const offset=new THREE.Vector3(r*Math.cos(angle)*Math.sin(viewYaw),r*Math.sin(angle),r*Math.cos(angle)*Math.cos(viewYaw));
   // Pull in along the viewing segment when terrain obscures the player.
   if(state){
     scene.updateMatrixWorld(true);
@@ -77,7 +78,7 @@ function showWorld(world,point,label){
     const mesh=new THREE.Mesh(geometry,material),o=terrain.toLocal(chunk.originM.xM,chunk.originM.yM,chunk.originM.elevationM,origin);
     mesh.position.set(o.x,o.y,o.z);scene.add(mesh);entries.push({chunk,mesh});
   }
-  state={terrain,origin,entries,label};scene.updateMatrixWorld(true);placeMarker(point.xM,point.yM);
+  state={terrain,origin,entries,label};if(overview){overviewView.target.set(0,1.2,0);}scene.updateMatrixWorld(true);placeMarker(point.xM,point.yM);
   if(matchMedia('(orientation: landscape) and (max-height: 500px)').matches)document.getElementById('settings').open=false;
 }
 function cancelGeneration(){requestId++;if(worker){worker.terminate();worker=null;}generateButton.disabled=false;}
@@ -136,11 +137,11 @@ async function generateWorld(){
   }catch(e){if(id===requestId){status.textContent='エラー: '+e.message;cancelGeneration();}}
   finally{if(workerUrl)URL.revokeObjectURL(workerUrl);}
 }
-let drag=null,stickId=null,sprintId=null;
+let drag=null,stickId=null,sprintOn=false,wasMoving=false;
 const keys=new Set(),stickInput={x:0,y:0};
 const joystick=document.getElementById('joystick'),stick=document.getElementById('stick'),sprint=document.getElementById('sprint');
 function resetInput(){
-  keys.clear();drag=null;stickId=null;sprintId=null;stickInput.x=stickInput.y=0;
+  keys.clear();drag=null;stickId=null;setSprint(false);wasMoving=false;stickInput.x=stickInput.y=0;
   stick.style.transform='';sprint.classList.remove('active');
 }
 function moveStick(e){
@@ -153,27 +154,42 @@ joystick.addEventListener('pointermove',e=>{if(e.pointerId===stickId)moveStick(e
 for(const event of ['pointerup','pointercancel','lostpointercapture'])joystick.addEventListener(event,e=>{
   if(e.pointerId!==stickId)return;stickId=null;stickInput.x=stickInput.y=0;stick.style.transform='';
 });
-sprint.addEventListener('pointerdown',e=>{if(sprintId!==null)return;e.preventDefault();sprintId=e.pointerId;sprint.setPointerCapture(e.pointerId);sprint.classList.add('active');});
-for(const event of ['pointerup','pointercancel','lostpointercapture'])sprint.addEventListener(event,e=>{if(e.pointerId===sprintId){sprintId=null;sprint.classList.remove('active');}});
+function setSprint(value){
+  sprintOn=!overview&&value;sprint.classList.toggle('active',sprintOn);sprint.setAttribute('aria-pressed',String(sprintOn));
+}
+sprint.onclick=()=>setSprint(!sprintOn);
+document.getElementById('uiToggle').onclick=()=>{
+  const hidden=document.body.classList.toggle('ui-hidden');resetInput();
+  document.getElementById('uiToggle').textContent=hidden?'UIを表示':'UIを隠す';
+  document.getElementById('uiToggle').setAttribute('aria-pressed',String(hidden));
+};
 const movementKeys=new Set(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight']);
 window.addEventListener('keydown',e=>{if(/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)||e.target.isContentEditable)return;
-  if(movementKeys.has(e.code)){e.preventDefault();keys.add(e.code);}});
+  if(movementKeys.has(e.code)){e.preventDefault();if(e.code.startsWith('Shift')&&!e.repeat)setSprint(!sprintOn);else keys.add(e.code);}});
 window.addEventListener('keyup',e=>keys.delete(e.code));
 window.addEventListener('blur',resetInput);
 document.addEventListener('visibilitychange',()=>{if(document.hidden)resetInput();});
-document.getElementById('viewMode').onclick=()=>{overview=!overview;resetInput();document.getElementById('viewMode').textContent=overview?'三人称に戻る':'周辺を俯瞰';updateCamera();};
+document.getElementById('viewMode').onclick=()=>{overview=!overview;resetInput();if(overview){overviewView.target.copy(marker.position);overviewView.target.y+=1.2;}
+  document.getElementById('overviewDistance').hidden=!overview;sprint.hidden=overview;joystick.setAttribute('aria-label',overview?'俯瞰カメラ移動':'移動スティック');document.getElementById('viewMode').textContent=overview?'三人称に戻る':'周辺を俯瞰';updateCamera();};
 let lastTime=null;
 function frame(time){
   const dt=lastTime===null?0:(time-lastTime)/1000;lastTime=time;
   if(state&&markerPoint&&!document.hidden){
     const x=stickInput.x+Number(keys.has('KeyD')||keys.has('ArrowRight'))-Number(keys.has('KeyA')||keys.has('ArrowLeft'));
     const y=stickInput.y+Number(keys.has('KeyS')||keys.has('ArrowDown'))-Number(keys.has('KeyW')||keys.has('ArrowUp'));
-    if(Math.hypot(x,y)>.08){
-      const next=stepTerrainWalker(markerPoint,{x,y,yaw,sprint:sprintId!==null||keys.has('ShiftLeft')||keys.has('ShiftRight')},dt,groundAt);
+    if(overview){
+      if(Math.hypot(x,y)>.08){
+        const scale=Math.min(dt,.05)*Number(document.getElementById('distance').value)*.4/Math.max(1,Math.hypot(x,y));
+        overviewView.target.x+=(x*Math.cos(overviewView.yaw)+y*Math.sin(overviewView.yaw))*scale;
+        overviewView.target.z+=(-x*Math.sin(overviewView.yaw)+y*Math.cos(overviewView.yaw))*scale;updateCamera();
+      }
+    }else if(Math.hypot(x,y)>.08){
+      const next=stepTerrainWalker(markerPoint,{x,y,yaw,sprint:sprintOn},dt,groundAt);
       const dx=next.xM-markerPoint.xM,dy=next.yM-markerPoint.yM;
-      if(Math.hypot(dx,dy)>0){marker.rotation.y=Math.atan2(dx,dy);placeMarker(next.xM,next.yM);}
+      wasMoving=Math.hypot(dx,dy)>0;if(!wasMoving)setSprint(false);
+      if(wasMoving){marker.rotation.y=Math.atan2(dx,dy);placeMarker(next.xM,next.yM);}
       document.getElementById('movementNotice').textContent=next.blocked?'ここから先は範囲外、または急な地形です':'';
-    }else document.getElementById('movementNotice').textContent='';
+    }else{if(wasMoving)setSprint(false);wasMoving=false;document.getElementById('movementNotice').textContent='';}
   }
   requestAnimationFrame(frame);
 }
@@ -184,7 +200,8 @@ renderer.domElement.addEventListener('pointerdown',e=>{
 });
 renderer.domElement.addEventListener('pointermove',e=>{
   if(!drag||drag.id!==e.pointerId)return;
-  yaw-=(e.clientX-drag.x)*.006;pitch=Math.max(.15,Math.min(1.4,pitch+(e.clientY-drag.y)*.005));
+  if(overview){overviewView.yaw-=(e.clientX-drag.x)*.006;overviewView.pitch=Math.max(.2,Math.min(1.5,overviewView.pitch+(e.clientY-drag.y)*.005));}
+  else{yaw-=(e.clientX-drag.x)*.006;pitch=Math.max(.15,Math.min(1.4,pitch+(e.clientY-drag.y)*.005));}
   drag.x=e.clientX;drag.y=e.clientY;updateCamera();
 });
 for(const event of ['pointerup','pointercancel','lostpointercapture'])renderer.domElement.addEventListener(event,e=>{if(drag?.id===e.pointerId)drag=null;});
@@ -197,5 +214,5 @@ document.getElementById('wire').onchange=e=>{
 window.addEventListener('resize',resize);
 window.visualViewport?.addEventListener('resize',resize);
 // The preview's diagnostic state supports inspection of the rendered ground surface.
-globalThis.__chunkPreview={get state(){return state;},get markerPoint(){return markerPoint;},groundAt,placeMarker};
+globalThis.__chunkPreview={get view(){return {overview,yaw,pitch,target:overviewView.target.toArray()};},get state(){return state;},get markerPoint(){return markerPoint;},groundAt,placeMarker};
 resize();showFixture();
