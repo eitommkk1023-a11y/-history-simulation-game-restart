@@ -1,5 +1,6 @@
 import {createWorldTerrain} from '../src/geography/world-terrain.mjs';
 import {createTerrainChunk} from '../src/geography/terrain-chunk.mjs';
+import {stepTerrainWalker} from '../src/player/terrain-walker.mjs';
 
 const THREE=globalThis.THREE;
 if(!THREE)throw new Error('描画ライブラリを読み込めませんでした。通信を確認してください。');
@@ -22,15 +23,28 @@ part(new THREE.BoxGeometry(.16,.7,.18),-.13,.35,0);
 part(new THREE.BoxGeometry(.16,.7,.18),.13,.35,0);
 scene.add(marker);
 let state=null,worker=null,requestId=0,yaw=.7,pitch=.4;
-let markerPoint=null;
+let markerPoint=null,overview=false;
 function draw(){renderer.render(scene,camera);}
 function updateCamera(){
-  const r=Number(document.getElementById('distance').value),target=marker.position.clone();target.y+=1;
-  camera.position.set(target.x+r*Math.cos(pitch)*Math.sin(yaw),target.y+r*Math.sin(pitch),target.z+r*Math.cos(pitch)*Math.cos(yaw));
+  const r=overview?100:Number(document.getElementById('distance').value),target=marker.position.clone();target.y+=1.2;
+  const angle=overview?1.35:pitch;
+  const offset=new THREE.Vector3(r*Math.cos(angle)*Math.sin(yaw),r*Math.sin(angle),r*Math.cos(angle)*Math.cos(yaw));
+  // Pull in along the viewing segment when terrain obscures the player.
+  if(state){
+    scene.updateMatrixWorld(true);
+    raycaster.set(target,offset.clone().normalize());raycaster.far=r+.4;
+    const hit=raycaster.intersectObjects(state.entries.map(e=>e.mesh))[0];
+    if(hit)offset.setLength(Math.max(.5,hit.distance-.4));
+    raycaster.far=Infinity;
+  }
+  camera.position.copy(target).add(offset);
+  if(state){const ground=groundAt(camera.position.x+state.origin.xM,camera.position.z+state.origin.yM);
+    if(ground)camera.position.y=Math.max(camera.position.y,ground.elevationM-state.origin.elevationM+.4);}
   camera.lookAt(target);draw();
 }
 function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();updateCamera();}
 function clearTerrain(){
+  resetInput();markerPoint=null;
   if(state)for(const {mesh}of state.entries){scene.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();}
   state=null;marker.visible=false;
 }
@@ -41,7 +55,7 @@ function groundAt(xM,yM){
 }
 function placeMarker(xM,yM){
   const p=groundAt(xM,yM);if(!p)return;
-  markerPoint={xM,yM};
+  markerPoint={xM,yM,elevationM:p.elevationM};
   const q=state.terrain.toLocal(xM,yM,p.elevationM,state.origin);
   marker.position.set(q.x,q.y,q.z);marker.visible=true;
   status.textContent=`${state.label}｜標高 ${p.elevationM.toFixed(2)}m・斜面 ${p.slopeDegrees.toFixed(1)}°｜${state.entries.length}チャンク`;
@@ -122,9 +136,50 @@ async function generateWorld(){
   }catch(e){if(id===requestId){status.textContent='エラー: '+e.message;cancelGeneration();}}
   finally{if(workerUrl)URL.revokeObjectURL(workerUrl);}
 }
-let drag=null;
+let drag=null,stickId=null,sprintId=null;
+const keys=new Set(),stickInput={x:0,y:0};
+const joystick=document.getElementById('joystick'),stick=document.getElementById('stick'),sprint=document.getElementById('sprint');
+function resetInput(){
+  keys.clear();drag=null;stickId=null;sprintId=null;stickInput.x=stickInput.y=0;
+  stick.style.transform='';sprint.classList.remove('active');
+}
+function moveStick(e){
+  const box=joystick.getBoundingClientRect(),dx=e.clientX-box.x-box.width/2,dy=e.clientY-box.y-box.height/2;
+  const scale=Math.max(38,Math.hypot(dx,dy));stickInput.x=dx/scale;stickInput.y=dy/scale;
+  stick.style.transform=`translate(${stickInput.x*32}px,${stickInput.y*32}px)`;
+}
+joystick.addEventListener('pointerdown',e=>{if(stickId!==null)return;e.preventDefault();stickId=e.pointerId;joystick.setPointerCapture(e.pointerId);moveStick(e);});
+joystick.addEventListener('pointermove',e=>{if(e.pointerId===stickId)moveStick(e);});
+for(const event of ['pointerup','pointercancel','lostpointercapture'])joystick.addEventListener(event,e=>{
+  if(e.pointerId!==stickId)return;stickId=null;stickInput.x=stickInput.y=0;stick.style.transform='';
+});
+sprint.addEventListener('pointerdown',e=>{if(sprintId!==null)return;e.preventDefault();sprintId=e.pointerId;sprint.setPointerCapture(e.pointerId);sprint.classList.add('active');});
+for(const event of ['pointerup','pointercancel','lostpointercapture'])sprint.addEventListener(event,e=>{if(e.pointerId===sprintId){sprintId=null;sprint.classList.remove('active');}});
+const movementKeys=new Set(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight']);
+window.addEventListener('keydown',e=>{if(/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)||e.target.isContentEditable)return;
+  if(movementKeys.has(e.code)){e.preventDefault();keys.add(e.code);}});
+window.addEventListener('keyup',e=>keys.delete(e.code));
+window.addEventListener('blur',resetInput);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)resetInput();});
+document.getElementById('viewMode').onclick=()=>{overview=!overview;resetInput();document.getElementById('viewMode').textContent=overview?'三人称に戻る':'周辺を俯瞰';updateCamera();};
+let lastTime=null;
+function frame(time){
+  const dt=lastTime===null?0:(time-lastTime)/1000;lastTime=time;
+  if(state&&markerPoint&&!document.hidden){
+    const x=stickInput.x+Number(keys.has('KeyD')||keys.has('ArrowRight'))-Number(keys.has('KeyA')||keys.has('ArrowLeft'));
+    const y=stickInput.y+Number(keys.has('KeyS')||keys.has('ArrowDown'))-Number(keys.has('KeyW')||keys.has('ArrowUp'));
+    if(Math.hypot(x,y)>.08){
+      const next=stepTerrainWalker(markerPoint,{x,y,yaw,sprint:sprintId!==null||keys.has('ShiftLeft')||keys.has('ShiftRight')},dt,groundAt);
+      const dx=next.xM-markerPoint.xM,dy=next.yM-markerPoint.yM;
+      if(Math.hypot(dx,dy)>0){marker.rotation.y=Math.atan2(dx,dy);placeMarker(next.xM,next.yM);}
+      document.getElementById('movementNotice').textContent=next.blocked?'ここから先は範囲外、または急な地形です':'';
+    }else document.getElementById('movementNotice').textContent='';
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
 renderer.domElement.addEventListener('pointerdown',e=>{
-  if(drag)return;renderer.domElement.setPointerCapture(e.pointerId);
+  if(drag||e.button>0||(e.pointerType==='touch'&&e.clientX<innerWidth/2))return;renderer.domElement.setPointerCapture(e.pointerId);
   drag={id:e.pointerId,x:e.clientX,y:e.clientY,startX:e.clientX,startY:e.clientY};
 });
 renderer.domElement.addEventListener('pointermove',e=>{
@@ -132,16 +187,7 @@ renderer.domElement.addEventListener('pointermove',e=>{
   yaw-=(e.clientX-drag.x)*.006;pitch=Math.max(.15,Math.min(1.4,pitch+(e.clientY-drag.y)*.005));
   drag.x=e.clientX;drag.y=e.clientY;updateCamera();
 });
-renderer.domElement.addEventListener('pointerup',e=>{
-  if(!drag||drag.id!==e.pointerId)return;
-  const tap=Math.hypot(e.clientX-drag.startX,e.clientY-drag.startY)<6;drag=null;
-  if(!tap||!state)return;
-  const r=renderer.domElement.getBoundingClientRect();
-  raycaster.setFromCamera(new THREE.Vector2((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1),camera);
-  const hit=raycaster.intersectObjects(state.entries.map(e=>e.mesh))[0];
-  if(hit)placeMarker(hit.point.x+state.origin.xM,hit.point.z+state.origin.yM);
-});
-for(const event of ['pointercancel','lostpointercapture'])renderer.domElement.addEventListener(event,()=>{drag=null;});
+for(const event of ['pointerup','pointercancel','lostpointercapture'])renderer.domElement.addEventListener(event,e=>{if(drag?.id===e.pointerId)drag=null;});
 document.getElementById('fixture').onclick=showFixture;
 generateButton.onclick=generateWorld;
 document.getElementById('distance').oninput=updateCamera;
