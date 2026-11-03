@@ -147,3 +147,10 @@ test('river polyline from the world is clipped to each tile without seam gaps',(
   assert.equal(a[0].end.yM,b[0].start.yM);
   assert.equal(a[0].lineId,23);
 });
+
+test('tight tile budget prioritizes the player rather than exhausting detail far away',()=>{
+  const {terrain}=fixture(128,128);
+  const tiles=terrain.selectTiles({xM:3700,yM:3700,radiusM:3000,maxTiles:64});
+  assert.ok(tiles.length<=64);
+  assert.ok(tiles.some(t=>t.level===0 && t.xM<=3700 && t.xM+t.widthM>=3700 && t.yM<=3700 && t.yM+t.heightM>=3700));
+});
