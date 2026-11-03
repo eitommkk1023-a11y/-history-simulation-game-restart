@@ -23,7 +23,7 @@ export function createTransportNetwork(world, { width = 3000, height = 3000, kmP
   function clone(link) {
     return { ...link, path: link.path.map(p => ({ ...p })), allowedModes: [...link.allowedModes] };
   }
-  function validate(spec, allowExistingId = false) {
+  function validate(spec, allowExistingId = false, allowChangedTerrain = false) {
     if (!spec || typeof spec.id !== 'string' || !spec.id.trim() || (links.has(spec.id) && !allowExistingId))
       throw new Error('Each transport link needs a unique nonempty id');
     const { kind, path } = spec;
@@ -40,8 +40,8 @@ export function createTransportNetwork(world, { width = 3000, height = 3000, kmP
         if (Math.max(dx, dy) !== 1 || (kind !== 'road' && dx + dy !== 1))
           throw new RangeError('Link path must use adjoining cells');
       }
-      if (kind === 'road' && !dry(p)) throw new RangeError('Road cannot be placed on water');
-      if (kind !== 'road' && ((k === 0 || k === path.length - 1) ? !dry(p) :
+      if (!allowChangedTerrain && kind === 'road' && !dry(p)) throw new RangeError('Road cannot be placed on water');
+      if (!allowChangedTerrain && kind !== 'road' && ((k === 0 || k === path.length - 1) ? !dry(p) :
         (!land(p) || world.water[i] === 0)))
         throw new RangeError('Crossing must join dry banks across river/lake cells');
     }
@@ -162,7 +162,12 @@ export function createTransportNetwork(world, { width = 3000, height = 3000, kmP
     if (snapshot.format !== 1 || snapshot.width !== width || snapshot.height !== height ||
         snapshot.kmPerBlock !== kmPerBlock || !Array.isArray(snapshot.links))
       throw new Error('Incompatible transport snapshot');
-    for (const link of snapshot.links) add(link);
+    for (const saved of snapshot.links) {
+      // Preserve destroyed, flooded or obsolete facilities as historical records.
+      // Their actual passability is still checked at routing time.
+      const link = validate(saved, false, true);
+      links.set(link.id, link); indexLink(link); version++;
+    }
     if (!Number.isSafeInteger(snapshot.version) || snapshot.version < snapshot.links.length) throw new RangeError("Invalid snapshot version");
     version = snapshot.version;
   }
