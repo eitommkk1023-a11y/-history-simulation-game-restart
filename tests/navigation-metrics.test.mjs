@@ -1,0 +1,3 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {compassDegrees,mapPoint,measuredSpeed} from '../src/integration/navigation-metrics.mjs';
+test('north is up and east is right',()=>{assert.equal(compassDegrees(0,-1),0);assert.equal(compassDegrees(1,0),90);assert.equal(compassDegrees(0,1),180);assert.equal(compassDegrees(-1,0),270);assert.deepEqual(mapPoint(25,75,100,100),{x:.25,y:.75});});
+test('reports measured horizontal km/h and rejects teleport spikes',()=>{assert.ok(Math.abs(measuredSpeed({xM:0,yM:0},{xM:1.5,yM:0},1000,4)-5.4)<1e-8);assert.equal(measuredSpeed({xM:0,yM:0},{xM:10000,yM:0},100,4),0);assert.equal(measuredSpeed({xM:0,yM:0},{xM:0,yM:0},100,4),0);});

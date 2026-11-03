@@ -1,3 +1,4 @@
+import {installGameHUD} from './game-hud.mjs';
 import {createWaterSurface} from '../geography/water-surface.mjs';
 import {seamGeometry} from '../geography/terrain-seams.mjs';
 import {createTerrainWorkQueue} from '../geography/terrain-work-queue.mjs';
@@ -391,3 +392,5 @@ window.addEventListener('woh-world-ready',adoptNativeWorld);
 window.__wohPlayerSave=()=>globalThis.__wohDev?.savedPlayer()??(markerPoint?{xM:markerPoint.xM,yM:markerPoint.yM,yaw}:null);
 document.body.classList.add('integration-ui-hidden','integration-third');
 animatePlayer(0);resize();if(bridge.world)adoptNativeWorld();
+
+installGameHUD();

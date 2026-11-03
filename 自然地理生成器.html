@@ -5517,7 +5517,7 @@ bindTap(btnSeed, applySeed);
 seedInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') applySeed(); });
 bindTap(btnReset, resetCamera);
 const btnView = document.getElementById('btnView');
-const displayChoices=document.createElement('div');displayChoices.id='displayChoices';displayChoices.hidden=true;displayChoices.setAttribute('role','group');displayChoices.setAttribute('aria-label','表示を選択');document.body.appendChild(displayChoices);
+const displayChoices=document.createElement('div');displayChoices.id='displayChoices';displayChoices.className='scrollable';displayChoices.style.touchAction='pan-y';displayChoices.hidden=true;displayChoices.setAttribute('role','group');displayChoices.setAttribute('aria-label','表示を選択');document.body.appendChild(displayChoices);
 function closeDisplayChoices(){displayChoices.hidden=true;btnView.setAttribute('aria-expanded','false');}
 for(const mode of VIEW_MODES){const option=document.createElement('button');option.dataset.view=mode;option.textContent=VIEW_LABELS[mode].replace('表示：','');displayChoices.appendChild(option);bindTap(option,()=>{
  closeDisplayChoices();if(mode===viewMode)return;viewMode=mode;btnView.textContent=VIEW_LABELS[viewMode];buildLegend();rebuildTexture();faDirty=true;faunaUpdateOverlay();if(depMarks)depMarks.visible=viewMode==='res';requestRender();
@@ -7421,7 +7421,7 @@ window.__geo = { get world() { return world; }, get seed() { return currentSeed;
 
 const wohPositionMarker=new THREE.Mesh(new THREE.SphereGeometry(22,12,8),new THREE.MeshBasicMaterial({color:0xffcf30,depthTest:false}));wohPositionMarker.renderOrder=100;scene.add(wohPositionMarker);
 function wohMarkPlayer(p){if(!p||!world)return;const s=(world.geology?.kmPerBlock??3.33)*1000,X=toWorldX(p.xM/s),Z=toWorldZ(p.yM/s);wohPositionMarker.position.set(X,meshHeightAtWorld(X,Z)+5,Z);requestRender();}
-window.__wohNative={renderer,scene,camera,cam,updateCamera,overview:false,revision:0,seenRevision:0,lastChange:0,pendingPlayer:null,changed(){this.revision++;this.lastChange=performance.now();},clearTouches(){touches.clear();},get world(){return world;},get seed(){return currentSeed;},get texture(){return terrainTex;},get positionMarker(){return wohPositionMarker;},get map(){return {scene,camera,cam,update:updateCamera,player:wohMarkPlayer,dispose(){},get mesh(){return terrainMesh;},get world(){return world;}};}};
+window.__wohNative={renderer,scene,camera,cam,updateCamera,overview:false,revision:0,seenRevision:0,lastChange:0,pendingPlayer:null,changed(){this.revision++;this.lastChange=performance.now();},clearTouches(){touches.clear();},get world(){return world;},get seed(){return currentSeed;},get texture(){return terrainTex;},get cartography(){return {biomes:BIOME_COLORS,lut:LUT,index:lutIndex,lake:LAKE_RGB,river:RIVER_RGB};},get positionMarker(){return wohPositionMarker;},get map(){return {scene,camera,cam,update:updateCamera,player:wohMarkPlayer,dispose(){},get mesh(){return terrainMesh;},get world(){return world;}};}};
 updateRiverPix();
 resetCamera();
 coreSetup();
