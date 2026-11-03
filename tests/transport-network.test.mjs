@@ -128,3 +128,14 @@ test('road closed/destroyed does not restore an invalid water path',()=>{
   f.set(1,0,'water',1);
   assert.equal(f.route({x:0,y:0},{x:1,y:0}).status,'blocked');
 });
+
+test('an abandoned bridge remains loadable after the river becomes impassable',()=>{
+  const f=fixture(3,1);f.set(1,0,'water',1);
+  f.network.add({id:'old',kind:'bridge',path:[{x:0,y:0},{x:1,y:0},{x:2,y:0}]});
+  f.set(1,0,'type',0);
+  const snapshot=JSON.parse(JSON.stringify(f.network.snapshot()));
+  const restored=createTransportNetwork(f.world,{...f.options,snapshot});
+  assert.ok(restored.get('old'));
+  const route=createGeographyAdapter(f.world,{...f.options,infrastructure:restored});
+  assert.equal(route.route({x:0,y:0},{x:2,y:0},{knows:known,knowsFacility:()=>true}).status,'unreachable');
+});
