@@ -4,6 +4,7 @@ import {createTerrainChunk} from '../src/geography/terrain-chunk.mjs';
 const THREE=globalThis.THREE;
 if(!THREE)throw new Error('描画ライブラリを読み込めませんでした。通信を確認してください。');
 const status=document.getElementById('status'),generateButton=document.getElementById('generate');
+document.getElementById('settings').open=!matchMedia('(orientation: landscape) and (max-height: 500px)').matches;
 const renderer=new THREE.WebGLRenderer({antialias:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.5));
 document.body.appendChild(renderer.domElement);
@@ -89,16 +90,22 @@ function findDryPoint(terrain,world){
 async function generateWorld(){
   const seed=Number(document.getElementById('seed').value);
   if(!Number.isInteger(seed)||seed<0||seed>0xffffffff){status.textContent='Seedは0〜4294967295の整数を指定してください。';return;}
+  if(matchMedia('(orientation: landscape) and (max-height: 500px)').matches)document.getElementById('settings').open=false;
   cancelGeneration();const id=requestId;
   clearTerrain();draw();generateButton.disabled=true;status.textContent='既存世界を生成中…';
   let workerUrl=null;
   try{
-    const response=await fetch('../自然地理生成器.html');if(!response.ok)throw new Error('基準HTMLを読み込めません');
-    const doc=new DOMParser().parseFromString(await response.text(),'text/html');
-    if(id!==requestId)return;
-    const source=['generator-src','fauna-src'].map(key=>{
-      const node=doc.getElementById(key);if(!node)throw new Error('生成器の構成が変わっています');return node.textContent;
-    }).join('\n');
+    let source;
+    const embedded=document.getElementById('embedded-geography');
+    if(embedded){source=JSON.parse(embedded.textContent);}
+    else{
+      const response=await fetch('../自然地理生成器.html');if(!response.ok)throw new Error('基準HTMLを読み込めません');
+      const doc=new DOMParser().parseFromString(await response.text(),'text/html');
+      if(id!==requestId)return;
+      source=['generator-src','fauna-src'].map(key=>{
+        const node=doc.getElementById(key);if(!node)throw new Error('生成器の構成が変わっています');return node.textContent;
+      }).join('\n');
+    }
     workerUrl=URL.createObjectURL(new Blob([source],{type:'text/javascript'}));
     worker=new Worker(workerUrl);URL.revokeObjectURL(workerUrl);workerUrl=null;
     worker.onerror=e=>{if(id!==requestId)return;status.textContent='生成エラー: '+e.message;cancelGeneration();};
@@ -141,6 +148,7 @@ document.getElementById('wire').onchange=e=>{
   if(state)for(const {mesh}of state.entries){mesh.material.wireframe=e.target.checked;}draw();
 };
 window.addEventListener('resize',resize);
+window.visualViewport?.addEventListener('resize',resize);
 // The preview's diagnostic state supports inspection of the rendered ground surface.
 globalThis.__chunkPreview={get state(){return state;},get markerPoint(){return markerPoint;},groundAt,placeMarker};
 resize();showFixture();

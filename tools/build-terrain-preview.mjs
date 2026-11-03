@@ -1,0 +1,31 @@
+import {readFile,writeFile,mkdir} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
+import {resolve,dirname} from 'node:path';
+import {createHash} from 'node:crypto';
+
+const root=fileURLToPath(new URL('../',import.meta.url));
+const [threePath,outPath=resolve(root,'exports/World-of-History.html')]=process.argv.slice(2);
+if(!threePath)throw new Error('Usage: node tools/build-terrain-preview.mjs <three.r128.min.js> [output.html]');
+const lib=await readFile(threePath,'utf8');
+const hash=createHash('sha256').update(lib).digest('hex');
+if(hash!=='9274bbcec8d96168626c732b5d31c775aa8cfb7eaa0599bec0c175908a2c1ce2')throw new Error('Expected the verified Three.js r128 library');
+if(/<\/script/i.test(lib))throw new Error('Unsafe library embedding');
+const read=p=>readFile(resolve(root,p),'utf8');
+const original=await read('自然地理生成器.html');
+const generator=['generator-src','fauna-src'].map(id=>{
+  const match=original.match(new RegExp('<script id="'+id+'"[^>]*>([\\s\\S]*?)<\\/script>'));
+  if(!match)throw new Error('Missing '+id);return match[1];
+}).join('\n');
+const sources=await Promise.all(['src/geography/world-terrain.mjs','src/geography/terrain-chunk.mjs','previews/terrain-chunks.mjs'].map(read));
+const app=sources.map(s=>s.replace(/^import .*;\r?\n/gm,'').replace(/^export /gm,'')).join('\n');
+if(/<\/script/i.test(app))throw new Error('Unsafe application embedding');
+let html=await read('previews/terrain-chunks.html');
+const libraryTag='<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>';
+const appTag='<script type="module" src="./terrain-chunks.mjs"></script>';
+if(!html.includes(libraryTag)||!html.includes(appTag))throw new Error('Preview template changed');
+html=html.replace(libraryTag,()=>'<script>\n'+lib+'\n</script>');
+const data=JSON.stringify(generator).replace(/</g,'\\u003c');
+html=html.replace(appTag,()=>'<script id="embedded-geography" type="application/json">'+data+'</script>\n<script>\n(()=>{\n"use strict";\n'+app+'\n})();\n</script>');
+await mkdir(dirname(resolve(outPath)),{recursive:true});
+await writeFile(outPath,html);
+console.log(JSON.stringify({output:resolve(outPath),bytes:Buffer.byteLength(html),threeSHA256:hash}));
