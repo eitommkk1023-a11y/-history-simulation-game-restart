@@ -6,7 +6,7 @@
 
 - `src/transport/transport-network.mjs`: 道路（road）と横断施設（bridge, ford, ferry）の経路、利用モード、荷重条件、状態、保存・復元。
 - `src/transport/geography-adapter.mjs`: 既存の地理配列を読む経路探索へ上記レイヤーをオプション接続。
-- `tests/transport-network.test.mjs`: 新規17件。従来の11件と合わせ計28件のNodeテストをローカルで確認。
+- `tests/transport-network.test.mjs`: 新規18件。従来の11件と合わせ計29件のNodeテストをローカルで確認。
 
 ## 使用する地理情報
 
@@ -70,4 +70,4 @@ const restored = createTransportNetwork(world, { ...grid, snapshot: save });
 node --test tests/geography-adapter.test.mjs tests/transport-network.test.mjs
 ```
 
-**28/28成功（ローカル実行）。** GitHub ActionsなどのリモートCIは未実行。新しいゲーム仕様を確定する変更ではない。
+**29/29成功（ローカル実行）。** GitHub ActionsなどのリモートCIは未実行。新しいゲーム仕様を確定する変更ではない。
