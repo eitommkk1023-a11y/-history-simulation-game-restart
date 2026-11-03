@@ -1,6 +1,7 @@
+import {seamGeometry} from '../src/geography/terrain-seams.mjs';
 import {createTerrainWorkQueue} from '../src/geography/terrain-work-queue.mjs';
 import {createWorldTerrain} from '../src/geography/world-terrain.mjs';
-import {selectTerrainLOD,skirtGeometry} from '../src/geography/terrain-lod.mjs';
+import {selectTerrainLOD} from '../src/geography/terrain-lod.mjs';
 import {createChunkWindow} from '../src/geography/chunk-window.mjs';
 import {createTerrainChunk} from '../src/geography/terrain-chunk.mjs';
 import {humanGait,solveHumanLeg} from '../src/player/human-gait.mjs';
@@ -124,20 +125,16 @@ function placeMarker(xM,yM,render=true){
 }
 function releaseMesh({mesh}){scene.remove(mesh);mesh.traverse(o=>{if(o.geometry)o.geometry.dispose();});mesh.material.dispose();}
 function makeTerrainMesh(chunk,far=false){
- const skirt=skirtGeometry(chunk),count=chunk.positions.length/3,positions=new Float32Array(chunk.positions.length+skirt.positions.length);
- positions.set(chunk.positions);positions.set(skirt.positions,chunk.positions.length);
- const indices=new Uint16Array(chunk.indices.length+skirt.indices.length);indices.set(chunk.indices);indices.set(skirt.indices.map(i=>i+count),chunk.indices.length);
- const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));geometry.setIndex(new THREE.BufferAttribute(indices,1));geometry.computeVertexNormals();
- // Preserve consistent terrain normals; skirts have their own vertices.
- geometry.attributes.normal.array.set(chunk.normals);
- const material=new THREE.MeshLambertMaterial({color:0x72945b,side:THREE.DoubleSide,wireframe:document.getElementById('wire').checked});
+ const data=far?seamGeometry(state.terrain,chunk):{positions:chunk.positions.slice(),normals:chunk.normals.slice(),indices:chunk.indices,boundary:new Set()};
+ const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(data.positions,3));geometry.setAttribute('normal',new THREE.BufferAttribute(data.normals,3));geometry.setIndex(new THREE.BufferAttribute(data.indices,1));
+ const material=new THREE.MeshLambertMaterial({color:0x72945b,side:THREE.FrontSide,wireframe:document.getElementById('wire').checked});
   const hole={value:new THREE.Vector4(0,0,0,0)};
  if(far){material.onBeforeCompile=shader=>{
    shader.uniforms.nearHole=hole;
    shader.vertexShader='varying vec2 terrainXZ;\n'+shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n terrainXZ=position.xz;');
    shader.fragmentShader='uniform vec4 nearHole; varying vec2 terrainXZ;\n'+shader.fragmentShader.replace('#include <clipping_planes_fragment>','#include <clipping_planes_fragment>\n if(terrainXZ.x>=nearHole.x&&terrainXZ.x<nearHole.z&&terrainXZ.y>=nearHole.y&&terrainXZ.y<nearHole.w)discard;');
   };material.customProgramCacheKey=()=> 'terrain-near-hole-v1';}
- const mesh=new THREE.Mesh(geometry,material);scene.add(mesh);return {chunk,mesh,hole};
+ const mesh=new THREE.Mesh(geometry,material);scene.add(mesh);return {chunk,mesh,hole,boundary:data.boundary};
 }
 function sampleDisplayed(entry,x,y){
  const {chunk,mesh}=entry,p=chunk.sampleGround(x,y);if(!p)return null;
@@ -152,6 +149,7 @@ function sampleDisplayed(entry,x,y){
 function prepareMorph(entry,sources){
  const {chunk,mesh}=entry,target=mesh.geometry.attributes.position.array.slice(),from=target.slice();
  for(let i=0;i<from.length;i+=3){
+  if(entry.boundary.has(i/3))continue;
   const x=chunk.originM.xM+target[i],y=chunk.originM.yM+target[i+2];let previous=null;
   for(const source of sources){previous=sampleDisplayed(source,x,y);if(previous!==null)break;}
   if(previous!==null){const surface=chunk.sampleGround(x,y).elevationM;from[i+1]+=previous-surface;}
