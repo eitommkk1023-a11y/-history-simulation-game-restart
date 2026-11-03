@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>World of History — 地形チャンク検証</title>
+<style>
+  *{box-sizing:border-box}body{margin:0;background:#a8c8dc;color:#edf3f9;font:14px system-ui}
+  canvas{display:block;touch-action:none}header{position:fixed;top:10px;left:10px;right:10px;z-index:2;max-width:680px;background:#142536ee;padding:12px;border-radius:12px}
+  h1{font-size:17px;margin:0 0 8px}p{margin:8px 0 0;line-height:1.5}.controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  button,input{font:inherit;touch-action:manipulation}button{padding:9px;border:0;border-radius:7px;background:#3774a8;color:white}button:disabled{opacity:.5}
+  input[type=number]{width:110px;padding:8px}label{display:flex;gap:6px;align-items:center}#status{color:#cbdce8}
+</style>
+<header>
+  <h1>地形チャンク検証・1.7mの目印</h1>
+  <div class="controls">
+    <button id="fixture">固定テスト地形</button>
+    <input id="seed" type="number" min="0" max="4294967295" value="12345" aria-label="数値Seed">
+    <button id="generate">既存世界を生成</button>
+    <label><input id="wire" type="checkbox">格子を表示</label>
+    <label>距離<input id="distance" type="range" min="5" max="120" value="12"></label>
+  </div>
+  <p>ドラッグで見回し、地面をタップすると目印を移動します。歩行操作は次段階です。</p>
+  <p id="status" role="status">準備中…</p>
+</header>
+<script>
+  window.addEventListener('error',e=>document.getElementById('status').textContent='エラー: '+e.message);
+  window.addEventListener('unhandledrejection',e=>document.getElementById('status').textContent='エラー: '+e.reason);
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script type="module" src="./terrain-chunks.mjs"></script>
+</html>
