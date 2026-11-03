@@ -212,7 +212,7 @@ function showWorld(world,point,label){
   const window=createChunkWindow(terrain,(tx,ty)=>{
     const chunk=createTerrainChunk(terrain,{tileX:tx,tileY:ty});if(!chunk)return null;
     return makeTerrainMesh(chunk);
-  },entry=>{if(state&&!state.clearing){const key=entry.chunk.tileX+','+entry.chunk.tileY;if(state.fallback.has(key))releaseMesh(state.fallback.get(key));state.fallback.set(key,entry);}else releaseMesh(entry);});
+  },entry=>{if(state&&!state.clearing&&!bridge.debugFastActive){const key=entry.chunk.tileX+','+entry.chunk.tileY;if(state.fallback.has(key))releaseMesh(state.fallback.get(key));state.fallback.set(key,entry);}else releaseMesh(entry);});
   state={terrain,origin,window,world,map:null,water:createWaterSurface(terrain,world),waterKey:null,waterMesh:null,far:new Map(),fallback:new Map(),clearing:false,lodKey:'',nearCenter:{x:0,y:0},settle:.6,drawDirty:false,morphSources:[],lastJobs:0,lastTexture:bridge.texture,get entries(){return window.entries;},label};
   state.work=createTerrainWorkQueue({build:q=>{
    const entry=makeTerrainMesh(createTerrainChunk(terrain,q),true);prepareMorph(entry,state.morphSources);positionTerrain(entry);setNearHole(entry);return entry;
@@ -318,7 +318,8 @@ function frame(time){
         cam.tz+=(-x*Math.sin(cam.yaw)+y*Math.cos(cam.yaw))*scale;updateCamera();
       }
     }else if(Math.hypot(x,y)>.08){
-      const next=stepTerrainWalker(markerPoint,{x,y,yaw,sprint:sprintOn,crouch:crouched},dt,groundAt);
+      const input={x,y,yaw,sprint:sprintOn,crouch:crouched};
+      const next=globalThis.__wohDev?.step(markerPoint,input,dt,state.terrain)??stepTerrainWalker(markerPoint,input,dt,groundAt);
       const dx=next.xM-markerPoint.xM,dy=next.yM-markerPoint.yM;
       wasMoving=Math.hypot(dx,dy)>0;if(!wasMoving)setSprint(false);
       if(wasMoving){gaitDistance+=Math.hypot(dx,dy);{const target=Math.atan2(dx,dy),delta=Math.atan2(Math.sin(target-marker.rotation.y),Math.cos(target-marker.rotation.y));marker.rotation.y+=delta*(1-Math.exp(-18*Math.min(dt,.05)));}placeMarker(next.xM,next.yM,false);}
@@ -332,6 +333,7 @@ function frame(time){
   }
   if(state&&!document.hidden){
     if(state.lastTexture!==bridge.texture){for(const entry of [...state.entries,...state.far.values(),...state.fallback.values()]){entry.mesh.material.map=bridge.texture;entry.mesh.material.needsUpdate=true;}state.lastTexture=bridge.texture;state.drawDirty=true;}
+    if(bridge.debugFastActive&&state.fallback.size){for(const entry of state.fallback.values())releaseMesh(entry);state.fallback.clear();}
     state.lastJobs=state.work.tick(3,2);let terrainChanged=state.drawDirty;state.drawDirty=false;
     for(const entry of state.far.values())if(entry.morph){
       terrainChanged=true;
@@ -373,6 +375,6 @@ function adoptNativeWorld(){
  showWorld(world,point,'Seed '+bridge.seed);bridge.pendingPlayer=null;bridge.seenRevision=bridge.revision;
 }
 window.addEventListener('woh-world-ready',adoptNativeWorld);
-window.__wohPlayerSave=()=>markerPoint?{xM:markerPoint.xM,yM:markerPoint.yM,yaw}:null;
+window.__wohPlayerSave=()=>globalThis.__wohDev?.savedPlayer()??(markerPoint?{xM:markerPoint.xM,yM:markerPoint.yM,yaw}:null);
 document.body.classList.add('integration-ui-hidden','integration-third');
 animatePlayer(0);resize();if(bridge.world)adoptNativeWorld();

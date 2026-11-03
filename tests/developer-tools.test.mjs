@@ -1,0 +1,3 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {developerStep} from '../src/development/developer-tools.mjs';
+const terrain={widthM:10000,heightM:10000,sampleBase:()=>({baseElevationM:10})},p={xM:500,yM:500,elevationM:10},input={x:1,y:0,yaw:0};
+test('developer speed scales movement and clamps to true world bounds',()=>{const slow=developerStep(p,input,.05,terrain,1),fast=developerStep(p,input,.05,terrain,100);assert.ok(Math.abs((fast.xM-p.xM)/(slow.xM-p.xM)-100)<1e-8);assert.equal(developerStep(p,{...input,sprint:true},.05,terrain,1000).xM,700);assert.ok(developerStep({xM:9999,yM:500},input,1,terrain,1000).xM<=9999.7);});

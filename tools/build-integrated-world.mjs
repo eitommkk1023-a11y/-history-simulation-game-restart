@@ -25,4 +25,12 @@ const app=(await Promise.all(paths.map(read))).map(s=>s.replace(/^import .*;\r?\
 replaceOnce('</body></html>','<script>(()=>{\n"use strict";\n'+app+'\n})();</script></body></html>');
 const source=html.replace('<script>'+lib+'</script>','<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>').replace('<script>(()=>{\n"use strict";\n'+app+'\n})();</script>','<script type="module" src="./src/integration/third-person.mjs"></script>');
 await writeFile(new URL('自然地理生成器.html',root),source);
-await mkdir(new URL('exports/',root),{recursive:true});await writeFile(new URL('exports/World-of-History-integrated.html',root),html);console.log(JSON.stringify({bytes:Buffer.byteLength(html),output:'exports/World-of-History-integrated.html'}));
+await mkdir(new URL('exports/',root),{recursive:true});
+await writeFile(new URL('exports/World-of-History-integrated.html',root),html);
+if(process.argv.includes('--dev')){
+ const dev=(await read('src/development/developer-tools.mjs')).replace(/^export /gm,'');
+ const development=html.replace('</body></html>',()=>'<script>(()=>{'+dev+'\ninstallDeveloperTools();})();</script></body></html>');
+ await writeFile(new URL('exports/World-of-History-development.html',root),development);
+ console.log(JSON.stringify({developmentBytes:Buffer.byteLength(development)}));
+}
+console.log(JSON.stringify({bytes:Buffer.byteLength(html),output:'exports/World-of-History-integrated.html'}));
