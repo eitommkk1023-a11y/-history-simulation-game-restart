@@ -19,6 +19,7 @@
   [hidden]{display:none!important}body.ui-hidden header,body.ui-hidden #movementNotice{display:none!important}
   #uiToggle{position:fixed;right:max(8px,env(safe-area-inset-right));top:max(8px,env(safe-area-inset-top));z-index:5;background:#183d5ccc}
   header{right:100px}#sprint.active{background:#efb52c;color:#172436;box-shadow:0 0 12px 5px #ffd34eaa}
+  #jump{position:fixed;z-index:3;right:max(112px,env(safe-area-inset-right));bottom:max(24px,env(safe-area-inset-bottom));width:76px;height:76px;border-radius:50%;background:#183d5ccc;touch-action:none;user-select:none}
 </style>
 <button id="uiToggle" aria-pressed="false">UIを隠す</button>
 <header>
@@ -33,13 +34,14 @@
     <label><input id="wire" type="checkbox">格子を表示</label>
     <label id="overviewDistance" hidden>俯瞰距離<input id="distance" type="range" min="20" max="300" value="100"></label>
   </div>
-  <p>三人称：左で歩行・右で見回し。ダッシュはタップで切替、停止すると解除。俯瞰：左でカメラ移動・右で回転、距離バーで拡縮。PCはWASD／矢印・Shift。</p>
+  <p>三人称：左で歩行・右で見回し。ダッシュはタップで切替、停止すると解除。俯瞰：左でカメラ移動・右で回転、距離バーで拡縮。ジャンプボタン／Spaceでジャンプ。PCはWASD／矢印・Shift。</p>
   <p id="status" role="status">準備中…</p>
   </details>
   <p id="orientationHint">端末を横向きにすると、広く見渡せます。</p>
 </header>
 <button id="joystick" aria-label="移動スティック"><span id="stick"></span></button>
 <button id="sprint" aria-label="ダッシュ切替" aria-pressed="false">ダッシュ</button>
+<button id="jump" aria-label="ジャンプ">ジャンプ</button>
 <div id="movementNotice" role="status"></div>
 <script>
   window.addEventListener('error',e=>document.getElementById('status').textContent='エラー: '+e.message);
