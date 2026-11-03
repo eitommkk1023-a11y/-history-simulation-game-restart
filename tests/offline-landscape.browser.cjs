@@ -20,7 +20,9 @@ const html=fs.readFileSync(path.join(__dirname,'../exports/World-of-History.html
       assert.equal(await page.locator('#orientationHint').isVisible(),false);
       const settings=page.locator('#settings');
       assert.equal(await settings.evaluate(e=>e.open),name==='tablet');
+      if(name==='phone')assert.equal(await page.locator('#status').isVisible(),false,'閉じた設定の情報が地形に重ならない');
       if(name==='phone')await settings.locator('summary').click();
+      assert.equal(await page.locator('#status').isVisible(),true,'設定を開けば地形情報を確認できる');
       for(const id of ['fixture','generate','seed']){
         const box=await page.locator('#'+id).boundingBox();
         assert.ok(box.height>=44 && box.width>=44 && box.x>=0 && box.x+box.width<=width,id);

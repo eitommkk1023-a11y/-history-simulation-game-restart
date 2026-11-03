@@ -9,10 +9,9 @@
   h1{font-size:16px;margin:0 0 4px}p{margin:8px 0 0;line-height:1.5}.controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   button,input,summary{font:inherit;touch-action:manipulation}button{padding:9px;border:0;border-radius:7px;background:#3774a8;color:white;min-height:44px;min-width:44px}button:disabled{opacity:.5}
   input[type=number]{width:110px;padding:8px;min-height:44px}input[type=range]{max-width:140px;min-height:44px}input[type=checkbox]{width:22px;height:22px}label{display:flex;gap:6px;align-items:center;min-height:44px}summary{cursor:pointer;min-height:44px;display:flex;align-items:center}
-  footer{position:fixed;left:max(8px,env(safe-area-inset-left));right:max(8px,env(safe-area-inset-right));bottom:max(8px,env(safe-area-inset-bottom));z-index:2;pointer-events:none;max-width:680px;background:#142536ee;padding:8px 10px;border-radius:9px}
-  #status{margin:0;color:#cbdce8;max-height:60px;overflow:hidden}#orientationHint{display:none;margin:0 0 5px;color:#ffe2a8}
+  #status{margin:8px 0 0;color:#cbdce8;max-height:60px;overflow:auto}#orientationHint{display:none;margin:4px 0 0;color:#ffe2a8}
   @media(orientation:portrait){#orientationHint{display:block}}
-  @media(orientation:landscape) and (max-height:500px){header{max-width:620px;padding:6px 10px}h1{font-size:14px}header p{font-size:12px;margin-top:4px}.controls{gap:5px}footer{font-size:12px}}
+  @media(orientation:landscape) and (max-height:500px){header{max-width:620px;padding:6px 10px}h1{font-size:14px}header p{font-size:12px;margin-top:4px}.controls{gap:5px}}
 </style>
 <header>
   <h1>地形チャンク検証・1.7mの目印</h1>
@@ -26,12 +25,10 @@
     <label>距離<input id="distance" type="range" min="5" max="120" value="12"></label>
   </div>
   <p>ドラッグで見回し、地面をタップすると目印を移動します。歩行操作は次段階です。</p>
-  </details>
-</header>
-<footer>
-  <p id="orientationHint">端末を横向きにすると、広く見渡せます。</p>
   <p id="status" role="status">準備中…</p>
-</footer>
+  </details>
+  <p id="orientationHint">端末を横向きにすると、広く見渡せます。</p>
+</header>
 <script>
   window.addEventListener('error',e=>document.getElementById('status').textContent='エラー: '+e.message);
   window.addEventListener('unhandledrejection',e=>document.getElementById('status').textContent='エラー: '+e.reason);

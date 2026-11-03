@@ -64,6 +64,7 @@ function showWorld(world,point,label){
     mesh.position.set(o.x,o.y,o.z);scene.add(mesh);entries.push({chunk,mesh});
   }
   state={terrain,origin,entries,label};scene.updateMatrixWorld(true);placeMarker(point.xM,point.yM);
+  if(matchMedia('(orientation: landscape) and (max-height: 500px)').matches)document.getElementById('settings').open=false;
 }
 function cancelGeneration(){requestId++;if(worker){worker.terminate();worker=null;}generateButton.disabled=false;}
 function showFixture(){
@@ -90,7 +91,7 @@ function findDryPoint(terrain,world){
 async function generateWorld(){
   const seed=Number(document.getElementById('seed').value);
   if(!Number.isInteger(seed)||seed<0||seed>0xffffffff){status.textContent='Seedは0〜4294967295の整数を指定してください。';return;}
-  if(matchMedia('(orientation: landscape) and (max-height: 500px)').matches)document.getElementById('settings').open=false;
+  document.getElementById('settings').open=true;
   cancelGeneration();const id=requestId;
   clearTerrain();draw();generateButton.disabled=true;status.textContent='既存世界を生成中…';
   let workerUrl=null;
