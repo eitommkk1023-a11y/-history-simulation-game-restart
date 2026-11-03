@@ -4,7 +4,7 @@ export function stepTerrainWalker(position,input,dt,groundAt){
   if(!Number.isFinite(dt)||dt<=0)return result;
   const ix=Number.isFinite(input.x)?input.x:0,iy=Number.isFinite(input.y)?input.y:0;
   const yaw=Number.isFinite(input.yaw)?input.yaw:0;
-  const length=Math.max(1,Math.hypot(ix,iy)),speed=input.sprint?4:1.5;
+  const length=Math.max(1,Math.hypot(ix,iy)),speed=input.crouch?.65:input.sprint?4:1.5;
   const dx=(ix*Math.cos(yaw)+iy*Math.sin(yaw))/length*speed*Math.min(dt,.05);
   const dy=(-ix*Math.sin(yaw)+iy*Math.cos(yaw))/length*speed*Math.min(dt,.05);
   const distance=Math.hypot(dx,dy);if(!distance)return result;

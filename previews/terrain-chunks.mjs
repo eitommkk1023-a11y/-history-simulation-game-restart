@@ -16,11 +16,32 @@ const camera=new THREE.PerspectiveCamera(55,1,.1,1200);
 const raycaster=new THREE.Raycaster();
 const marker=new THREE.Group();
 const markerMaterial=new THREE.MeshLambertMaterial({color:0xe5b348});
-function part(geometry,x,y,z){const m=new THREE.Mesh(geometry,markerMaterial);m.position.set(x,y,z);marker.add(m);}
-part(new THREE.SphereGeometry(.17,12,8),0,1.53,0);
-part(new THREE.BoxGeometry(.45,.65,.24),0,1.05,0);
-part(new THREE.BoxGeometry(.16,.7,.18),-.13,.35,0);
-part(new THREE.BoxGeometry(.16,.7,.18),.13,.35,0);
+const hips=new THREE.Group();marker.add(hips);
+function bodyPart(parent,geometry,x,y,z){const mesh=new THREE.Mesh(geometry,markerMaterial);mesh.position.set(x,y,z);parent.add(mesh);return mesh;}
+const torso=new THREE.Group();hips.add(torso);
+bodyPart(torso,new THREE.BoxGeometry(.45,.65,.24),0,.35,0);
+bodyPart(torso,new THREE.SphereGeometry(.17,12,8),0,.83,0);
+function limb(parent,x,y,length,width){const joint=new THREE.Group();joint.position.set(x,y,0);parent.add(joint);bodyPart(joint,new THREE.BoxGeometry(width,length,width),0,-length/2,0);return joint;}
+const legs=[limb(hips,-.13,0,.35,.16),limb(hips,.13,0,.35,.16)];
+const knees=legs.map(leg=>limb(leg,0,-.35,.35,.14));
+const arms=[limb(torso,-.32,.57,.55,.13),limb(torso,.32,.57,.55,.13)];
+let crouched=false,gaitPhase=0,motionMode='idle';
+function animatePlayer(dt){
+  const airborne=jumpHeight>0||jumpVelocity!==0;
+  motionMode=airborne?(wasMoving?(sprintOn?'run-jump':'walk-jump'):'jump'):
+    crouched?(wasMoving?'crouch-walk':'crouch'):wasMoving?(sprintOn?'run':'walk'):'idle';
+  if(wasMoving&&!airborne)gaitPhase+=Math.min(dt,.05)*(crouched?5:sprintOn?13:8);
+  const stride=wasMoving?Math.sin(gaitPhase)*(crouched?.22:sprintOn?.75:.42):0;
+  for(let i=0;i<2;i++){
+    const wave=i===0?stride:-stride;
+    legs[i].rotation.x=airborne?-.45+(i?.15:0):(crouched?-.85:0)+wave;
+    knees[i].rotation.x=airborne?.9:crouched?1.5:Math.max(0,-wave)*.9;
+    arms[i].rotation.x=airborne?-1.1:-wave*.9+(crouched?-.45:0);
+  }
+  // Keep the lowest foot on the contact plane; airborne poses can tuck their feet.
+  hips.position.y=airborne?.7:Math.max(...legs.map((leg,i)=>.35*Math.cos(leg.rotation.x)+.35*Math.cos(leg.rotation.x+knees[i].rotation.x)));
+  torso.rotation.x=crouched?.3:sprintOn&&wasMoving?.12:0;
+}
 scene.add(marker);
 let state=null,worker=null,requestId=0,yaw=.7,pitch=.4;
 let markerPoint=null,overview=false;
@@ -46,7 +67,7 @@ function updateCamera(){
 }
 function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();updateCamera();}
 function clearTerrain(){
-  resetInput();markerPoint=null;jumpHeight=0;jumpVelocity=0;
+  resetInput();crouched=false;crouchButton.classList.remove('active');crouchButton.setAttribute('aria-pressed','false');markerPoint=null;jumpHeight=0;jumpVelocity=0;
   if(state)for(const {mesh}of state.entries){scene.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();}
   state=null;marker.visible=false;
 }
@@ -156,6 +177,7 @@ for(const event of ['pointerup','pointercancel','lostpointercapture'])joystick.a
   if(e.pointerId!==stickId)return;stickId=null;stickInput.x=stickInput.y=0;stick.style.transform='';
 });
 function setSprint(value){
+  if(value&&crouched){crouched=false;crouchButton.classList.remove('active');crouchButton.setAttribute('aria-pressed','false');}
   sprintOn=!overview&&value;sprint.classList.toggle('active',sprintOn);sprint.setAttribute('aria-pressed',String(sprintOn));
 }
 function pressAction(button,action){
@@ -163,22 +185,24 @@ function pressAction(button,action){
   button.addEventListener('keydown',e=>{if(e.code==='Enter'||e.code==='Space'){e.preventDefault();e.stopPropagation();if(!e.repeat)action();}});
 }
 pressAction(sprint,()=>setSprint(!sprintOn));
-const jumpButton=document.getElementById('jump');
-function startJump(){if(!overview&&state&&jumpHeight===0&&jumpVelocity===0)jumpVelocity=5;}
+const jumpButton=document.getElementById('jump'),crouchButton=document.getElementById('crouch');
+function toggleCrouch(){if(overview||jumpHeight>0||jumpVelocity!==0)return;crouched=!crouched;setSprint(false);crouchButton.classList.toggle('active',crouched);crouchButton.setAttribute('aria-pressed',String(crouched));}
+pressAction(crouchButton,toggleCrouch);
+function startJump(){if(!overview&&state&&!crouched&&jumpHeight===0&&jumpVelocity===0)jumpVelocity=5;}
 pressAction(jumpButton,startJump);
 document.getElementById('uiToggle').onclick=()=>{
   const hidden=document.body.classList.toggle('ui-hidden');resetInput();
   document.getElementById('uiToggle').textContent=hidden?'UIを表示':'UIを隠す';
   document.getElementById('uiToggle').setAttribute('aria-pressed',String(hidden));
 };
-const movementKeys=new Set(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight','Space']);
+const movementKeys=new Set(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight','Space','KeyC']);
 window.addEventListener('keydown',e=>{if(/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)||e.target.isContentEditable)return;
-  if(movementKeys.has(e.code)){e.preventDefault();if(e.code==='Space'){if(!e.repeat)startJump();}else if(e.code.startsWith('Shift')&&!e.repeat)setSprint(!sprintOn);else keys.add(e.code);}});
+  if(movementKeys.has(e.code)){e.preventDefault();if(e.code==='KeyC'){if(!e.repeat)toggleCrouch();}else if(e.code==='Space'){if(!e.repeat)startJump();}else if(e.code.startsWith('Shift')&&!e.repeat)setSprint(!sprintOn);else keys.add(e.code);}});
 window.addEventListener('keyup',e=>keys.delete(e.code));
 window.addEventListener('blur',resetInput);
 document.addEventListener('visibilitychange',()=>{if(document.hidden)resetInput();});
 document.getElementById('viewMode').onclick=()=>{overview=!overview;resetInput();jumpHeight=0;jumpVelocity=0;if(markerPoint)marker.position.y=markerPoint.elevationM-state.origin.elevationM;if(overview){overviewView.target.copy(marker.position);overviewView.target.y+=1.2;}
-  document.getElementById('overviewDistance').hidden=!overview;sprint.hidden=overview;jumpButton.hidden=overview;joystick.setAttribute('aria-label',overview?'俯瞰カメラ移動':'移動スティック');document.getElementById('viewMode').textContent=overview?'三人称に戻る':'周辺を俯瞰';updateCamera();};
+  document.getElementById('overviewDistance').hidden=!overview;document.getElementById('actions').hidden=overview;joystick.setAttribute('aria-label',overview?'俯瞰カメラ移動':'移動スティック');document.getElementById('viewMode').textContent=overview?'三人称に戻る':'周辺を俯瞰';updateCamera();};
 let lastTime=null;
 function frame(time){
   const dt=lastTime===null?0:(time-lastTime)/1000;lastTime=time;
@@ -192,7 +216,7 @@ function frame(time){
         overviewView.target.z+=(-x*Math.sin(overviewView.yaw)+y*Math.cos(overviewView.yaw))*scale;updateCamera();
       }
     }else if(Math.hypot(x,y)>.08){
-      const next=stepTerrainWalker(markerPoint,{x,y,yaw,sprint:sprintOn},dt,groundAt);
+      const next=stepTerrainWalker(markerPoint,{x,y,yaw,sprint:sprintOn,crouch:crouched},dt,groundAt);
       const dx=next.xM-markerPoint.xM,dy=next.yM-markerPoint.yM;
       wasMoving=Math.hypot(dx,dy)>0;if(!wasMoving)setSprint(false);
       if(wasMoving){marker.rotation.y=Math.atan2(dx,dy);placeMarker(next.xM,next.yM);}
@@ -204,6 +228,7 @@ function frame(time){
     if(jumpHeight<=0){jumpHeight=0;jumpVelocity=0;}
     marker.position.y=markerPoint.elevationM-state.origin.elevationM+jumpHeight;updateCamera();
   }
+  if(state&&!document.hidden&&!overview){animatePlayer(dt);updateCamera();}
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -227,5 +252,5 @@ document.getElementById('wire').onchange=e=>{
 window.addEventListener('resize',resize);
 window.visualViewport?.addEventListener('resize',resize);
 // The preview's diagnostic state supports inspection of the rendered ground surface.
-globalThis.__chunkPreview={get air(){return {height:jumpHeight,velocity:jumpVelocity};},get view(){return {overview,yaw,pitch,target:overviewView.target.toArray()};},get state(){return state;},get markerPoint(){return markerPoint;},groundAt,placeMarker};
-resize();showFixture();
+globalThis.__chunkPreview={get motion(){return {mode:motionMode,leg:legs[0].rotation.x,hip:hips.position.y};},get air(){return {height:jumpHeight,velocity:jumpVelocity};},get view(){return {overview,yaw,pitch,target:overviewView.target.toArray()};},get state(){return state;},get markerPoint(){return markerPoint;},groundAt,placeMarker};
+animatePlayer(0);resize();showFixture();

@@ -23,3 +23,7 @@ test('caps long frame gaps and ignores invalid timestep',()=>{
  assert.ok(stepTerrainWalker(p,{x:1,y:0,yaw:0,sprint:true},10,flat).xM<=10.2+1e-9);
  assert.deepEqual(stepTerrainWalker(p,{x:1},NaN,flat),{...p,blocked:false});
 });
+test('crouch walking is slower and takes priority over sprint',()=>{
+ near(travel({x:1,y:0,yaw:0,crouch:true}).xM,10.65);
+ near(travel({x:1,y:0,yaw:0,crouch:true,sprint:true}).xM,10.65);
+});
