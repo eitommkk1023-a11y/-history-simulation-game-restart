@@ -12,7 +12,7 @@ export function stepTerrainWalker(position,input,dt,groundAt){
   for(let i=0;i<steps;i++){
     const xM=result.xM+sx,yM=result.yM+sy,p=groundAt(xM,yM);
     const support=[[0,0],[.25,0],[-.25,0],[0,.25],[0,-.25]].map(([x,y])=>groundAt(xM+x,yM+y));
-    if(!p||support.some(q=>!q||!Number.isFinite(q.elevationM)||q.slopeDegrees>45||Math.abs(q.elevationM-p.elevationM)>.3)||
+    if(!p||support.some(q=>!q||!Number.isFinite(q.elevationM)||q.slopeDegrees>45||(q.waterDepthM??0)>(input.crouch?.35:.6)||Math.abs(q.elevationM-p.elevationM)>.3)||
       Math.abs(p.elevationM-result.elevationM)>Math.hypot(sx,sy)+.05){result.blocked=true;break;}
     result={xM,yM,elevationM:p.elevationM,blocked:false};
   }

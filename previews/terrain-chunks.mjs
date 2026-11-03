@@ -1,3 +1,4 @@
+import {createWaterSurface} from '../src/geography/water-surface.mjs';
 import {seamGeometry} from '../src/geography/terrain-seams.mjs';
 import {createTerrainWorkQueue} from '../src/geography/terrain-work-queue.mjs';
 import {createWorldTerrain} from '../src/geography/world-terrain.mjs';
@@ -105,12 +106,12 @@ function updateCamera(){
 function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();updateCamera();}
 function clearTerrain(){
   resetInput();crouched=false;crouchButton.classList.remove('active');crouchButton.setAttribute('aria-pressed','false');markerPoint=null;jumpHeight=0;jumpVelocity=0;
-  if(state){state.clearing=true;state.window.clear();state.work.clear();for(const entry of state.fallback.values())releaseMesh(entry);}
+  if(state){state.clearing=true;state.window.clear();state.work.clear();if(state.waterMesh){scene.remove(state.waterMesh);state.waterMesh.geometry.dispose();state.waterMesh.material.dispose();}for(const entry of state.fallback.values())releaseMesh(entry);}
   state=null;marker.visible=false;
 }
 function groundAt(xM,yM){
   if(!state)return null;
-  for(const {chunk}of state.entries){const p=chunk.sampleGround(xM,yM);if(p)return p;}
+  for(const {chunk}of state.entries){const p=chunk.sampleGround(xM,yM);if(p){const water=state.water.sample(xM,yM,p.elevationM);return {...p,waterDepthM:water?.depthM??0,waterSurfaceM:water?.surfaceM??null,waterKind:water?.kind??null};}}
   return null;
 }
 function placeMarker(xM,yM,render=true){
@@ -163,6 +164,20 @@ function setNearHole(entry){
  const c=state.nearCenter,x=entry.chunk.originM.xM,y=entry.chunk.originM.yM;
  entry.hole.value.set((c.x-1)*64-x,(c.y-1)*64-y,(c.x+2)*64-x,(c.y+2)*64-y);
 }
+function refreshWater(xM,yM){
+ const key=Math.floor(xM/512)+','+Math.floor(yM/512);
+ if(key!==state.waterKey){
+  if(state.waterMesh){scene.remove(state.waterMesh);state.waterMesh.geometry.dispose();state.waterMesh.material.dispose();}
+  const anchor={xM:Math.floor(xM/512)*512,yM:Math.floor(yM/512)*512},positions=[];
+  for(const p of state.water.patches(xM,yM)){
+   const a=[p.x0-anchor.xM,p.surfaceM+.005,p.y0-anchor.yM],b=[p.x1-anchor.xM,p.surfaceM+.005,p.y0-anchor.yM],c=[p.x0-anchor.xM,p.surfaceM+.005,p.y1-anchor.yM],d=[p.x1-anchor.xM,p.surfaceM+.005,p.y1-anchor.yM];positions.push(...a,...c,...b,...b,...c,...d);
+  }
+  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geometry.computeVertexNormals();
+  const material=new THREE.MeshLambertMaterial({color:0x2b95be,transparent:true,opacity:.72,depthWrite:false});
+  state.waterMesh=new THREE.Mesh(geometry,material);state.waterAnchor=anchor;state.waterKey=key;scene.add(state.waterMesh);
+ }
+ const q=state.terrain.toLocal(state.waterAnchor.xM,state.waterAnchor.yM,0,state.origin);state.waterMesh.position.set(q.x,q.y,q.z);
+}
 function refreshChunks(xM,yM){
  const previousNear=[...state.entries,...state.fallback.values()];
  state.window.update(xM,yM);
@@ -183,7 +198,7 @@ function refreshChunks(xM,yM){
   state.origin=origin;
  }
  for(const {chunk,mesh}of [...state.entries,...state.far.values(),...state.fallback.values()]){const q=state.terrain.toLocal(chunk.originM.xM,chunk.originM.yM,chunk.originM.elevationM,state.origin);mesh.position.set(q.x,q.y,q.z);}
- scene.updateMatrixWorld(true);
+ refreshWater(xM,yM);scene.updateMatrixWorld(true);
 }
 function showWorld(world,point,label){
   clearTerrain();
@@ -193,7 +208,7 @@ function showWorld(world,point,label){
     const chunk=createTerrainChunk(terrain,{tileX:tx,tileY:ty});if(!chunk)return null;
     return makeTerrainMesh(chunk);
   },entry=>{if(state&&!state.clearing){const key=entry.chunk.tileX+','+entry.chunk.tileY;if(state.fallback.has(key))releaseMesh(state.fallback.get(key));state.fallback.set(key,entry);}else releaseMesh(entry);});
-  state={terrain,origin,window,far:new Map(),fallback:new Map(),clearing:false,lodKey:'',nearCenter:{x:0,y:0},settle:.6,drawDirty:false,morphSources:[],lastJobs:0,get entries(){return window.entries;},label};
+  state={terrain,origin,window,water:createWaterSurface(terrain,world),waterKey:null,waterMesh:null,far:new Map(),fallback:new Map(),clearing:false,lodKey:'',nearCenter:{x:0,y:0},settle:.6,drawDirty:false,morphSources:[],lastJobs:0,get entries(){return window.entries;},label};
   state.work=createTerrainWorkQueue({build:q=>{
    const entry=makeTerrainMesh(createTerrainChunk(terrain,q),true);prepareMorph(entry,state.morphSources);positionTerrain(entry);setNearHole(entry);return entry;
   },release:releaseMesh,commit:(next)=>{
@@ -205,6 +220,12 @@ function showWorld(world,point,label){
   if(matchMedia('(orientation: landscape) and (max-height: 500px)').matches)document.getElementById('settings').open=false;
 }
 function cancelGeneration(){requestId++;if(worker){worker.terminate();worker=null;}generateButton.disabled=false;}
+function showWaterFixture(){
+ cancelGeneration();const width=129,height=129,n=width*height;
+ const world={stats:{width,height},geology:{kmPerBlock:.016},elev:new Float32Array(n),type:new Uint8Array(n),water:new Uint8Array(n),biome:new Uint8Array(n).fill(4),lakeId:new Uint16Array(n),lakeLevels:[0,4]};
+ for(let y=0;y<height;y++)for(let x=0;x<width;x++){const i=y*width+x,dist=Math.hypot(x*16-1408,y*16-1024);world.elev[i]=(x-64)*.8;world.type[i]=x>=64?1:0;if(x>=64){world.elev[i]=Math.min(world.elev[i],4+(dist-112)*.08);if(dist<112){world.water[i]=2;world.lakeId[i]=1;}}}
+ showWorld(world,{xM:1040,yM:1024},'海・湖テスト');
+}
 function showFixture(){
   cancelGeneration();
   const width=129,height=129,n=width*height;
@@ -321,7 +342,7 @@ function frame(time){
       const dx=next.xM-markerPoint.xM,dy=next.yM-markerPoint.yM;
       wasMoving=Math.hypot(dx,dy)>0;if(!wasMoving)setSprint(false);
       if(wasMoving){gaitDistance+=Math.hypot(dx,dy);{const target=Math.atan2(dx,dy),delta=Math.atan2(Math.sin(target-marker.rotation.y),Math.cos(target-marker.rotation.y));marker.rotation.y+=delta*(1-Math.exp(-18*Math.min(dt,.05)));}placeMarker(next.xM,next.yM,false);}
-      document.getElementById('movementNotice').textContent=next.blocked?'ここから先は範囲外、または急な地形です':'';
+      document.getElementById('movementNotice').textContent=next.blocked?'深い水・急な地形・世界の外へは進めません':'';
     }else{if(wasMoving)setSprint(false);wasMoving=false;document.getElementById('movementNotice').textContent='';}
   }
   if(state&&markerPoint&&!overview&&!document.hidden&&(jumpVelocity!==0||jumpHeight>0)){
@@ -357,6 +378,8 @@ renderer.domElement.addEventListener('pointermove',e=>{
 });
 for(const event of ['pointerup','pointercancel','lostpointercapture'])renderer.domElement.addEventListener(event,e=>{if(drag?.id===e.pointerId)drag=null;});
 document.getElementById('fixture').onclick=showFixture;
+document.getElementById('waterFixture').onclick=showWaterFixture;
+document.getElementById('lakeVisit').onclick=()=>{if(state?.label!=='海・湖テスト')showWaterFixture();placeMarker(1280,1024);};
 generateButton.onclick=generateWorld;
 document.getElementById('distance').oninput=updateCamera;
 document.getElementById('wire').onchange=e=>{
