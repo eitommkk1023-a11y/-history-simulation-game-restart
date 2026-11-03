@@ -1,3 +1,4 @@
+import {createTerrainWorkQueue} from '../src/geography/terrain-work-queue.mjs';
 import {createWorldTerrain} from '../src/geography/world-terrain.mjs';
 import {selectTerrainLOD,skirtGeometry} from '../src/geography/terrain-lod.mjs';
 import {createChunkWindow} from '../src/geography/chunk-window.mjs';
@@ -103,7 +104,7 @@ function updateCamera(){
 function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();updateCamera();}
 function clearTerrain(){
   resetInput();crouched=false;crouchButton.classList.remove('active');crouchButton.setAttribute('aria-pressed','false');markerPoint=null;jumpHeight=0;jumpVelocity=0;
-  if(state){state.window.clear();for(const entry of state.far.values())releaseMesh(entry);}
+  if(state){state.clearing=true;state.window.clear();state.work.clear();for(const entry of state.fallback.values())releaseMesh(entry);}
   state=null;marker.visible=false;
 }
 function groundAt(xM,yM){
@@ -122,7 +123,7 @@ function placeMarker(xM,yM,render=true){
   if(render)updateCamera();
 }
 function releaseMesh({mesh}){scene.remove(mesh);mesh.traverse(o=>{if(o.geometry)o.geometry.dispose();});mesh.material.dispose();}
-function makeTerrainMesh(chunk){
+function makeTerrainMesh(chunk,far=false){
  const skirt=skirtGeometry(chunk),count=chunk.positions.length/3,positions=new Float32Array(chunk.positions.length+skirt.positions.length);
  positions.set(chunk.positions);positions.set(skirt.positions,chunk.positions.length);
  const indices=new Uint16Array(chunk.indices.length+skirt.indices.length);indices.set(chunk.indices);indices.set(skirt.indices.map(i=>i+count),chunk.indices.length);
@@ -130,24 +131,60 @@ function makeTerrainMesh(chunk){
  // Preserve consistent terrain normals; skirts have their own vertices.
  geometry.attributes.normal.array.set(chunk.normals);
  const material=new THREE.MeshLambertMaterial({color:0x72945b,side:THREE.DoubleSide,wireframe:document.getElementById('wire').checked});
- const mesh=new THREE.Mesh(geometry,material);scene.add(mesh);return {chunk,mesh};
+  const hole={value:new THREE.Vector4(0,0,0,0)};
+ if(far){material.onBeforeCompile=shader=>{
+   shader.uniforms.nearHole=hole;
+   shader.vertexShader='varying vec2 terrainXZ;\n'+shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n terrainXZ=position.xz;');
+   shader.fragmentShader='uniform vec4 nearHole; varying vec2 terrainXZ;\n'+shader.fragmentShader.replace('#include <clipping_planes_fragment>','#include <clipping_planes_fragment>\n if(terrainXZ.x>=nearHole.x&&terrainXZ.x<nearHole.z&&terrainXZ.y>=nearHole.y&&terrainXZ.y<nearHole.w)discard;');
+  };material.customProgramCacheKey=()=> 'terrain-near-hole-v1';}
+ const mesh=new THREE.Mesh(geometry,material);scene.add(mesh);return {chunk,mesh,hole};
+}
+function sampleDisplayed(entry,x,y){
+ const {chunk,mesh}=entry,p=chunk.sampleGround(x,y);if(!p)return null;
+ const indices=chunk.indices,positions=mesh.geometry.attributes.position.array,offset=p.triangleIndex*3;
+ const a=indices[offset]*3,b=indices[offset+1]*3,c=indices[offset+2]*3;
+ const px=x-chunk.originM.xM,py=y-chunk.originM.yM;
+ const denominator=(positions[b+2]-positions[c+2])*(positions[a]-positions[c])+(positions[c]-positions[b])*(positions[a+2]-positions[c+2]);
+ const u=((positions[b+2]-positions[c+2])*(px-positions[c])+(positions[c]-positions[b])*(py-positions[c+2]))/denominator;
+ const v=((positions[c+2]-positions[a+2])*(px-positions[c])+(positions[a]-positions[c])*(py-positions[c+2]))/denominator;
+ return chunk.originM.elevationM+u*positions[a+1]+v*positions[b+1]+(1-u-v)*positions[c+1];
+}
+function prepareMorph(entry,sources){
+ const {chunk,mesh}=entry,target=mesh.geometry.attributes.position.array.slice(),from=target.slice();
+ for(let i=0;i<from.length;i+=3){
+  const x=chunk.originM.xM+target[i],y=chunk.originM.yM+target[i+2];let previous=null;
+  for(const source of sources){previous=sampleDisplayed(source,x,y);if(previous!==null)break;}
+  if(previous!==null){const surface=chunk.sampleGround(x,y).elevationM;from[i+1]+=previous-surface;}
+ }
+ mesh.geometry.computeBoundingBox();const bounds=mesh.geometry.boundingBox.clone();
+ mesh.geometry.attributes.position.array.set(from);mesh.geometry.computeBoundingBox();mesh.geometry.boundingBox.union(bounds);mesh.geometry.boundingSphere=new THREE.Sphere();mesh.geometry.boundingBox.getBoundingSphere(mesh.geometry.boundingSphere);
+ entry.morph={from,target,elapsed:0};mesh.visible=false;
+}
+function positionTerrain(entry){const q=state.terrain.toLocal(entry.chunk.originM.xM,entry.chunk.originM.yM,entry.chunk.originM.elevationM,state.origin);entry.mesh.position.set(q.x,q.y,q.z);}
+function setNearHole(entry){
+ const c=state.nearCenter,x=entry.chunk.originM.xM,y=entry.chunk.originM.yM;
+ entry.hole.value.set((c.x-1)*64-x,(c.y-1)*64-y,(c.x+2)*64-x,(c.y+2)*64-y);
 }
 function refreshChunks(xM,yM){
+ const previousNear=[...state.entries,...state.fallback.values()];
  state.window.update(xM,yM);
- const lodKey=Math.floor(xM/64)+','+Math.floor(yM/64);
+ for(const e of state.entries){const key=e.chunk.tileX+','+e.chunk.tileY;if(state.fallback.has(key)){releaseMesh(state.fallback.get(key));state.fallback.delete(key);}}
+ const cx=Math.floor(xM/64),cy=Math.floor(yM/64),lodKey=cx+','+cy;
+ state.nearCenter={x:cx,y:cy};
  if(state.lodKey!==lodKey){
-  const plan=selectTerrainLOD(state.terrain,xM,yM),wanted=new Set(plan.map(q=>q.key));
-  for(const q of plan)if(!state.far.has(q.key)){const chunk=createTerrainChunk(state.terrain,q);if(chunk)state.far.set(q.key,makeTerrainMesh(chunk));}
-  for(const [key,entry]of state.far)if(!wanted.has(key)){releaseMesh(entry);state.far.delete(key);}
-  state.lodKey=lodKey;
+  state.morphSources=[...previousNear,...state.entries,...state.far.values()];
+  const plan=selectTerrainLOD(state.terrain,xM,yM);
+  plan.sort((a,b)=>Math.hypot((a.tileX+.5)*a.sizeM-xM,(a.tileY+.5)*a.sizeM-yM)-Math.hypot((b.tileX+.5)*b.sizeM-xM,(b.tileY+.5)*b.sizeM-yM));
+  state.work.request(plan);state.lodKey=lodKey;
  }
+ for(const entry of state.far.values())setNearHole(entry);
  const old=state.origin;
  if(Math.hypot(xM-old.xM,yM-old.yM)>512){
   const origin={xM:Math.floor(xM/64)*64,yM:Math.floor(yM/64)*64,elevationM:state.terrain.sampleBase(xM,yM).baseElevationM};
   overviewView.target.x-=origin.xM-old.xM;overviewView.target.z-=origin.yM-old.yM;overviewView.target.y-=origin.elevationM-old.elevationM;
   state.origin=origin;
  }
- for(const {chunk,mesh}of [...state.entries,...state.far.values()]){const q=state.terrain.toLocal(chunk.originM.xM,chunk.originM.yM,chunk.originM.elevationM,state.origin);mesh.position.set(q.x,q.y,q.z);}
+ for(const {chunk,mesh}of [...state.entries,...state.far.values(),...state.fallback.values()]){const q=state.terrain.toLocal(chunk.originM.xM,chunk.originM.yM,chunk.originM.elevationM,state.origin);mesh.position.set(q.x,q.y,q.z);}
  scene.updateMatrixWorld(true);
 }
 function showWorld(world,point,label){
@@ -157,8 +194,14 @@ function showWorld(world,point,label){
   const window=createChunkWindow(terrain,(tx,ty)=>{
     const chunk=createTerrainChunk(terrain,{tileX:tx,tileY:ty});if(!chunk)return null;
     return makeTerrainMesh(chunk);
-  },releaseMesh);
-  state={terrain,origin,window,far:new Map(),lodKey:'',get entries(){return window.entries;},label};
+  },entry=>{if(state&&!state.clearing){const key=entry.chunk.tileX+','+entry.chunk.tileY;if(state.fallback.has(key))releaseMesh(state.fallback.get(key));state.fallback.set(key,entry);}else releaseMesh(entry);});
+  state={terrain,origin,window,far:new Map(),fallback:new Map(),clearing:false,lodKey:'',nearCenter:{x:0,y:0},settle:.6,drawDirty:false,morphSources:[],lastJobs:0,get entries(){return window.entries;},label};
+  state.work=createTerrainWorkQueue({build:q=>{
+   const entry=makeTerrainMesh(createTerrainChunk(terrain,q),true);prepareMorph(entry,state.morphSources);positionTerrain(entry);setNearHole(entry);return entry;
+  },release:releaseMesh,commit:(next)=>{
+   state.drawDirty=true;state.far=next;for(const entry of next.values()){entry.mesh.visible=true;positionTerrain(entry);setNearHole(entry);}
+   for(const entry of state.fallback.values())releaseMesh(entry);state.fallback.clear();state.morphSources=[];
+  }});
   if(overview)overviewView.target.set(0,1.2,0);
   placeMarker(point.xM,point.yM);
   if(matchMedia('(orientation: landscape) and (max-height: 500px)').matches)document.getElementById('settings').open=false;
@@ -246,7 +289,7 @@ function pressAction(button,action){
 }
 pressAction(sprint,()=>setSprint(!sprintOn));
 const jumpButton=document.getElementById('jump'),crouchButton=document.getElementById('crouch');
-function toggleCrouch(){if(overview||jumpHeight>0||jumpVelocity!==0)return;crouched=!crouched;setSprint(false);crouchButton.classList.toggle('active',crouched);crouchButton.setAttribute('aria-pressed',String(crouched));}
+function toggleCrouch(){if(overview||jumpHeight>0||jumpVelocity!==0)return;crouched=!crouched;state.settle=.6;setSprint(false);crouchButton.classList.toggle('active',crouched);crouchButton.setAttribute('aria-pressed',String(crouched));}
 pressAction(crouchButton,toggleCrouch);
 function startJump(){if(!overview&&state&&!crouched&&jumpHeight===0&&jumpVelocity===0)jumpVelocity=5;}
 pressAction(jumpButton,startJump);
@@ -288,7 +331,19 @@ function frame(time){
     if(jumpHeight<=0){jumpHeight=0;jumpVelocity=0;landing=1;}
     marker.position.y=markerPoint.elevationM-state.origin.elevationM+jumpHeight;
   }
-  if(state&&!document.hidden&&!overview){animatePlayer(dt);updateCamera();}
+  if(state&&!document.hidden){
+    state.lastJobs=state.work.tick(3,2);let terrainChanged=state.drawDirty;state.drawDirty=false;
+    for(const entry of state.far.values())if(entry.morph){
+      terrainChanged=true;
+      const m=entry.morph;m.elapsed+=Math.min(dt,.05);const t=Math.min(1,m.elapsed/.35),blend=t*t*(3-2*t),positions=entry.mesh.geometry.attributes.position;
+      for(let i=1;i<m.target.length;i+=3)positions.array[i]=m.from[i]+(m.target[i]-m.from[i])*blend;
+      positions.needsUpdate=true;if(t===1)entry.morph=null;
+    }
+    if(wasMoving||jumpHeight>0||jumpVelocity!==0)state.settle=.6;
+    const animate=!overview&&state.settle>0;state.settle=Math.max(0,state.settle-Math.min(dt,.05));
+    if(animate)animatePlayer(dt);
+    if(animate||terrainChanged)updateCamera();
+  }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
