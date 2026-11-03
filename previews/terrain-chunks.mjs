@@ -1,6 +1,6 @@
 import {createWorldTerrain} from '../src/geography/world-terrain.mjs';
 import {createTerrainChunk} from '../src/geography/terrain-chunk.mjs';
-import {legPose} from '../src/player/leg-pose.mjs';
+import {humanGait,solveHumanLeg} from '../src/player/human-gait.mjs';
 import {stepTerrainWalker} from '../src/player/terrain-walker.mjs';
 
 const THREE=globalThis.THREE;
@@ -28,47 +28,52 @@ function cylinder(parent,length,topRadius,bottomRadius,x=0,y=-length/2,z=0){
   return bodyPart(parent,new THREE.CylinderGeometry(topRadius,bottomRadius,length,12),x,y,z);
 }
 const torso=joint(hips,'waist',0,0,0,.1);
-cylinder(torso,.52,.2,.14,0,.3);
-const neck=joint(torso,'neck',0,.61,0,.065);cylinder(neck,.08,.06,.06,0,.04);
-bodyPart(neck,new THREE.SphereGeometry(.17,16,12),0,.19,0);
+cylinder(torso,.44,.19,.14,0,.23);
+const neck=joint(torso,'neck',0,.48,0,.065);cylinder(neck,.08,.06,.06,0,.04);
+bodyPart(neck,new THREE.SphereGeometry(.15,16,12),0,.17,0);
 // A small nose makes the facing direction visible.
-bodyPart(neck,new THREE.SphereGeometry(.045,8,6),0,.19,.16);
+bodyPart(neck,new THREE.SphereGeometry(.035,8,6),0,.17,.145);
 const legs=[],knees=[],ankles=[],arms=[],elbows=[],wrists=[];
 for(const [side,x]of [['left',-.13],['right',.13]]){
-  const hip=joint(hips,side+'Hip',x,0,0,.08);cylinder(hip,.35,.075,.06);
-  const knee=joint(hip,side+'Knee',0,-.35,0,.065);cylinder(knee,.35,.06,.045);
-  const ankle=joint(knee,side+'Ankle',0,-.35,0,.045);
+  const hip=joint(hips,side+'Hip',x,0,0,.08);cylinder(hip,.42,.075,.06);
+  const knee=joint(hip,side+'Knee',0,-.42,0,.065);cylinder(knee,.42,.06,.045);
+  const ankle=joint(knee,side+'Ankle',0,-.42,0,.045);
   const foot=cylinder(ankle,.22,.035,.035,0,0,.065);foot.rotation.x=Math.PI/2;
   legs.push(hip);knees.push(knee);ankles.push(ankle);
-  const shoulder=joint(torso,side+'Shoulder',x<0?-.25:.25,.52,0,.065);cylinder(shoulder,.28,.055,.045);
+  const shoulder=joint(torso,side+'Shoulder',x<0?-.25:.25,.43,0,.065);cylinder(shoulder,.28,.055,.045);
   const elbow=joint(shoulder,side+'Elbow',0,-.28,0,.05);cylinder(elbow,.24,.045,.035);
   const wrist=joint(elbow,side+'Wrist',0,-.24,0,.038);cylinder(wrist,.1,.035,.03);
   arms.push(shoulder);elbows.push(elbow);wrists.push(wrist);
 }
-let crouched=false,gaitPhase=0,gaitDistance=0,motionMode='idle';
+let crouched=false,gaitPhase=0,gaitDistance=0,motionMode='idle',landing=0;
 function animatePlayer(dt){
-  const airborne=jumpHeight>0||jumpVelocity!==0;
-  motionMode=airborne?(wasMoving?(sprintOn?'run-jump':'walk-jump'):'jump'):
-    crouched?(wasMoving?'crouch-walk':'crouch'):wasMoving?(sprintOn?'run':'walk'):'idle';
-  const blend=dt>0?1-Math.exp(-16*Math.min(dt,.05)):1;
-  const ease=(current,target)=>current+(target-current)*blend;
-  const stepLength=crouched?.12:sprintOn?.35:.23;
-  const liftHeight=crouched?.07:sprintOn?.26:.14;
-  if(wasMoving&&!airborne)gaitPhase+=gaitDistance/(4*stepLength);
-  gaitDistance=0;
-  const hipTarget=airborne?.735:crouched?.49:wasMoving?(sprintOn?.59:.66):.735;
-  hips.position.y=ease(hips.position.y,hipTarget);
-  for(let i=0;i<2;i++){
-    const pose=legPose(gaitPhase+i*.5,hips.position.y,wasMoving?stepLength:0,wasMoving?liftHeight:0);
-    legs[i].rotation.x=airborne?-.45+(i?.15:0):pose.hip;
-    knees[i].rotation.x=airborne?.9:pose.knee;
-    const wave=wasMoving?Math.sin((gaitPhase+i*.5)*Math.PI*2)*(sprintOn?.8:.4):0;
-    arms[i].rotation.x=ease(arms[i].rotation.x,airborne?-1.1:wave+(crouched?-.45:0));
-    elbows[i].rotation.x=ease(elbows[i].rotation.x,airborne?-1:crouched?-.7:sprintOn&&wasMoving?-1.3:-.18);
-    wrists[i].rotation.x=ease(wrists[i].rotation.x,airborne?-.15:0);
-    ankles[i].rotation.x=airborne?.1:-(legs[i].rotation.x+knees[i].rotation.x);
+ const airborne=jumpHeight>0||jumpVelocity!==0,step=Math.min(dt,.05);
+ motionMode=airborne?(wasMoving?(sprintOn?'run-jump':'walk-jump'):'jump'):
+  crouched?(wasMoving?'crouch-walk':'crouch'):wasMoving?(sprintOn?'run':'walk'):'idle';
+ const ease=(a,b)=>a+(b-a)*(dt>0?1-Math.exp(-18*step):1);
+ const mode=crouched?'crouch-walk':sprintOn?'run':'walk';
+ if(wasMoving&&!airborne)gaitPhase+=gaitDistance*humanGait(gaitPhase,mode).cyclesPerMeter;
+ gaitDistance=0;landing=Math.max(0,landing-step*4);
+ const gait=humanGait(gaitPhase,mode),groundHip=crouched?.59:wasMoving?gait.hip:.875;
+ hips.position.y=ease(hips.position.y,(airborne?.86:groundHip)-.07*landing);
+ for(let i=0;i<2;i++){
+  const foot=gait.feet[i];let z=wasMoving?foot.z:0,lift=wasMoving?foot.lift:0,delta=0;
+  if(state&&markerPoint&&!airborne){
+    const side=i===0?-.13:.13,theta=marker.rotation.y;
+    const g=groundAt(markerPoint.xM+side*Math.cos(theta)+z*Math.sin(theta),markerPoint.yM-side*Math.sin(theta)+z*Math.cos(theta));
+    if(g)delta=Math.max(-.12,Math.min(.12,g.elevationM-markerPoint.elevationM));
   }
-  torso.rotation.x=ease(torso.rotation.x,crouched?.3:sprintOn&&wasMoving?.12:0);
+  const pose=solveHumanLeg(z,hips.position.y-.035-lift-delta);
+  legs[i].rotation.x=airborne?ease(legs[i].rotation.x,-.35+(i?.18:0)):pose.hip;
+  knees[i].rotation.x=airborne?ease(knees[i].rotation.x,.8):pose.knee;
+  const swing=wasMoving?Math.cos((gaitPhase+i*.5)*Math.PI*2)*(sprintOn?.65:.30):0;
+  arms[i].rotation.x=ease(arms[i].rotation.x,airborne?-.65:swing+(crouched?-.25:0));
+  elbows[i].rotation.x=ease(elbows[i].rotation.x,airborne?-.9:sprintOn&&wasMoving?-1.35:crouched?-.75:-.25);
+  wrists[i].rotation.x=ease(wrists[i].rotation.x,-.05);
+  ankles[i].rotation.x=ease(ankles[i].rotation.x,airborne?.15:-(legs[i].rotation.x+knees[i].rotation.x)+(wasMoving?foot.toe:0));
+ }
+ torso.rotation.x=ease(torso.rotation.x,crouched?.35:wasMoving?(sprintOn?.16:.04):0);
+ torso.rotation.y=ease(torso.rotation.y,wasMoving?Math.sin(gaitPhase*Math.PI*2)*.065:0);
 }
 scene.add(marker);
 let state=null,worker=null,requestId=0,yaw=.7,pitch=.4;
@@ -247,13 +252,13 @@ function frame(time){
       const next=stepTerrainWalker(markerPoint,{x,y,yaw,sprint:sprintOn,crouch:crouched},dt,groundAt);
       const dx=next.xM-markerPoint.xM,dy=next.yM-markerPoint.yM;
       wasMoving=Math.hypot(dx,dy)>0;if(!wasMoving)setSprint(false);
-      if(wasMoving){gaitDistance+=Math.hypot(dx,dy);marker.rotation.y=Math.atan2(dx,dy);placeMarker(next.xM,next.yM,false);}
+      if(wasMoving){gaitDistance+=Math.hypot(dx,dy);{const target=Math.atan2(dx,dy),delta=Math.atan2(Math.sin(target-marker.rotation.y),Math.cos(target-marker.rotation.y));marker.rotation.y+=delta*(1-Math.exp(-18*Math.min(dt,.05)));}placeMarker(next.xM,next.yM,false);}
       document.getElementById('movementNotice').textContent=next.blocked?'ここから先は範囲外、または急な地形です':'';
     }else{if(wasMoving)setSprint(false);wasMoving=false;document.getElementById('movementNotice').textContent='';}
   }
   if(state&&markerPoint&&!overview&&!document.hidden&&(jumpVelocity!==0||jumpHeight>0)){
     const step=Math.min(dt,.05);jumpHeight+=jumpVelocity*step-4.905*step*step;jumpVelocity-=9.81*step;
-    if(jumpHeight<=0){jumpHeight=0;jumpVelocity=0;}
+    if(jumpHeight<=0){jumpHeight=0;jumpVelocity=0;landing=1;}
     marker.position.y=markerPoint.elevationM-state.origin.elevationM+jumpHeight;
   }
   if(state&&!document.hidden&&!overview){animatePlayer(dt);updateCamera();}
