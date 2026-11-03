@@ -1,4 +1,5 @@
 import {createWorldTerrain} from '../src/geography/world-terrain.mjs';
+import {createChunkWindow} from '../src/geography/chunk-window.mjs';
 import {createTerrainChunk} from '../src/geography/terrain-chunk.mjs';
 import {humanGait,solveHumanLeg} from '../src/player/human-gait.mjs';
 import {stepTerrainWalker} from '../src/player/terrain-walker.mjs';
@@ -101,7 +102,7 @@ function updateCamera(){
 function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();updateCamera();}
 function clearTerrain(){
   resetInput();crouched=false;crouchButton.classList.remove('active');crouchButton.setAttribute('aria-pressed','false');markerPoint=null;jumpHeight=0;jumpVelocity=0;
-  if(state)for(const {mesh}of state.entries){scene.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();}
+  if(state)state.window.clear();
   state=null;marker.visible=false;
 }
 function groundAt(xM,yM){
@@ -110,6 +111,8 @@ function groundAt(xM,yM){
   return null;
 }
 function placeMarker(xM,yM,render=true){
+  if(!state||xM<0||yM<0||xM>state.terrain.widthM||yM>state.terrain.heightM)return;
+  refreshChunks(xM,yM);
   const p=groundAt(xM,yM);if(!p)return;
   markerPoint={xM,yM,elevationM:p.elevationM};
   const q=state.terrain.toLocal(xM,yM,p.elevationM,state.origin);
@@ -117,13 +120,23 @@ function placeMarker(xM,yM,render=true){
   status.textContent=`${state.label}｜標高 ${p.elevationM.toFixed(2)}m・斜面 ${p.slopeDegrees.toFixed(1)}°｜${state.entries.length}チャンク`;
   if(render)updateCamera();
 }
+function refreshChunks(xM,yM){
+ state.window.update(xM,yM);
+ const old=state.origin;
+ if(Math.hypot(xM-old.xM,yM-old.yM)>512){
+  const origin={xM:Math.floor(xM/64)*64,yM:Math.floor(yM/64)*64,elevationM:state.terrain.sampleBase(xM,yM).baseElevationM};
+  overviewView.target.x-=origin.xM-old.xM;overviewView.target.z-=origin.yM-old.yM;overviewView.target.y-=origin.elevationM-old.elevationM;
+  state.origin=origin;
+ }
+ for(const {chunk,mesh}of state.entries){const q=state.terrain.toLocal(chunk.originM.xM,chunk.originM.yM,chunk.originM.elevationM,state.origin);mesh.position.set(q.x,q.y,q.z);}
+ scene.updateMatrixWorld(true);
+}
 function showWorld(world,point,label){
   clearTerrain();
   const terrain=createWorldTerrain(world),p=terrain.sampleBase(point.xM,point.yM);
-  const origin={...point,elevationM:p.baseElevationM},entries=[];
-  const cx=Math.floor(point.xM/64),cy=Math.floor(point.yM/64);
-  for(let ty=Math.max(0,cy-1);ty<=cy+1;ty++)for(let tx=Math.max(0,cx-1);tx<=cx+1;tx++){
-    const chunk=createTerrainChunk(terrain,{tileX:tx,tileY:ty});if(!chunk)continue;
+  const origin={...point,elevationM:p.baseElevationM};
+  const window=createChunkWindow(terrain,(tx,ty)=>{
+    const chunk=createTerrainChunk(terrain,{tileX:tx,tileY:ty});if(!chunk)return null;
     const geometry=new THREE.BufferGeometry();
     geometry.setAttribute('position',new THREE.BufferAttribute(chunk.positions,3));
     geometry.setAttribute('normal',new THREE.BufferAttribute(chunk.normals,3));
@@ -131,15 +144,17 @@ function showWorld(world,point,label){
     const material=new THREE.MeshLambertMaterial({color:((tx+ty)%2)?0x789c5f:0x72945b,
       wireframe:document.getElementById('wire').checked});
     const mesh=new THREE.Mesh(geometry,material),o=terrain.toLocal(chunk.originM.xM,chunk.originM.yM,chunk.originM.elevationM,origin);
-    mesh.position.set(o.x,o.y,o.z);scene.add(mesh);entries.push({chunk,mesh});
-  }
-  state={terrain,origin,entries,label};if(overview){overviewView.target.set(0,1.2,0);}scene.updateMatrixWorld(true);placeMarker(point.xM,point.yM);
+    mesh.position.set(o.x,o.y,o.z);scene.add(mesh);return {chunk,mesh};
+  },({mesh})=>{scene.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();});
+  state={terrain,origin,window,get entries(){return window.entries;},label};
+  if(overview)overviewView.target.set(0,1.2,0);
+  placeMarker(point.xM,point.yM);
   if(matchMedia('(orientation: landscape) and (max-height: 500px)').matches)document.getElementById('settings').open=false;
 }
 function cancelGeneration(){requestId++;if(worker){worker.terminate();worker=null;}generateButton.disabled=false;}
 function showFixture(){
   cancelGeneration();
-  const width=17,height=17,n=width*height;
+  const width=129,height=129,n=width*height;
   const world={stats:{width,height},geology:{kmPerBlock:.016},elev:new Float32Array(n),
     type:new Uint8Array(n).fill(1),water:new Uint8Array(n),biome:new Uint8Array(n).fill(4)};
   for(let y=0;y<height;y++)for(let x=0;x<width;x++)world.elev[y*width+x]=100+x*.4+y*.2+2*Math.sin(x*.7)*Math.cos(y*.6);
