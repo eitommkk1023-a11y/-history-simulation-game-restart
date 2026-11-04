@@ -144,6 +144,31 @@
       const x = months * intensity * (0.5 + learn / 255) * (1 - s / 255) * (a < 16 ? 0.5 : a < 50 ? 1 : 0.6);
       this.skills[i * NSKILL + skill] = Math.min(255, s + this._round(x));
     }
+    // 世界の開始時：初期の人々が「それまでの人生」で身につけた職業・技能・訓練を、年齢から一括で決める（世界の生成中に1回だけ）。
+    // 14歳から今までの月数ぶん、毎月の成長式を指数関数で積んだもの。引退済みの高齢者も含む
+    initFounders() {
+      const segs = [[14, 16, 0.5, 0.5, 1], [16, 30, 1, 1, 1], [30, 50, 1, 1, 0.6], [50, 60, 0.6, 1, 0.3]];   // [始め,終わり歳, 技能の速さ, 訓練の速さ, 訓練の年齢係数]
+      for (let i = 0; i < this.n; i++) {
+        if (this.death[i] !== ALIVE || this.flags[i] & 4) continue;
+        const a = this.age(i); if (a < 14) continue;
+        this._fillGen(i); this.flags[i] |= 4;
+        const j = this.pickJob(i); if (!j) continue;
+        this._setJob(i, j);
+        const learn = this.base(i, SI['学習力']) / 255;
+        // 今の職業に就いてからの年数：転職は年約2.4%（月0.2%）の確率で起こるので、勤続年数は指数分布
+        const til = Math.min(a, 60, 14 + (a < 50 ? -Math.log(1 - this.random()) / 0.024 : 1e9));
+        let u = 255;   // 技能の「伸びしろ」255−s
+        for (const [s0, s1, rs] of segs) { if (til <= s0) break; const m = (Math.min(til, s1) - s0) * 12; u *= Math.exp(-rs * (0.5 + learn) * m / 255); }
+        this.skills[i * NSKILL + j - 1] = Math.min(255, this._round(255 - u));
+        for (const [k, w] of JOBS[j].train) {
+          const ab = k - NP, b0 = this.base(i, k), pot = this.potential(i, ab);
+          let uu = 255 - b0;
+          for (const [s0, s1, , rt, ag] of segs) { if (til <= s0) break; const m = (Math.min(til, s1) - s0) * 12; uu *= Math.exp(-0.1 * w * rt * ag * (0.5 + pot / 255) * m / 255); }
+          this.train[i * NABIL + ab] = Math.min(127, Math.max(0, this._round(255 - b0 - uu)));
+        }
+        if (a >= 60 && this.random() < 1 - Math.pow(0.97, (a - 60) * 12)) { this._setJob(i, 0); this.flags[i] |= 8; }   // 引退
+      }
+    }
     // 年間の死亡率（昔の社会のたたき台。乳児20%・成人は加齢で急上昇）
     static qDeath(a) { return a < 1 ? 0.20 : a < 5 ? 0.04 : a < 15 ? 0.008 : 0.005 + 0.0003 * Math.exp(0.09 * a); }
     _die(i) { this.death[i] = this.day; this.stats.deaths++; this._setJob(i, 0); const s = this.spouse[i]; if (s !== NONE && this.spouse[s] === i) this.spouse[s] = NONE; this.spouse[i] = NONE; }

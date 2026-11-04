@@ -7,10 +7,13 @@ function make(n, seed) {
   const P = new Population(seed, GROUPS, n * 2);
   for (let g = 0; g < GROUPS; g++) { const r = P.random(); P.setGroup(g, r < .25 ? { fish: .5, gather: .2, hunt: .2 } : r < .5 ? { farm: 1, gather: .15, hunt: .1, fish: .05, herd: r < .35 ? 1 : 0, trade: r < .4 ? 1 : 0 } : r < .75 ? { hunt: .5, gather: .3, fish: .05 } : {}); }
   for (let i = 0; i < n; i++) P.addFounder(i % GROUPS, Math.min(70, -Math.log(1 - P.random()) * 22));
+  const t0 = Date.now(); P.initFounders(); P.initMs = Date.now() - t0;
   return P;
 }
 const m0 = mem(); const P = make(N, 42);
-console.log(`人数 ${N} 民族 ${GROUPS}`);
+console.log(`人数 ${N} 民族 ${GROUPS} ／開始時の職業・技能の一括決定 ${P.initMs}ms`);
+{ const bands0 = [[14, 20], [20, 30], [30, 45], [45, 60], [60, 80]]; console.log('開始時：本業の技能の平均（年齢帯、人数）：' + bands0.map(([a, b]) => { let s = 0, c = 0; for (let i = 0; i < P.n; i++) { if (!P.job[i]) continue; const x = P.age(i); if (x < a || x >= b) continue; s += P.skills[i * NSKILL + P.job[i] - 1]; c++; } return `${a}-${b}歳 ${(s / Math.max(1, c)).toFixed(0)}(${c})`; }).join(' / ')); let w = 0, r = 0; for (let i = 0; i < P.n; i++) { if (P.job[i]) w++; else if (P.age(i) >= 60) r++; } console.log(`開始時：働く人 ${w}／引退 ${r}／14歳未満 ${P.n - w - r}`); }
+
 const yrs = [];
 for (let y = 1; y <= YEARS; y++) { const t = Date.now(); P.stepYear(); const ms = Date.now() - t; yrs.push(ms); if (y === 1 || y % 10 === 0) console.log(`${y}年目 ${ms}ms 生存${P.livingCount()} 累計ID${P.n}`); }
 const m2 = mem(); console.log(`進行後 配列${mb(m2.ab - m0.ab)}MB RSS${mb(m2.rss)}MB ／1年あたり平均${(yrs.reduce((a, b) => a + b, 0) / yrs.length).toFixed(0)}ms 最大${Math.max(...yrs)}ms`);
