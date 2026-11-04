@@ -5002,6 +5002,7 @@ let world = null;   // 現在の世界データ（elev, type, regionId, mtnId, s
 
 let lakeId = null, lakeLevels = null;
 function heightAt(elev, fx, fy) {
+  if(window.__wohOverviewHeight&&world)return window.__wohOverviewHeight(world,fx,fy);
   // 表示用の高さ：周辺を平均してエイリアシングを抑える
   const step = W / MESH_RES;
   const r = Math.max(1, Math.floor(step / 2));
@@ -5326,6 +5327,7 @@ function updateCamera() {
     cam.tx + cam.dist * cp * Math.sin(cam.yaw),
     cam.dist * sp,
     cam.tz + cam.dist * cp * Math.cos(cam.yaw));
+  const wohMapMarker=window.__wohNative?.positionMarker;if(wohMapMarker)wohMapMarker.scale.setScalar(Math.max(.03,Math.min(1,cam.dist/3500)));
   camera.lookAt(cam.tx, 0, cam.tz);
   requestRender();
 }
@@ -7134,6 +7136,7 @@ function serializeState() {
     };
   }
   st.player = window.__wohPlayerSave ? window.__wohPlayerSave() : null;
+  st.playableSurfaceVersion = window.__wohSurfaceVersion || null;
   return st;
 }
 function applyState(st) {

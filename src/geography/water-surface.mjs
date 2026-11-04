@@ -1,9 +1,10 @@
 /** Known sea/lake levels only; geography and saved data are read-only. */
 export function createWaterSurface(terrain,world){
+ const toMeters=terrain.elevationToMeters??(e=>e*(terrain.elevationScale??1));
  function nodeLevel(x,y){
   const i=y*terrain.width+x,id=world.lakeId?.[i];
   if(world.type[i]===0)return {surfaceM:0,kind:'sea'};
-  if(world.water[i]===2&&id>0&&Number.isFinite(world.lakeLevels?.[id]))return {surfaceM:world.lakeLevels[id]*(terrain.elevationScale??1),kind:'lake'};
+  if(world.water[i]===2&&id>0&&Number.isFinite(world.lakeLevels?.[id]))return {surfaceM:toMeters(world.lakeLevels[id]),kind:'lake'};
   if(world.water[i])return null;
   // Extend only the local water candidate footprint. Terrain depth still defines the shore.
   const candidates=[];
@@ -11,7 +12,7 @@ export function createWaterSurface(terrain,world){
    const gx=x+dx,gy=y+dy;if(gx<0||gy<0||gx>=terrain.width||gy>=terrain.height)continue;
    const k=gy*terrain.width+gx,lake=world.lakeId?.[k];
    if(world.type[k]===0)candidates.push({surfaceM:0,kind:'sea'});
-   else if(world.water[k]===2&&lake>0&&Number.isFinite(world.lakeLevels?.[lake]))candidates.push({surfaceM:world.lakeLevels[lake]*(terrain.elevationScale??1),kind:'lake'});
+   else if(world.water[k]===2&&lake>0&&Number.isFinite(world.lakeLevels?.[lake]))candidates.push({surfaceM:toMeters(world.lakeLevels[lake]),kind:'lake'});
   }
   if(!candidates.length||candidates.some(p=>p.surfaceM!==candidates[0].surfaceM||p.kind!==candidates[0].kind))return null;
   return candidates[0];

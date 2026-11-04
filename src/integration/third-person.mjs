@@ -2,13 +2,15 @@ import {installGameHUD} from './game-hud.mjs';
 import {createWaterSurface} from '../geography/water-surface.mjs';
 import {seamGeometry} from '../geography/terrain-seams.mjs';
 import {createTerrainWorkQueue} from '../geography/terrain-work-queue.mjs';
-import {createPlayableTerrain,playerFromSource,playerToSource} from './playable-scale.mjs';
+import {createPlayableTerrain,playerFromSource,playerToSource,playableOverviewHeight,PLAYABLE_SURFACE_VERSION} from './playable-scale.mjs';
 import {selectTerrainLOD} from '../geography/terrain-lod.mjs';
 import {createChunkWindow} from '../geography/chunk-window.mjs';
 import {createTerrainChunk} from '../geography/terrain-chunk.mjs';
 import {humanGait,solveHumanLeg} from '../player/human-gait.mjs';
 import {stepTerrainWalker} from '../player/terrain-walker.mjs';
 
+globalThis.__wohOverviewHeight=playableOverviewHeight;
+globalThis.__wohSurfaceVersion=PLAYABLE_SURFACE_VERSION;
 const THREE=globalThis.THREE;
 if(!THREE)throw new Error('描画ライブラリを読み込めませんでした。通信を確認してください。');
 const status=document.getElementById('status'),generateButton=document.getElementById('generate');
@@ -249,7 +251,7 @@ function findDryPoint(terrain,world){
     }
     if(!dry)continue;
     const p=terrain.sampleBase(point.xM,point.yM);
-    if(p.baseElevationM>10*terrain.elevationScale && p.baseElevationM<1800*terrain.elevationScale && p.slopeDegrees<15){best=point;bestDistance=distance;}
+    if(p.baseElevationM>terrain.elevationToMeters(10) && p.baseElevationM<terrain.elevationToMeters(1800) && p.slopeDegrees<15){best=point;bestDistance=distance;}
   }
   if(best)return best;
   throw new Error('検証用の乾いた地点が見つかりません。別のSeedを試してください。');
@@ -370,7 +372,7 @@ renderer.domElement.addEventListener('pointerdown',e=>{
 renderer.domElement.addEventListener('pointermove',e=>{
   if(!drag||drag.id!==e.pointerId)return;
   if(overview&&state?.map){state.map.cam.yaw-=(e.clientX-drag.x)*.006;state.map.cam.pitch+=(e.clientY-drag.y)*.005;}
-  else{yaw-=(e.clientX-drag.x)*.006;pitch=Math.max(.15,Math.min(1.4,pitch+(e.clientY-drag.y)*.005));}
+  else{yaw-=(e.clientX-drag.x)*.006;pitch=Math.max(-.15,Math.min(1.4,pitch+(e.clientY-drag.y)*.005));}
   drag.x=e.clientX;drag.y=e.clientY;updateCamera();
 });
 for(const event of ['pointerup','pointercancel','lostpointercapture'])renderer.domElement.addEventListener(event,e=>{if(drag?.id===e.pointerId)drag=null;});
@@ -378,7 +380,7 @@ document.getElementById('distance').oninput=e=>{if(overview){bridge.cam.dist=Num
 window.addEventListener('resize',resize);
 window.visualViewport?.addEventListener('resize',resize);
 // The preview's diagnostic state supports inspection of the rendered ground surface.
-globalThis.__chunkPreview={get character(){return marker;},get camera(){return overview&&state?.map?state.map.camera:camera;},get motion(){return {mode:motionMode,leg:legs[0].rotation.x,hip:hips.position.y};},get air(){return {height:jumpHeight,velocity:jumpVelocity};},get view(){return {overview,yaw,pitch,target:state?.map?[state.map.cam.tx,0,state.map.cam.tz]:[0,0,0]};},get state(){return state;},get markerPoint(){return markerPoint;},groundAt,placeMarker};
+globalThis.__chunkPreview={get character(){return marker;},get camera(){return overview&&state?.map?state.map.camera:camera;},get motion(){return {mode:motionMode,leg:legs[0].rotation.x,hip:hips.position.y};},get air(){return {height:jumpHeight,velocity:jumpVelocity};},get view(){return {overview,yaw,pitch,target:state?.map?[state.map.cam.tx,0,state.map.cam.tz]:[0,0,0]};},get state(){return state;},get markerPoint(){return markerPoint;},groundAt,placeMarker,lookAt(xM,yM){if(!markerPoint)return;yaw=Math.atan2(markerPoint.xM-xM,markerPoint.yM-yM);pitch=-.05;updateCamera();}};
 function adoptNativeWorld(){
  const world=bridge.world;if(!world)return;
  const terrain=createPlayableTerrain(world),saved=playerFromSource(bridge.pendingPlayer);
