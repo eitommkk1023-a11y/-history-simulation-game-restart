@@ -3,3 +3,5 @@ export { computeMassProperties } from './mass.mjs';
 export { createShip, withMassItems } from './ship-model.mjs';
 export { analyzeHydrostatics, equilibriumAtHeel, submergedVolume, waterNormal, WATER_DENSITY } from './hydrostatics.mjs';
 export { createFloodingModel } from './flooding.mjs';
+export { deriveHullParams } from './hull-params.mjs';
+export { createVessel, heelFromMoment, SAIL_TYPES } from './dynamics.mjs';
