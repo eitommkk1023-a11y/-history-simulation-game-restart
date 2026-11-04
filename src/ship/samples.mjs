@@ -52,3 +52,16 @@ export function galleyMassItems() {
     { id: 'gear-stores', massKg: 4000, x: 18, y: 0, z: 0.8 },
   ];
 }
+
+/** Plain-data designs (JSON-safe) for the fleet. Placeholder values, NOT historical specifications. */
+export const sampleDesigns = Object.freeze({
+  galleon: Object.freeze({
+    hull: galleonLikeHull(), massItems: galleonLikeMassItems(),
+    sails: [{ id: 'main', type: 'foreAndAft', areaM2: 500, x: 21, zCe: 12 }], rudder: { x: 0.5, areaM2: 6 },
+    openings: [{ id: 'gunport', x: 20, y: 5.3, z: 5.2 }],
+  }),
+  galley: Object.freeze({
+    hull: galleyHull(), massItems: galleyMassItems(), sails: [], rudder: { x: 0.5, areaM2: 1.5 },
+    oars: [{ id: 'P', side: 'port', rowers: 50, x: 18 }, { id: 'S', side: 'starboard', rowers: 50, x: 18 }],
+  }),
+});

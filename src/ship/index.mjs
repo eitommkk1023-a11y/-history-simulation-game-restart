@@ -6,3 +6,5 @@ export { createFloodingModel } from './flooding.mjs';
 export { deriveHullParams } from './hull-params.mjs';
 export { createVessel, heelFromMoment, SAIL_TYPES, SEABED } from './dynamics.mjs';
 export { createWorldEnvironment } from './world-environment.mjs';
+export { createFleet, LOD } from './fleet.mjs';
+export { buildHullMesh } from './hull-mesh.mjs';
