@@ -13,7 +13,7 @@ export function rockFlowRouting(z,land,W,H,dx){
  while(size){const i=pop(),x=i%W,y=Math.floor(i/W);for(let yy=-1;yy<=1;yy++)for(let xx=-1;xx<=1;xx++){if(!xx&&!yy)continue;const X=x+xx,Y=y+yy;if(X<0||Y<0||X>=W||Y>=H)continue;const j=Y*W+X;if(seen[j])continue;seen[j]=1;receiver[j]=i;filled[j]=Math.max(z[j],filled[i]);push(j,filled[j]);}}
  // Prefer a true downhill direction where available; retain the acyclic flood parent on flats.
  const slope=new Float64Array(N),direction=new Float64Array(N);
- for(let i=0;i<N;i++)if(land[i]){if(receiver[i]===-2){slope[i]=Math.max(0,z[i]/dx);continue;}const x=i%W,y=Math.floor(i/W);let best=0,q=receiver[i];for(let yy=-1;yy<=1;yy++)for(let xx=-1;xx<=1;xx++){if(!xx&&!yy)continue;const X=x+xx,Y=y+yy;if(X<0||Y<0||X>=W||Y>=H)continue;const j=Y*W+X;if(!land[j])continue;const s=(filled[i]-filled[j])/(dx*Math.hypot(xx,yy));if(s>best+1e-14){best=s;q=j;}}
+ for(let i=0;i<N;i++)if(land[i]){if(receiver[i]===-2){const x=i%W,y=Math.floor(i/W);let edgeSlope=0;for(let yy=-1;yy<=1;yy++)for(let xx=-1;xx<=1;xx++){if(!xx&&!yy)continue;const X=x+xx,Y=y+yy;if(X<0||Y<0||X>=W||Y>=H)continue;const j=Y*W+X;edgeSlope=Math.max(edgeSlope,(land[j]?z[j]-z[i]:z[i]-z[j])/(dx*Math.hypot(xx,yy)));}slope[i]=edgeSlope;continue;}const x=i%W,y=Math.floor(i/W);let best=0,q=receiver[i];for(let yy=-1;yy<=1;yy++)for(let xx=-1;xx<=1;xx++){if(!xx&&!yy)continue;const X=x+xx,Y=y+yy;if(X<0||Y<0||X>=W||Y>=H)continue;const j=Y*W+X;if(!land[j])continue;const s=(filled[i]-filled[j])/(dx*Math.hypot(xx,yy));if(s>best+1e-14){best=s;q=j;}}
   receiver[i]=q;if(q>=0){const xx=q%W-x,yy=Math.floor(q/W)-y;slope[i]=Math.max(0,(z[i]-z[q])/(dx*Math.hypot(xx,yy)));direction[i]=Math.atan2(yy,xx);}else slope[i]=Math.max(0,z[i]/dx);
  }
  const indegree=new Uint8Array(N),queue=new Int32Array(N);let head=0,tail=0;for(let i=0;i<N;i++)if(receiver[i]>=0)indegree[receiver[i]]++;for(let i=0;i<N;i++)if(land[i]&&!indegree[i])queue[tail++]=i;
@@ -47,8 +47,9 @@ export function evolveRockTerrain(input,options={}){
    const anisotropy=intervention.uniform?.15:ROCKS[id].joints.style==='fissile'||ROCKS[id].joints.style==='foliated'||ROCKS[id].joints.style==='cleavage'?.6:ROCKS[id].joints.style==='bedded'?.35:.1;
    const friction=p.frictionDegrees*Math.PI/180*(1-anisotropy*alignment*Math.sin(layers.dipRadians[i])),drive=p.densityKgM3*9.81*failureDepth*Math.sin(angle)*Math.cos(angle);
    const fs=drive>1e-6?(p.cohesionPa+Math.max(0,normal-pore)*Math.tan(friction))/drive:100;
-   stability[i]=Math.min(100,fs);const failure=Math.max(0,1-fs)*.0002*dt;
-   const weatherDepth=(p.weatheringMPerYear*dt+failure)*Math.exp(-cover/.7);soil[i]+=remove(i,weatherDepth,p,'weather');
+   stability[i]=Math.min(100,fs);const weatherRate=p.weatheringMPerYear+Math.max(0,1-fs)*.0002,bulkRatio=p.densityKgM3/rhoSoil;
+   // Exact local integration of soil shielding: d(soil depth)/dt = density ratio * rate * exp(-cover/0.7).
+   const weatherDepth=.7/bulkRatio*Math.log1p(bulkRatio*weatherRate*dt/.7*Math.exp(-cover/.7));soil[i]+=remove(i,weatherDepth,p,'weather');
    if(exposedRockId(layers,remaining,top,i)!==id){p=props(i);id=exposedRockId(layers,remaining,top,i);}cover=soil[i]/(A*rhoSoil);
    const contact=I+B*.1,capacity=contact*A*dt*p.solubilityKgM3,kinetic=p.dissolutionKineticMPerYear*dt*contact/(contact+.1)*Math.exp(-cover/2),chemicalDepth=Math.min(kinetic,capacity/(A*p.densityKgM3));
    solute[i]+=remove(i,chemicalDepth,p,'dissolved');

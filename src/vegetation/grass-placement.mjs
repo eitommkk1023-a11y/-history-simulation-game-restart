@@ -11,7 +11,7 @@ export function* grassCandidates(terrain,groundAt,centerX,centerY,seed,type=SHOR
   const rnd=c=>grassRandom(hash,ix,iy,c),xM=(ix+.15+.7*rnd(1))*spacing,yM=(iy+.15+.7*rnd(2))*spacing;
   if(xM<0||yM<0||xM>terrain.widthM||yM>terrain.heightM||Math.hypot(xM-centerX,yM-centerY)>radius){yield null;continue;}
   const p=sample(xM,yM),density=grassDensityForBiome(p.biome);
-  if(!density||rnd(3)>density||!p.land||p.water||p.baseElevationM<.25||p.slopeDegrees>type.maxSlopeDegrees){yield null;continue;}
+  if((p.rockExposure>.65&&p.soilDepthM<.2)||!density||rnd(3)>density||!p.land||p.water||p.baseElevationM<.25||p.slopeDegrees>type.maxSlopeDegrees){yield null;continue;}
   const g=groundAt(xM,yM);
   if(!g||g.slopeDegrees>type.maxSlopeDegrees||(g.waterDepthM??0)>0||(g.waterSurfaceM!=null&&g.elevationM<g.waterSurfaceM+.15)){yield null;continue;}
   yield {key:type.id+':'+ix+','+iy,xM,yM,elevationM:g.elevationM,heightM:type.minHeightM+(type.maxHeightM-type.minHeightM)*rnd(4),yaw:rnd(5)*Math.PI*2,widthScale:.8+.4*rnd(6),shade:.85+.15*rnd(7)};

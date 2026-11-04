@@ -1,0 +1,30 @@
+import {readFile} from 'node:fs/promises';
+export async function integrateRocks(html,root){
+ const read=p=>readFile(new URL(p,root),'utf8'),flatten=s=>s.replace(/^import .*;\r?\n/gm,'').replace(/^export /gm,'');
+ const core=(await Promise.all(['catalog','layers','evolution','world-rocks'].map(n=>read('src/rocks/'+n+'.mjs')))).map(flatten).join('\n');
+ const patch=(a,b)=>{if(!html.includes(a))throw Error('Missing rock integration anchor '+a.slice(0,100));html=html.replace(a,()=>b);};
+ patch('<script id="generator-src"','<script id="rock-src" type="text/plain">\n'+core+'\n</script>\n<script id="generator-src"');
+ patch('function generateWorld(seed, report) {','function generateWorld(seed, report, rockVersion = ROCK_PROFILE) {');
+ patch('  const clim = generateClimate(seed, type, elev, progress);','  let clim = generateClimate(seed, type, elev, progress);\n  const rocks = rockVersion === ROCK_PROFILE ? generateRockWorld(seed, ter, tec, clim, W, H, progress) : null;\n  if (rocks) clim = generateClimate(seed, type, elev, progress);');
+ patch('  delete ter.featuresForResources;','  delete ter.featuresForResources;\n  finalizeRockSurface(rocks, elev, type, W, H);');
+ patch('    elev, type, regionId, mtnId, seaId: seas.seaId, biome: clim.biome,','    elev, type, regionId, mtnId, rocks, seaId: seas.seaId, biome: clim.biome,');
+ patch('      version: GEN_VERSION,','      version: rocks ? 12 : GEN_VERSION,');
+ patch('  const { id, seed } = e.data;','  const { id, seed, rockVersion } = e.data;');
+ patch("const w = generateWorld(seed >>> 0, (stage) => self.postMessage({ id, kind: 'progress', stage }));","const w = generateWorld(seed >>> 0, (stage) => self.postMessage({ id, kind: 'progress', stage }), rockVersion);");
+ patch("self.postMessage({ id, kind: 'done', elev: w.elev,","self.postMessage({ id, kind: 'done', rocks: w.rocks, elev: w.elev,");
+ patch('[w.elev.buffer, w.type.buffer,','[...collectRockBuffers(w.rocks), w.elev.buffer, w.type.buffer,');
+ patch("document.getElementById('fauna-src').textContent], { type: 'text/javascript' }","document.getElementById('fauna-src').textContent, '\\n', document.getElementById('rock-src').textContent], { type: 'text/javascript' }");
+ patch('      geology: m.geology, volcanoes: m.volcanoes,','      rocks: m.rocks || null, geology: m.geology, volcanoes: m.volcanoes,');
+ patch('let currentSeed = null, previousSeed = null;', 'let currentSeed = null, previousSeed = null;\nlet currentRockVersion = null, previousRockVersion = null;');
+ patch('function generate(seedStr) {', "function generate(seedStr, requestedRockVersion) {\n  const generationRockVersion = pendingLoad ? (pendingLoad.rockGenerationVersion || null) : requestedRockVersion === undefined ? 'rock-24-v1' : requestedRockVersion;");
+ patch('    previousSeed = currentSeed;', '    previousRockVersion = currentRockVersion; currentRockVersion = m.rocks?.version || null;\n    previousSeed = currentSeed;');
+ patch('if (previousSeed !== null) generate(previousSeed);', 'if (previousSeed !== null) generate(previousSeed, previousRockVersion);');
+ patch('worker.postMessage({ id, seed: seedToInt(seedStr) })', 'worker.postMessage({ id, seed: seedToInt(seedStr), rockVersion: generationRockVersion })');
+ patch('format: SAVE_FORMAT, genVersion: SAVE_GEN_VERSION, seed: currentSeed,',"format: SAVE_FORMAT, genVersion: world.rocks ? 12 : SAVE_GEN_VERSION, rockGenerationVersion: world.rocks?.version || null, seed: currentSeed,");
+ patch('  if (st.genVersion !== SAVE_GEN_VERSION) {',"  if(st.genVersion === 12 && st.rockGenerationVersion !== 'rock-24-v1'){menuMsg('この岩石生成バージョンには未対応です');return;}\n  if (st.genVersion !== SAVE_GEN_VERSION && st.genVersion !== 12) {");
+ patch("'plate', 'geology'];","'plate', 'geology', 'rock', 'rockResistance', 'rockPermeability', 'rockStability'];");
+ patch("geology: '表示：地質' };","geology: '表示：地質', rock: '表示：岩石24種', rockResistance: '表示：侵食耐性', rockPermeability: '表示：透水性', rockStability: '表示：斜面安定性' };");
+ patch("  if (viewMode === 'biome') {","  if (viewMode.startsWith('rock')) {\n    el.innerHTML = window.__wohRockLegend ? window.__wohRockLegend(viewMode) : '岩石の準備中';return;\n  }\n  if (viewMode === 'biome') {");
+ patch('  labPatchTerrainMaterial(mat);','  labPatchTerrainMaterial(mat);\n  window.__wohApplyRockMaterial?.(mat);');
+ return html;
+}

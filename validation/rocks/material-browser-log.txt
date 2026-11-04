@@ -1,0 +1,1 @@
+WebGL1 material with four preserved legacy texture samplers compiles; 24 GPU rock IDs match.

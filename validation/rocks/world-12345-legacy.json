@@ -1,0 +1,264 @@
+{
+  "seed": 12345,
+  "mode": "legacy",
+  "elapsedMs": 12262.917658,
+  "maxRssKiB": 427592,
+  "worldTypedBytes": 175688888,
+  "rockTypedBytes": 0,
+  "stats": {
+    "version": 11,
+    "width": 3000,
+    "height": 3000,
+    "plates": 10,
+    "hotspots": 4,
+    "tectonicEvents": {
+      "collisions": 5550,
+      "subductions": 7205,
+      "rifts": 6825,
+      "breakups": 1578
+    },
+    "continents": 3,
+    "archipelagos": 2,
+    "volcanoes": 64,
+    "features": {
+      "rift": 1,
+      "plateau": 1,
+      "inlandSea": 1,
+      "strait": 26,
+      "bank": 3,
+      "barrier": 1,
+      "mesa": 1,
+      "karst": 1,
+      "atoll": 14,
+      "waterfall": 55,
+      "ria": 13,
+      "canyon": 1,
+      "gorge": 1,
+      "delta": 1,
+      "glacier": 6,
+      "reef": 22,
+      "saltFlat": 7,
+      "saltLake": 8,
+      "harbor": 40,
+      "hotSpring": 60,
+      "spring": 50,
+      "cave": 40
+    },
+    "deposits": {
+      "copper": 31,
+      "silver": 15,
+      "gold": 29,
+      "tin": 18,
+      "iron": 34,
+      "coal": 31
+    },
+    "wildSpecies": 17,
+    "rias": 13,
+    "canyons": 1,
+    "waterfalls": 55,
+    "activeVolcanoes": 29,
+    "archipelagoIslands": [
+      8,
+      7
+    ],
+    "archipelagoOrigins": [
+      "fallback",
+      "fallback"
+    ],
+    "mountains": 7,
+    "rivers": 123,
+    "lakes": 29,
+    "fjords": 0,
+    "estuaries": 2,
+    "deltas": 1,
+    "landCells": 3996298,
+    "landRatio": 0.4440331111111111,
+    "continentRatio": 0.4300118888888889,
+    "islandRatio": 0.014021222222222221,
+    "seaRegions": 126,
+    "mainOceanShare": 0.973281982020512,
+    "islands": 63,
+    "biomeArea": [
+      767,
+      0,
+      11164,
+      29734,
+      71380,
+      358578,
+      1564146,
+      426247,
+      229988,
+      862234,
+      145429,
+      242001,
+      9224,
+      14351,
+      26250,
+      4805,
+      0
+    ],
+    "ms": 12195,
+    "timings": [
+      [
+        "プレートの生成",
+        1
+      ],
+      [
+        "地質年代 2 / 30 百万年",
+        329
+      ],
+      [
+        "地質年代 4 / 30 百万年",
+        466
+      ],
+      [
+        "地質年代 6 / 30 百万年",
+        563
+      ],
+      [
+        "地質年代 8 / 30 百万年",
+        679
+      ],
+      [
+        "地質年代 10 / 30 百万年",
+        753
+      ],
+      [
+        "地質年代 12 / 30 百万年",
+        818
+      ],
+      [
+        "地質年代 14 / 30 百万年",
+        857
+      ],
+      [
+        "地質年代 16 / 30 百万年",
+        893
+      ],
+      [
+        "地質年代 18 / 30 百万年",
+        930
+      ],
+      [
+        "地質年代 20 / 30 百万年",
+        967
+      ],
+      [
+        "地質年代 22 / 30 百万年",
+        1002
+      ],
+      [
+        "地質年代 24 / 30 百万年",
+        1036
+      ],
+      [
+        "地質年代 26 / 30 百万年",
+        1073
+      ],
+      [
+        "地質年代 28 / 30 百万年",
+        1109
+      ],
+      [
+        "地質年代 30 / 30 百万年",
+        1148
+      ],
+      [
+        "プレート境界の判定",
+        1185
+      ],
+      [
+        "地形の形成",
+        1231
+      ],
+      [
+        "海岸線の形成",
+        3589
+      ],
+      [
+        "火山島弧の補完",
+        4494
+      ],
+      [
+        "特徴的な地形",
+        4778
+      ],
+      [
+        "日射量",
+        5368
+      ],
+      [
+        "大気大循環と風（1/2）",
+        5408
+      ],
+      [
+        "海流（1/2）",
+        5805
+      ],
+      [
+        "気温（1/2）",
+        6593
+      ],
+      [
+        "大気大循環と風（2/2）",
+        6739
+      ],
+      [
+        "海流（2/2）",
+        7024
+      ],
+      [
+        "気温（2/2）",
+        7682
+      ],
+      [
+        "水蒸気と降水",
+        7772
+      ],
+      [
+        "気候区分",
+        8438
+      ],
+      [
+        "植生",
+        8770
+      ],
+      [
+        "特徴的な地形（気候）",
+        8978
+      ],
+      [
+        "河川と湖",
+        9268
+      ],
+      [
+        "特徴的な地形（水系）",
+        10264
+      ],
+      [
+        "海域の判定",
+        11308
+      ],
+      [
+        "動物の生息地",
+        11469
+      ],
+      [
+        "自然の資源",
+        11650
+      ]
+    ]
+  },
+  "hashes": {
+    "elev": "2429c4f57cce029345b7bd58975352428a4ab8326994f7917e3deba75088b12b",
+    "type": "2342695dc79496ce7e147ad5e4953e679d3da5aacdc31fb6abbcb249c439213e",
+    "biome": "1298a6de1a7981409940b5a0fba01e7a0e6c72c33542aed41eca01cf97d6a27b",
+    "water": "81e23c874fe3af8daa291ec831bff51344af8ace6aa8640992260f371059b265",
+    "lakeId": "3aa29582b7d1fdd6619aa07ec77200dbbae07a917c22ec88285f1a03d716fe17",
+    "lakeLevels": "6efeb067f2bd20cb59e84c59ae8948fa1a296026ad81256ecd330a89f2974b6e",
+    "riverPts": "7548bbd380e305ceb462148a52f84a0687dd71ad8c92685b0407173b42e6debe",
+    "regionId": "12ebace8e58fbb3deba7840ec9f1860ae393647aa42bca95603d8fab090e9c73",
+    "mtnId": "77d1cc3ee9741a87e76acffb7dcf56bd8251d12be736cd5c6e26fe9362222471"
+  },
+  "exposedIds": []
+}

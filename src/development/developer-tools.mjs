@@ -32,6 +32,10 @@ export function installDeveloperTools(){
  const grass=document.createElement('button');grass.id='devGrass';grass.textContent='草の確認地点へ';panel.appendChild(grass);
  const details=document.createElement('button');details.id='devDetail';details.textContent='地形の起伏を確認';panel.appendChild(details);
  const mountain=document.createElement('button');mountain.id='devMountain';mountain.textContent='山脈を確認';panel.appendChild(mountain);
+ const rock=document.createElement('button');rock.id='devRock';rock.textContent='岩肌・地層を確認';panel.appendChild(rock);const rockInfo=document.createElement('p');rockInfo.id='devRockInfo';panel.appendChild(rockInfo);
+ rock.addEventListener('click',()=>{const v=get();if(!v?.state||!v.state.world.rocks){rockInfo.textContent='新しい世界を生成すると岩石情報を確認できます';return;}const t=v.state.terrain,w=v.state.world,s=w.rocks,o=v.markerPoint;let best=null,score=-Infinity;
+ for(let y=8;y<t.height-8;y+=8)for(let x=8;x<t.width-8;x+=8){const i=y*t.width+x;if(!w.type[i]||w.water[i])continue;const q=t.gridToMeters(x,y),p=t.sampleMacro(q.xM,q.yM);if((p.rockExposure??0)<.5||p.slopeDegrees>20||p.baseElevationM<3)continue;const value=p.rockExposure*500+p.slopeDegrees*4-Math.hypot(q.xM-o.xM,q.yM-o.yM)*.001;if(value>score){score=value;best={...q,p};}}
+ if(!best){rockInfo.textContent='近くに安全な露岩地点が見つかりません';return;}choose(1);v.placeMarker(best.xM,best.yM);v.lookAt(best.xM-best.p.normal.x*100,best.yM-best.p.normal.z*100,.25);const p=best.p,col=globalThis.__wohRocks.column(best.xM/t.metersPerCell,best.yM/t.metersPerCell);rockInfo.textContent=p.rockName+' / 表土 '+p.soilDepthM.toFixed(2)+'m / 安全率 '+p.slopeStability.toFixed(2)+' / 地層（上→下） '+col.map(c=>c.name+' '+c.thicknessM.toFixed(1)+'m').join(' → ');});
  let multiplier=1,safe=null;
  const get=()=>globalThis.__chunkPreview;
  function valid(){const v=get(),p=v?.markerPoint;if(!p)return false;const g=v.groundAt(p.xM,p.yM);return !!g&&g.slopeDegrees<=40&&g.waterDepthM<=.6;}

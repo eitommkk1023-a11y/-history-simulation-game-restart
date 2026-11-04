@@ -13,3 +13,4 @@ test('a depleted upper layer exposes a lower rock and closed depressions route w
 });
 
 test('explicit open border cells remain outlets instead of being rerouted inward',()=>{const n=5,z=new Float64Array(n*n).fill(10),land=new Uint8Array(n*n).fill(1);z[2]=100;assert.equal(engine.rockFlowRouting(z,land,n,n,40).receiver[2],-2);});
+test('analytical soil shielding preserves weathering when the geological time step changes',()=>{const input=rockFixture('fractures',8);input.elevation.fill(200);input.fracture.fill(.3);input.precipitationMPerYear.fill(1.5);const o={years:10000,intervention:{solubilityMultiplier:0}},a=engine.evolveRockTerrain(input,{...o,steps:1}),b=engine.evolveRockTerrain(input,{...o,steps:64});assert.ok(Math.abs(a.metrics.weatheredKg/b.metrics.weatheredKg-1)<1e-10);assert.ok(Math.abs(a.metrics.massRelativeError)<1e-10);});

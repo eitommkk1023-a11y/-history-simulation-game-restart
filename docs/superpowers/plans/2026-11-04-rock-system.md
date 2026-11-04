@@ -20,8 +20,8 @@ Files/interfaces:
 
 Review focus: identical inputs in interventions; finite/nonnegative layers and mass inventories; dissolved vs solid and boundary export; dip-induced initial-ID changes; source save compatibility; continuous sampler and consistent atlas IDs; generation CPU/memory and no invasive default changes to legacy worlds.
 
-- [ ] Catalog/layer tests RED/GREEN; cite source ranges and mark approximations.
-- [ ] Erosion/groundwater/sediment tests RED/GREEN including exposure, conservation, interventions and deterministic generation.
-- [ ] Integrate worker/new profile/legacy save/rendering/diagnostics; commit verified core stage.
-- [ ] Run A-D on four fixtures and real generation on at least three seeds; record raw metrics, images and rationale.
-- [ ] Browser visual + controls/water/volcano/save compatibility checks, self-review, final work-branch commit and v30 HTML + report.
+- [x] Catalog/layer tests; cite source ranges and mark approximations.
+- [x] Erosion/groundwater/sediment tests including exposure, conservation, interventions and deterministic generation.
+- [x] Integrate worker/new profile/legacy save/rendering/diagnostics; commit verified core stage.
+- [x] Run A-D on four fixtures and real generation on at least three seeds; record raw metrics, images and rationale.
+- [x] Browser visual + controls/water/volcano/save compatibility checks, self-review, final work-branch commit and v30 HTML + report.

@@ -1,1 +1,7 @@
 exports/
+
+# Regenerable raw diagnostic grids; packaged in the validation download
+validation/rocks/*.bin
+validation/rocks/*-grid.json
+validation/rocks/world-*-map.json
+validation/rocks/experiments.json

@@ -859,6 +859,234 @@ function faunaClone(F) {
   return o;
 }
 </script>
+<script id="rock-src" type="text/plain">
+/** Representative fresh-rock ranges, NOT universal constants or a site-calibrated model.
+ * SI except MPa/Mohs/degrees. Matrix permeability excludes the regional fracture network.
+ * Sources and empirical-parameter boundaries: docs/reports/rock-model-method.md.
+ */
+const ROCK_PROFILE='rock-24-v1';
+const rockRows=[
+ ['granite','花崗岩','igneous',[2600,2750],[6,7],[100,250],[7,20],[.001,.03],[1e-21,1e-17],2.2,.00008,.001,.000002,3.1,790,8e-6,38,[177,171,163],0,{quartz:.3,feldspar:.6,mica:.1},'大陸地殻深部の珪長質マグマの緩慢冷却','block'],
+ ['diorite','閃緑岩','igneous',[2700,2950],[6,7],[100,250],[8,22],[.002,.04],[1e-21,1e-17],2.3,.00009,.001,.000002,2.5,800,8e-6,37,[125,132,127],0,{plagioclase:.6,amphibole:.3,biotite:.1},'中間質マグマの深成貫入','block'],
+ ['gabbro','斑れい岩','igneous',[2900,3300],[6,7],[100,300],[10,25],[.001,.025],[1e-22,1e-18],2.5,.00008,.001,.000002,2.3,850,7e-6,39,[78,88,83],0,{plagioclase:.5,pyroxene:.4,olivine:.1},'苦鉄質マグマの深部結晶化','block'],
+ ['basalt','玄武岩','igneous',[2700,3100],[5.5,6.5],[80,300],[8,25],[.005,.12],[1e-20,1e-15],2.4,.00010,.002,.000003,1.8,840,8e-6,37,[61,66,67],1,{plagioclase:.5,pyroxene:.4,olivine:.1},'海洋地殻・リフト・盾状火山の苦鉄質溶岩','columnar'],
+ ['andesite','安山岩','igneous',[2500,2850],[5.5,6.5],[80,220],[6,20],[.01,.15],[1e-20,1e-15],1.8,.00014,.002,.000003,2.0,820,8e-6,36,[118,115,109],1,{plagioclase:.6,amphibole:.2,pyroxene:.2},'沈み込み帯の中間質火山活動','block'],
+ ['rhyolite','流紋岩','igneous',[2300,2700],[6,7],[50,200],[4,16],[.01,.18],[1e-20,1e-15],1.6,.00015,.001,.000002,2.4,800,9e-6,35,[187,155,145],2,{quartz:.3,feldspar:.6,glass:.1},'大陸火山の珪長質噴出','flow'],
+ ['tuff','凝灰岩','igneous',[1500,2400],[3,6],[5,80],[.5,8],[.1,.45],[1e-17,1e-12],.6,.00040,.003,.000006,1.1,900,8e-6,30,[178,166,133],2,{glass:.6,feldspar:.25,lithic:.15},'爆発的噴火による火山灰の堆積と固結','bedded'],
+ ['obsidian','黒曜岩','igneous',[2200,2600],[5,5.5],[40,150],[1,10],[.001,.03],[1e-22,1e-18],1.3,.00012,.001,.000002,1.5,800,6e-6,32,[34,32,40],3,{glass:.95,feldspar:.05},'珪長質溶岩の急冷した流紋岩溶岩縁','conchoidal'],
+ ['conglomerate','礫岩','sedimentary',[2000,2700],[4,7],[20,150],[2,12],[.01,.25],[1e-17,1e-12],1.2,.00020,.002,.000003,2.1,850,8e-6,35,[151,139,117],4,{quartz:.5,lithic:.35,calcite:.15},'造山帯前縁の扇状地・河道の礫質堆積','bedded'],
+ ['sandstone','砂岩','sedimentary',[1900,2650],[4,7],[20,170],[1,15],[.05,.30],[1e-17,1e-12],1.2,.00018,.003,.000004,3.0,850,10e-6,34,[183,146,98],4,{quartz:.75,feldspar:.15,calcite:.1},'陸棚・海浜・河川・砂漠の砂質堆積','bedded'],
+ ['mudstone','泥岩','sedimentary',[2000,2600],[2,4],[5,60],[.3,5],[.05,.25],[1e-22,1e-18],.45,.00045,.003,.000005,1.5,900,10e-6,25,[120,112,97],5,{clay:.65,quartz:.25,calcite:.1},'静穏な湖盆・氾濫原・海盆の泥質堆積','massive'],
+ ['shale','頁岩','sedimentary',[2000,2700],[2,4],[5,100],[.3,7],[.03,.20],[1e-22,1e-18],.5,.00040,.003,.000005,1.7,900,12e-6,24,[86,89,87],5,{clay:.6,quartz:.3,organic:.1},'圧密した海盆泥の薄層と剥離性','fissile'],
+ ['limestone','石灰岩','sedimentary',[2200,2800],[3,4],[30,180],[2,15],[.005,.25],[1e-21,1e-15],1.4,.00010,.12,.00008,2.5,850,8e-6,35,[192,190,176],6,{calcite:.95,clay:.05},'暖かい浅海の炭酸塩堆積','bedded'],
+ ['dolostone','ドロマイト岩','sedimentary',[2500,2900],[3.5,4.5],[50,220],[3,18],[.005,.20],[1e-21,1e-15],1.7,.00008,.05,.00003,4.0,870,9e-6,36,[172,168,148],6,{dolomite:.95,calcite:.05},'炭酸塩堆積物の苦灰石化','bedded'],
+ ['chert','チャート','sedimentary',[2400,2700],[6.5,7],[100,300],[8,25],[.001,.08],[1e-23,1e-19],3.0,.00003,.0001,.000001,4.5,750,7e-6,39,[116,109,103],7,{quartz:.97,ironOxide:.03},'遠洋の珪質生物堆積と続成作用','bedded'],
+ ['gypsum','石膏岩','sedimentary',[1800,2400],[1.5,2.5],[5,40],[.3,4],[.01,.3],[1e-22,1e-16],.25,.00035,2.4,.002,1.3,1090,20e-6,25,[215,205,188],8,{gypsum:1},'閉鎖性乾燥盆地の蒸発濃縮','bedded'],
+ ['halite','岩塩','sedimentary',[2000,2200],[2,2.5],[10,50],[.3,3],[.001,.05],[1e-24,1e-20],.2,.00020,360,.01,5.5,860,40e-6,25,[214,202,199],8,{halite:1},'蒸発岩盆地の強い蒸発・塩水濃縮','cubic'],
+ ['gneiss','片麻岩','metamorphic',[2600,2900],[5.5,7],[80,250],[4,18],[.001,.04],[1e-22,1e-18],2.0,.00008,.001,.000002,3.0,800,9e-6,34,[154,151,144],9,{quartz:.3,feldspar:.5,mica:.2},'大陸地殻の高温・高変成度','foliated'],
+ ['schist','結晶片岩','metamorphic',[2500,2900],[3.5,6],[20,120],[1,8],[.005,.08],[1e-22,1e-17],1.0,.00025,.002,.000003,2.6,850,11e-6,25,[132,141,133],9,{mica:.5,quartz:.35,feldspar:.15},'泥質原岩の中変成度・片理形成','foliated'],
+ ['slate','粘板岩','metamorphic',[2600,2900],[3,5],[40,160],[2,12],[.002,.06],[1e-23,1e-18],1.4,.00016,.002,.000003,2.2,850,10e-6,29,[82,91,99],5,{mica:.4,clay:.3,quartz:.3},'泥岩・頁岩の低度変成','cleavage'],
+ ['phyllite','千枚岩','metamorphic',[2500,2850],[3,5],[20,100],[1,8],[.005,.08],[1e-22,1e-17],.9,.00024,.002,.000003,2.3,850,11e-6,25,[121,130,124],9,{mica:.5,quartz:.4,chlorite:.1},'粘板岩と結晶片岩の中間の変成度','foliated'],
+ ['marble','大理石','metamorphic',[2500,2850],[3,4],[50,150],[3,12],[.001,.05],[1e-22,1e-17],1.3,.00009,.12,.00008,2.7,850,7e-6,34,[211,207,196],6,{calcite:.95,mica:.05},'炭酸塩岩の接触・広域変成','crystalline'],
+ ['quartzite','珪岩','metamorphic',[2600,2800],[6.5,7],[100,300],[8,25],[.001,.03],[1e-23,1e-19],3.0,.00003,.0001,.000001,5.5,750,8e-6,40,[192,183,163],0,{quartz:.97,mica:.03},'石英質砂岩の再結晶','massive'],
+ ['serpentinite','蛇紋岩','metamorphic',[2400,2800],[3,5.5],[20,150],[1,10],[.005,.12],[1e-22,1e-17],.9,.00021,.02,.00002,2.2,950,12e-6,22,[81,109,83],9,{serpentine:.85,magnetite:.1,talc:.05},'苦鉄質・超苦鉄質岩への熱水付加・蛇紋岩化','sheared'],
+];
+const ROCKS=Object.freeze(rockRows.map((r,id)=>Object.freeze({id,key:r[0],name:r[1],family:r[2],densityKgM3:Object.freeze(r[3]),hardnessMohs:Object.freeze(r[4]),ucsMPa:Object.freeze(r[5]),tensileMPa:Object.freeze(r[6]),porosity:Object.freeze(r[7]),matrixPermeabilityM2:Object.freeze(r[8]),erosionResistance:r[9],weatheringMPerYear:r[10],solubilityKgM3:r[11],dissolutionKineticMPerYear:r[12],thermal:Object.freeze({conductivityWmK:r[13],heatCapacityJkgK:r[14],expansionPerK:r[15]}),joints:Object.freeze({frictionDegrees:r[16],style:r[21],referenceApertureM:15e-6}),color:Object.freeze(r[17]),pattern:r[18],minerals:Object.freeze(r[19]),formation:r[20]})));
+const ROCK_REFERENCE=Object.freeze({densityKgM3:[2400,2700],hardnessMohs:[4,6],ucsMPa:[40,120],tensileMPa:[3,12],porosity:[.02,.12],matrixPermeabilityM2:[1e-21,1e-15],erosionResistance:1.3,weatheringMPerYear:.00015,solubilityKgM3:.01,dissolutionKineticMPerYear:.00001,thermal:{conductivityWmK:2.5,heatCapacityJkgK:850,expansionPerK:9e-6},joints:{frictionDegrees:33}});
+const rockClamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function effectiveRockProperties(id,conditions={},intervention={}){
+ const r=intervention.uniform?ROCK_REFERENCE:ROCKS[id];if(!r)throw new RangeError('Unknown rock ID');
+ const fracture=rockClamp(conditions.fracture??.3,0,1),weather=rockClamp(conditions.weathering??.2,0,1),moisture=rockClamp(conditions.moisture??.3,0,1),temperature=conditions.temperatureC??15;
+ const mean=p=>(p[0]+p[1])/2,range=conditions.sample??.5,pick=p=>p[0]+(p[1]-p[0])*rockClamp(range,0,1);
+ const damage=(1-.65*fracture)*(1-.7*weather)*(1-.2*moisture),porosity=rockClamp(mean(r.porosity)+.03*fracture+.03*weather,.001,.55);
+ const matrix=Math.exp(Math.log(r.matrixPermeabilityM2[0])*(1-range)+Math.log(r.matrixPermeabilityM2[1])*range);
+ const aperture=(2+18*fracture+8*weather)*1e-6,spacing=1/(.05+.8*fracture),fractureK=aperture**3/(12*spacing)*fracture;
+ const thermalDiffusivity=r.thermal.conductivityWmK/(mean(r.densityKgM3)*r.thermal.heatCapacityJkgK),thermalStress=r.thermal.expansionPerK*20/Math.max(1e-4,Math.sqrt(thermalDiffusivity*86400));
+ const freeze=temperature>-12&&temperature<5?1+moisture*.8:1;
+ const targeted=intervention.targetRockId==null||intervention.targetRockId===id;
+ const permeabilityM2=(matrix*(1+3*weather)+fractureK)*(targeted?(intervention.permeabilityMultiplier??1):1);
+ return {densityKgM3:pick(r.densityKgM3),hardnessMohs:pick(r.hardnessMohs),ucsMPa:pick(r.ucsMPa)*damage,tensileMPa:pick(r.tensileMPa)*damage,erosionResistance:r.erosionResistance*(targeted?(intervention.resistanceMultiplier??1):1),porosity,permeabilityM2,hydraulicConductivityMPerYear:permeabilityM2*1000*9.81/.001*31557600,solubilityKgM3:r.solubilityKgM3*(targeted?(intervention.solubilityMultiplier??1):1),dissolutionKineticMPerYear:r.dissolutionKineticMPerYear*Math.exp(.025*(temperature-15)),weatheringMPerYear:r.weatheringMPerYear*(1+2*fracture+2*weather)*(.2+.8*moisture)*freeze*(1+thermalStress),frictionDegrees:r.joints.frictionDegrees*(1-.25*fracture-.2*weather),cohesionPa:pick(r.tensileMPa)*1e6*damage*.01};
+}
+
+const ROCK_LAYER_COUNT=6;
+const ROCK_ASSEMBLAGES=Object.freeze([
+ [0,17,1,22,2,23],[3,2,14,12,13,2],[4,6,5,7,1,0],[3,6,2,23,1,0],
+ [8,9,10,11,9,0],[10,11,9,14,10,0],[12,13,14,9,12,0],[15,16,10,13,12,0],
+ [19,20,18,17,22,0],[17,18,22,21,1,0],[21,22,18,17,13,0],[23,2,3,17,2,0],
+ [5,6,7,0,1,17],[14,11,12,13,9,3],
+]);
+function rockHash(seed,x,y,channel=0){let h=(seed>>>0)^Math.imul(x,374761393)^Math.imul(y,668265263)^Math.imul(channel,1597334677);h=Math.imul(h^(h>>>13),1274126177);return ((h^(h>>>16))>>>0)/4294967295;}
+function createStratigraphy(input,intervention={}){
+ const n=input.width*input.height,L=input.layerCount??ROCK_LAYER_COUNT,ids=new Uint8Array(n*L),thickness=new Float32Array(n*L),dip=new Float32Array(n),direction=new Float32Array(n),ages=new Float32Array(n);
+ for(let i=0;i<n;i++){
+  dip[i]=(intervention.dipDegrees??input.dipDegrees?.[i]??0)*Math.PI/180;direction[i]=(intervention.dipDirectionDegrees??input.dipDirectionDegrees?.[i]??0)*Math.PI/180;ages[i]=input.ageMyr?.[i]??20;
+  if(input.layerRockIds&&input.layerThicknessM){for(let k=0;k<L;k++){ids[i*L+k]=input.layerRockIds[i*L+k];thickness[i*L+k]=input.layerThicknessM[i*L+k];}continue;}
+  const family=input.formation?.[i]??0,seq=ROCK_ASSEMBLAGES[family];if(!seq)throw new RangeError('Unknown formation');
+  const scale=input.layerScaleM?.[i]??40,beds=[1,.55,1.4,.7,1.1].map(v=>v*scale),period=beds.reduce((a,b)=>a+b,0),x=i%input.width,y=Math.floor(i/input.width),cs=Math.max(.17,Math.cos(dip[i]));
+  const structure=(x*Math.cos(direction[i])+y*Math.sin(direction[i]))*input.cellSizeM*Math.sin(dip[i])+(input.foldAmplitudeM?.[i]??0)*Math.sin((x+y)*Math.PI/12)+(input.faultThrowM?.[i]??0);
+  const z=input.elevation[i]-(input.initialSoilM?.[i]??.5),coordinate=z*cs+structure+(input.layerDatumM?.[i]??0),phase=((coordinate%period)+period)%period;
+  let lower=0,j=0;while(j<4&&phase>=lower+beds[j])lower+=beds[j++];
+  for(let k=0;k<L;k++){const index=(j-k%5+5)%5;ids[i*L+k]=k===L-1?seq[5]:seq[index];thickness[i*L+k]=k===L-1?5000:k===0?Math.max(.001,(phase-lower)/cs):beds[index]/cs;}
+ }
+ return {count:L,rockIds:ids,initialThicknessM:thickness,dipRadians:dip,directionRadians:direction,ageMyr:ages};
+}
+function exposedRockId(layers,remaining,top,i){return layers.rockIds[i*layers.count+top[i]];}
+function removeRockThickness(layers,remaining,top,i,depthM){
+ const k=i*layers.count+top[i],removed=Math.min(Math.max(0,depthM),remaining[k]);remaining[k]=Math.max(0,remaining[k]-removed);
+ if(remaining[k]===0&&top[i]<layers.count-1){remaining[k]=0;top[i]++;}return removed;
+}
+function rockLayerColumn(layers,remaining,top,i){const out=[];for(let k=top[i];k<layers.count;k++)out.push({rockId:layers.rockIds[i*layers.count+k],name:ROCKS[layers.rockIds[i*layers.count+k]].name,thicknessM:remaining[i*layers.count+k],ageMyr:layers.ageMyr[i]+k*5,dipDegrees:layers.dipRadians[i]*180/Math.PI});return out;}
+
+/** Priority-flood routes depressions to open coast/domain outlets. No uphill bed incision. */
+function rockFlowRouting(z,land,W,H,dx){
+ const N=W*H,receiver=new Int32Array(N).fill(-1),filled=new Float64Array(N),seen=new Uint8Array(N),heapId=new Int32Array(N),heapKey=new Float64Array(N);let size=0;
+ const push=(id,key)=>{let p=size++;while(p){const q=(p-1)>>1;if(heapKey[q]<key||(heapKey[q]===key&&heapId[q]<id))break;heapId[p]=heapId[q];heapKey[p]=heapKey[q];p=q;}heapId[p]=id;heapKey[p]=key;};
+ const pop=()=>{const out=heapId[0],id=heapId[--size],key=heapKey[size];if(size){let p=0;while(p*2+1<size){let q=p*2+1;if(q+1<size&&(heapKey[q+1]<heapKey[q]||(heapKey[q+1]===heapKey[q]&&heapId[q+1]<heapId[q])))q++;if(key<heapKey[q]||(key===heapKey[q]&&id<heapId[q]))break;heapId[p]=heapId[q];heapKey[p]=heapKey[q];p=q;}heapId[p]=id;heapKey[p]=key;}return out;};
+ for(let i=0;i<N;i++)if(!land[i]){seen[i]=1;filled[i]=z[i];}
+ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;if(!land[i])continue;let outlet=x===0||y===0||x===W-1||y===H-1;
+  if(!outlet)for(let yy=-1;yy<=1;yy++)for(let xx=-1;xx<=1;xx++)if(!land[(y+yy)*W+x+xx])outlet=true;
+  if(outlet){seen[i]=1;receiver[i]=-2;filled[i]=Math.max(0,z[i]);push(i,filled[i]);}
+ }
+ while(size){const i=pop(),x=i%W,y=Math.floor(i/W);for(let yy=-1;yy<=1;yy++)for(let xx=-1;xx<=1;xx++){if(!xx&&!yy)continue;const X=x+xx,Y=y+yy;if(X<0||Y<0||X>=W||Y>=H)continue;const j=Y*W+X;if(seen[j])continue;seen[j]=1;receiver[j]=i;filled[j]=Math.max(z[j],filled[i]);push(j,filled[j]);}}
+ // Prefer a true downhill direction where available; retain the acyclic flood parent on flats.
+ const slope=new Float64Array(N),direction=new Float64Array(N);
+ for(let i=0;i<N;i++)if(land[i]){if(receiver[i]===-2){const x=i%W,y=Math.floor(i/W);let edgeSlope=0;for(let yy=-1;yy<=1;yy++)for(let xx=-1;xx<=1;xx++){if(!xx&&!yy)continue;const X=x+xx,Y=y+yy;if(X<0||Y<0||X>=W||Y>=H)continue;const j=Y*W+X;edgeSlope=Math.max(edgeSlope,(land[j]?z[j]-z[i]:z[i]-z[j])/(dx*Math.hypot(xx,yy)));}slope[i]=edgeSlope;continue;}const x=i%W,y=Math.floor(i/W);let best=0,q=receiver[i];for(let yy=-1;yy<=1;yy++)for(let xx=-1;xx<=1;xx++){if(!xx&&!yy)continue;const X=x+xx,Y=y+yy;if(X<0||Y<0||X>=W||Y>=H)continue;const j=Y*W+X;if(!land[j])continue;const s=(filled[i]-filled[j])/(dx*Math.hypot(xx,yy));if(s>best+1e-14){best=s;q=j;}}
+  receiver[i]=q;if(q>=0){const xx=q%W-x,yy=Math.floor(q/W)-y;slope[i]=Math.max(0,(z[i]-z[q])/(dx*Math.hypot(xx,yy)));direction[i]=Math.atan2(yy,xx);}else slope[i]=Math.max(0,z[i]/dx);
+ }
+ const indegree=new Uint8Array(N),queue=new Int32Array(N);let head=0,tail=0;for(let i=0;i<N;i++)if(receiver[i]>=0)indegree[receiver[i]]++;for(let i=0;i<N;i++)if(land[i]&&!indegree[i])queue[tail++]=i;
+ while(head<tail){const i=queue[head++],q=receiver[i];if(q>=0&&!--indegree[q])queue[tail++]=q;}
+ let count=0;for(let i=0;i<N;i++)if(land[i])count++;if(tail!==count)throw new Error('Cyclic or disconnected rock drainage');
+ return {receiver,filled,slope,direction,order:queue.subarray(0,tail)};
+}
+const rockSum=a=>a.reduce((s,v)=>s+v,0);
+function evolveRockTerrain(input,options={}){
+ const W=input.width,H=input.height,N=W*H,dx=input.cellSizeM,A=dx*dx,years=options.years??200000,steps=options.steps??32,dt=years/steps,intervention=options.intervention??{},rhoSoil=1600;
+ if(!Number.isInteger(W)||!Number.isInteger(H)||W<2||H<2||input.elevation.length!==N||!(dx>0)||!(years>0)||!Number.isInteger(steps)||steps<1)throw new RangeError('Invalid rock calculation domain');
+ for(const z of input.elevation)if(!Number.isFinite(z))throw new RangeError('Nonfinite initial elevation');
+ const start=performance.now(),layers=createStratigraphy(input,intervention),remaining=Float64Array.from(layers.initialThicknessM),top=new Uint8Array(N),bed=new Float64Array(N),soil=new Float64Array(N),z=Float64Array.from(input.elevation),gw=new Float64Array(N),flow=new Float64Array(N),baseflow=new Float64Array(N),incoming=new Float64Array(N),solute=new Float64Array(N),erodedDepth=new Float64Array(N),erodedMask=new Uint32Array(N),exposed=new Uint8Array(N),resistance=new Float32Array(N),permeability=new Float32Array(N),stability=new Float32Array(N),weathering=new Float32Array(N),moisture=new Float32Array(N);
+ const metrics={years,steps,cellSizeM:dx,mechanicalBedKgByRock:Array(24).fill(0),weatheredKgByRock:Array(24).fill(0),dissolvedKgByRock:Array(24).fill(0),removedDepthByRock:Array(24).fill(0),erosionEventHistogram:Array.from({length:24},()=>Array(32).fill(0)),initialRockAreaM2:Array(24).fill(0),exposedRockAreaM2:Array(24).fill(0),bedrockAreaM2:Array(24).fill(0),soilInitialKg:0,soilFinalKg:0,solidExportedKg:0,dissolvedExportedKg:0,dissolvedStoredKg:0,infiltrationM3:0,surfaceRunoffM3:0,baseflowM3:0,liquidInputM3:0,waterExportedM3:0,groundwaterInitialM3:0,groundwaterFinalM3:0,sedimentDepositedKg:0,sedimentTransportedKg:0,numericallyLimitedCells:0,mechanicalActiveCells:0};
+ for(let i=0;i<N;i++){const s=input.land[i]?Math.min(Math.max(0,z[i]),input.initialSoilM?.[i]??.5):0;soil[i]=s*A*rhoSoil;bed[i]=z[i]-s;gw[i]=input.initialGroundwaterM?.[i]??0;metrics.soilInitialKg+=soil[i];metrics.groundwaterInitialM3+=gw[i]*A;if(input.land[i])metrics.initialRockAreaM2[layers.rockIds[i*layers.count]]+=A;}
+ for(let i=0;i<N;i++)exposed[i]=layers.rockIds[i*layers.count];
+ let route;
+ const conditions=i=>({fracture:input.fracture?.[i]??.3,weathering:input.weathering?.[i]??.2,moisture:rockClamp((input.precipitationMPerYear[i]/1.5)+gw[i]/20,0,1),temperatureC:input.temperatureC[i],sample:input.intactQuality?.[i]??.5});
+ function props(i){return effectiveRockProperties(exposedRockId(layers,remaining,top,i),conditions(i),intervention);}
+ function remove(i,requested,p,kind){const id=exposedRockId(layers,remaining,top,i),depth=removeRockThickness(layers,remaining,top,i,Math.min(requested,Math.max(0,bed[i]))),mass=depth*A*p.densityKgM3;
+  bed[i]-=depth;erodedDepth[i]+=depth;erodedMask[i]|=1<<id;metrics.removedDepthByRock[id]+=depth;if(depth>0)metrics.erosionEventHistogram[id][rockClamp(Math.floor(Math.log2(depth+1e-8)+16),0,31)]++;
+  if(kind==='weather')metrics.weatheredKgByRock[id]+=mass;else if(kind==='dissolved')metrics.dissolvedKgByRock[id]+=mass;else metrics.mechanicalBedKgByRock[id]+=mass;return mass;
+ }
+ for(let step=0;step<steps;step++){
+  route=rockFlowRouting(z,input.land,W,H,dx);flow.fill(0);baseflow.fill(0);incoming.fill(0);solute.fill(0);
+  for(let i=0;i<N;i++)if(input.land[i]){
+   let p=props(i),id=exposedRockId(layers,remaining,top,i);const temp=input.temperatureC[i],P=Math.max(0,input.precipitationMPerYear[i])*rockClamp((temp+8)/15,.05,1),evap=Math.min(.65*P,Math.max(0,temp+5)*.008),R=Math.max(0,P-evap),I=R>0?R*(-Math.expm1(-p.hydraulicConductivityMPerYear/Math.max(1e-12,R))):0;
+   const cap=p.porosity*20,drain=.05+p.hydraulicConductivityMPerYear/20,old=gw[i],storage=rockClamp(old*Math.exp(-drain*dt)+I/drain*(-Math.expm1(-drain*dt)),0,cap),B=Math.max(0,I-(storage-old)/dt);gw[i]=storage;flow[i]=(R-I)*A;baseflow[i]=B*A;
+   metrics.infiltrationM3+=I*A*dt;metrics.surfaceRunoffM3+=(R-I)*A*dt;metrics.baseflowM3+=B*A*dt;metrics.liquidInputM3+=R*A*dt;
+   let cover=soil[i]/(A*rhoSoil),angle=Math.atan(route.slope[i]),failureDepth=20,normal=p.densityKgM3*9.81*failureDepth*Math.cos(angle)**2,pore=1000*9.81*Math.min(failureDepth,storage/Math.max(.001,p.porosity)),alignment=Math.max(0,Math.cos(route.direction[i]-layers.directionRadians[i]));
+   const anisotropy=intervention.uniform?.15:ROCKS[id].joints.style==='fissile'||ROCKS[id].joints.style==='foliated'||ROCKS[id].joints.style==='cleavage'?.6:ROCKS[id].joints.style==='bedded'?.35:.1;
+   const friction=p.frictionDegrees*Math.PI/180*(1-anisotropy*alignment*Math.sin(layers.dipRadians[i])),drive=p.densityKgM3*9.81*failureDepth*Math.sin(angle)*Math.cos(angle);
+   const fs=drive>1e-6?(p.cohesionPa+Math.max(0,normal-pore)*Math.tan(friction))/drive:100;
+   stability[i]=Math.min(100,fs);const weatherRate=p.weatheringMPerYear+Math.max(0,1-fs)*.0002,bulkRatio=p.densityKgM3/rhoSoil;
+   // Exact local integration of soil shielding: d(soil depth)/dt = density ratio * rate * exp(-cover/0.7).
+   const weatherDepth=.7/bulkRatio*Math.log1p(bulkRatio*weatherRate*dt/.7*Math.exp(-cover/.7));soil[i]+=remove(i,weatherDepth,p,'weather');
+   if(exposedRockId(layers,remaining,top,i)!==id){p=props(i);id=exposedRockId(layers,remaining,top,i);}cover=soil[i]/(A*rhoSoil);
+   const contact=I+B*.1,capacity=contact*A*dt*p.solubilityKgM3,kinetic=p.dissolutionKineticMPerYear*dt*contact/(contact+.1)*Math.exp(-cover/2),chemicalDepth=Math.min(kinetic,capacity/(A*p.densityKgM3));
+   solute[i]+=remove(i,chemicalDepth,p,'dissolved');
+   resistance[i]=p.erosionResistance;permeability[i]=p.permeabilityM2;weathering[i]=input.weathering?.[i]??.2;moisture[i]=conditions(i).moisture;
+  }
+  for(const i of route.order){
+   let p=props(i);const q=route.receiver[i],slope=route.slope[i],erosiveQ=flow[i]*(input.stormFactor?.[i]??3)+baseflow[i],capacity=(flow[i]+baseflow[i])*dt*(slope>0?.03+3*slope:0),supply=incoming[i];
+   let transported=supply;
+   if(transported>capacity){const deposit=transported-capacity;soil[i]+=deposit;metrics.sedimentDepositedKg+=deposit;transported=capacity;}
+   else{const pickup=Math.min(soil[i],capacity-transported);soil[i]-=pickup;transported+=pickup;
+    const cover=soil[i]/(A*rhoSoil),strength=Math.max(.05,Math.sqrt(p.ucsMPa*p.tensileMPa)/Math.sqrt(80*8)),structure=1+(intervention.uniform?.15:ROCKS[exposedRockId(layers,remaining,top,i)].joints.style==='bedded'?.35:.15)*Math.max(0,Math.cos(route.direction[i]-layers.directionRadians[i]))*Math.sin(layers.dipRadians[i]);
+    const rate=.00035*Math.sqrt(Math.max(0,erosiveQ/A))*slope*structure/(p.erosionResistance*strength)*Math.exp(-cover/.5);
+    const relief=q>=0?Math.max(0,z[i]-z[q]):Math.max(0,z[i]),available=Math.max(0,capacity-transported)/(A*p.densityKgM3),depth=Math.min(rate*dt,.4*relief,available);
+    if(rate>0){metrics.mechanicalActiveCells++;if(rate*dt>.4*relief)metrics.numericallyLimitedCells++;}
+    transported+=remove(i,depth,p,'mechanical');
+   }
+   metrics.sedimentTransportedKg+=transported;
+   if(q>=0){incoming[q]+=transported;solute[q]+=solute[i];flow[q]+=flow[i];baseflow[q]+=baseflow[i];}else{metrics.solidExportedKg+=transported;metrics.dissolvedExportedKg+=solute[i];metrics.waterExportedM3+=(flow[i]+baseflow[i])*dt;}
+  }
+  for(let i=0;i<N;i++)if(input.land[i]){z[i]=bed[i]+soil[i]/(A*rhoSoil);if(!Number.isFinite(z[i])||z[i]<-1e-6)throw new Error('Unstable rock elevation');}
+  options.progress?.(step+1,steps);
+ }
+ const slopeValues=[],deltaValues=[],valleys=[],widths=[],catchment=new Float64Array(N).fill(1);route=rockFlowRouting(z,input.land,W,H,dx);for(const i of route.order){const q=route.receiver[i];if(q>=0)catchment[q]+=catchment[i];}
+ let channels=0,landCount=0,exposureChanges=0,soilArea=0;
+ const soilDepthM=new Float32Array(N),waterTableDepthM=new Float32Array(N),exposure=new Float32Array(N),uniqueEroded=Array(24).fill(0);
+ for(let i=0;i<N;i++)if(input.land[i]){
+  const id=exposedRockId(layers,remaining,top,i);exposed[i]=id;landCount++;soilDepthM[i]=soil[i]/(A*rhoSoil);waterTableDepthM[i]=Math.max(0,20-gw[i]/Math.max(.001,props(i).porosity));const X=i%W,Y=Math.floor(i/W),x0=Math.max(0,X-1),x1=Math.min(W-1,X+1),y0=Math.max(0,Y-1),y1=Math.min(H-1,Y+1),localGradient=Math.hypot((z[Y*W+x1]-z[Y*W+x0])/((x1-x0)*dx),(z[y1*W+X]-z[y0*W+X])/((y1-y0)*dx)),slope=Math.atan(localGradient)*180/Math.PI;slopeValues.push(slope);deltaValues.push(z[i]-input.elevation[i]);exposure[i]=rockClamp(1-soilDepthM[i]/1.5,0,1);const finalProps=props(i);resistance[i]=finalProps.erosionResistance;permeability[i]=finalProps.permeabilityM2;metrics.bedrockAreaM2[id]+=A;if(exposure[i]>.5)metrics.exposedRockAreaM2[id]+=A;else soilArea+=A;
+  if(id!==layers.rockIds[i*layers.count])exposureChanges++;for(let r=0;r<24;r++)if(erodedMask[i]&(1<<r))uniqueEroded[r]++;
+  if(catchment[i]>=8&&(flow[i]+baseflow[i])>0){channels++;const x=i%W,y=Math.floor(i/W),q=route.receiver[i],rx=q>=0?q%W-x:0,ry=q>=0?Math.floor(q/W)-y:1,px=-Math.sign(ry),py=Math.sign(rx);let left=z[i],right=z[i];const banks=[[],[]];
+   for(const [side,sign] of [[0,-1],[1,1]])for(let k=1;k<=4;k++){const X=x+px*k*sign,Y=y+py*k*sign;if(X<0||Y<0||X>=W||Y>=H)break;const zz=z[Y*W+X];if(side===0)left=Math.max(left,zz);else right=Math.max(right,zz);banks[side].push({z:zz,d:k*dx*Math.hypot(px,py)});}
+   const depth=Math.max(0,(left+right)/2-z[i]),threshold=z[i]+depth*.5;valleys.push(depth);widths.push(banks.reduce((sum,bank)=>sum+(bank.find(p=>p.z>=threshold)?.d??bank.at(-1)?.d??0),0));
+  }
+  metrics.soilFinalKg+=soil[i];metrics.groundwaterFinalM3+=gw[i]*A;
+ }
+ const bedRemoved=rockSum(metrics.weatheredKgByRock)+rockSum(metrics.mechanicalBedKgByRock)+rockSum(metrics.dissolvedKgByRock),massIn=metrics.soilInitialKg+bedRemoved,massOut=metrics.soilFinalKg+metrics.solidExportedKg+metrics.dissolvedExportedKg;
+ metrics.bedrockRemovedKg=bedRemoved;metrics.dissolvedKg=rockSum(metrics.dissolvedKgByRock);metrics.mechanicalBedKg=rockSum(metrics.mechanicalBedKgByRock);metrics.weatheredKg=rockSum(metrics.weatheredKgByRock);metrics.massErrorKg=massIn-massOut;metrics.massRelativeError=metrics.massErrorKg/Math.max(1,massIn);
+ metrics.waterErrorM3=metrics.liquidInputM3+metrics.groundwaterInitialM3-metrics.waterExportedM3-metrics.groundwaterFinalM3;metrics.waterRelativeError=metrics.waterErrorM3/Math.max(1,metrics.liquidInputM3);
+ slopeValues.sort((a,b)=>a-b);metrics.meanSlopeDegrees=rockSum(slopeValues)/Math.max(1,landCount);metrics.p90SlopeDegrees=slopeValues[Math.floor((slopeValues.length-1)*.9)]??0;metrics.steepAreaFraction=slopeValues.filter(s=>s>=35).length/Math.max(1,landCount);metrics.meanElevationChangeM=rockSum(deltaValues)/Math.max(1,landCount);metrics.maxAbsElevationChangeM=deltaValues.reduce((m,v)=>Math.max(m,Math.abs(v)),0);metrics.valleyMeanDepthM=rockSum(valleys)/Math.max(1,valleys.length);metrics.valleyMeanWidthM=rockSum(widths)/Math.max(1,widths.length);metrics.channelDensityPerM=channels*dx/Math.max(A,landCount*A);metrics.exposureChangedFraction=exposureChanges/Math.max(1,landCount);metrics.rockMeanErosionDepthM=metrics.removedDepthByRock.map((v,i)=>v/Math.max(1,uniqueEroded[i]));metrics.soilCoveredAreaM2=soilArea;metrics.elapsedMs=performance.now()-start;
+ return {width:W,height:H,cellSizeM:dx,initialElevation:Float64Array.from(input.elevation),elevation:z,bedrockElevation:bed,soilDepthM,waterTableDepthM,layers,remainingThicknessM:remaining,topLayer:top,exposedRockId:exposed,resistance,permeability,stability,weathering,moisture,exposure,erodedDepthM:erodedDepth,flowReceiver:route.receiver,surfaceDischargeM3PerYear:flow,baseDischargeM3PerYear:baseflow,metrics};
+}
+
+/** Extract coarse, physical source-world conditions; independent of the compressed game view. */
+function buildRockInput(seed,ter,tec,clim,W,H,step=8,kmPerBlock=3.33){
+ const width=Math.ceil(W/step),height=Math.ceil(H/step),N=width*height,f=v=>new Float64Array(N).fill(v),input={seed:seed>>>0,width,height,cellSizeM:step*kmPerBlock*1000,elevation:f(0),land:new Uint8Array(N),precipitationMPerYear:f(0),temperatureC:f(0),fracture:f(0),weathering:f(0),formation:new Uint8Array(N),dipDegrees:f(0),dipDirectionDegrees:f(0),foldAmplitudeM:f(0),faultThrowM:f(0),layerScaleM:f(0),layerDatumM:f(0),ageMyr:f(0),stormFactor:f(1),initialSoilM:f(0)};
+ const C=clim.data,cw=Math.ceil(W/8),ch=Math.ceil(H/8),get=(arr,i,fallback=0)=>arr?.[i]??fallback;
+ for(let gy=0;gy<height;gy++)for(let gx=0;gx<width;gx++){
+  const i=gy*width+gx,x0=gx*step,y0=gy*step;let all=0,landSum=0,count=0,landCount=0;
+  for(let y=y0;y<Math.min(H,y0+step);y++)for(let x=x0;x<Math.min(W,x0+step);x++){const j=y*W+x,e=ter.elev[j];all+=e;count++;if(ter.type[j]){landSum+=e;landCount++;}}
+  const land=landCount>=count*.5;input.land[i]=land?1:0;const z=land?landSum/Math.max(1,landCount):all/count;input.elevation[i]=z;
+  const ci=Math.min(ch-1,Math.floor((y0+step/2)/8))*cw+Math.min(cw-1,Math.floor((x0+step/2)/8)),T=get(C.tAnnual,ci,140)/10,P=get(C.pAnnual,ci,800),cr=get(tec.crust,i),thick=get(tec.thick??tec.thickness,i,35),rho=get(tec.density,i,2.7),fault=get(tec.fault,i),volc=get(tec.volcHist??tec.volcanism,i),oro=get(tec.oro??tec.orogeny,i),cause=get(tec.cause,i),age=get(tec.age,i,20),basin=get(tec.basin,i),orogenAge=get(tec.oroAge??tec.orogenyAge,i,10);
+  let family=0;
+  if(!cr){family=z>-300&&T>16?6:age>80?13:1;}
+  else if(volc>30||cause===3||cause===9){family=thick>42&&rho<2.8?12:cause===9||cr===3?3:2;}
+  else if(cr===3||cause===7){family=volc>5?3:4;}
+  else if((fault>3||cause===8)&&rho>2.82){family=11;}
+  else if((oro>150||cause===4||cause===5)&&thick>40){family=cause===4&&rho<2.73&&z<2200?10:orogenAge>8&&z>2500?9:8;}
+  else if(P<250&&z<1000&&(basin>50||cause===12||cause===6)){family=7;}
+  else if(T>12&&z<800&&(cause===13||cause===6||age>400)){family=6;}
+  else if(z<450||cause===12){family=5;}
+  else if(z<1400){family=4;}
+  else if(cr===1&&age>500){family=0;}
+  else family=oro>60?8:0;
+  input.formation[i]=family;input.precipitationMPerYear[i]=Math.max(0,P/1000);input.temperatureC[i]=T;input.fracture[i]=rockClamp(fault/(fault+5)+get(tec.brate??tec.boundaryRate,i)*.04,0,.95);input.weathering[i]=rockClamp(.1+P/6000+Math.max(0,T)/100+age/10000,0,.85);
+  input.dipDegrees[i]=rockClamp((cr===2?12:2)+oro/(oro+500)*25+fault/(fault+4)*12,0,50);
+  const plate=get(tec.plate,i),p=tec.plates?.[plate];input.dipDirectionDegrees[i]=p?Math.atan2(p.vy??.3,p.vx??1)*180/Math.PI:(gx+gy)*.3;
+  input.foldAmplitudeM[i]=(oro/(oro+500))*20;input.faultThrowM[i]=fault/(fault+5)*30*Math.sin(gx*.2+gy*.17);input.layerScaleM[i]=family>=4&&family<=7?25:70;input.layerDatumM[i]=Math.sin(gx/30+seed*.00001)*20+Math.cos(gy/30)*20;input.ageMyr[i]=Math.max(1,Math.min(age,2000));
+  input.initialSoilM[i]=land?rockClamp(1.5-z/6000+P/3000,.15,3):0;
+  let monthlyMax=0;for(let m=0;m<12;m++)monthlyMax=Math.max(monthlyMax,get(C.precip,m*cw*ch+ci,P/12));input.stormFactor[i]=rockClamp(P>0?monthlyMax/(P/12):1,1,6);
+ }
+ return input;
+}
+function rockBilinear(field,width,height,gx,gy){const x=rockClamp(gx,0,width-1),y=rockClamp(gy,0,height-1),ix=Math.min(width-2,Math.floor(x)),iy=Math.min(height-2,Math.floor(y)),u=x-ix,v=y-iy,i=iy*width+ix;return (field[i]*(1-u)+field[i+1]*u)*(1-v)+(field[i+width]*(1-u)+field[i+width+1]*u)*v;}
+function applyRockElevation(worldElev,type,W,H,state,step=8,kmPerBlock=3.33){
+ const delta=Float64Array.from(state.elevation,(z,i)=>z-state.initialElevation[i]),area=(kmPerBlock*1000)**2;let requestedM3=0,appliedM3=0,clampedCells=0;
+ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;if(!type[i])continue;const change=rockBilinear(delta,state.width,state.height,(x+.5)/step-.5,(y+.5)/step-.5),old=worldElev[i],value=Math.max(.01,old+change);if(value!==old+change)clampedCells++;worldElev[i]=value;requestedM3+=change*area;appliedM3+=(worldElev[i]-old)*area;}
+ state.metrics.resampling={requestedVolumeM3:requestedM3,appliedVolumeM3:appliedM3,clampedCells,volumeDifferenceM3:appliedM3-requestedM3};state.gridStep=step;state.sourceWidth=W;state.sourceHeight=H;state.kmPerBlock=kmPerBlock;state.version=ROCK_PROFILE;return state;
+}
+function rockMeanSurface(elev,type,W,H,step){const w=Math.ceil(W/step),h=Math.ceil(H/step),out=new Float64Array(w*h);for(let gy=0;gy<h;gy++)for(let gx=0;gx<w;gx++){let sum=0,n=0;for(let y=gy*step;y<Math.min(H,(gy+1)*step);y++)for(let x=gx*step;x<Math.min(W,(gx+1)*step);x++){const i=y*W+x;if(type[i]){sum+=elev[i];n++;}}out[gy*w+gx]=n?sum/n:NaN;}return out;}
+function generateRockWorld(seed,ter,tec,clim,W,H,report=()=>{}){
+ const input=buildRockInput(seed,ter,tec,clim,W,H),state=evolveRockTerrain(input,{progress:(step,n)=>{if(step%8===0)report('岩石の侵食・堆積 '+step+'/'+n);}});applyRockElevation(ter.elev,ter.type,W,H,state);state.postRockSurface=rockMeanSurface(ter.elev,ter.type,W,H,state.gridStep);state.formation=input.formation;state.fracture=Float32Array.from(input.fracture);state.climateForcing={precipitationMPerYear:Float32Array.from(input.precipitationMPerYear),temperatureC:Float32Array.from(input.temperatureC)};return state;
+}
+/** Native river/lake/landmark cuts are a separate bookkeeping stage, never charged to rock erosion. */
+function finalizeRockSurface(state,elev,type,W,H){if(!state)return null;const surface=rockMeanSurface(elev,type,W,H,state.gridStep),A=state.cellSizeM**2;let nativeCutKg=0,nativeDepositM3=0;
+ for(let i=0;i<surface.length;i++){
+  if(!Number.isFinite(surface[i])||!Number.isFinite(state.postRockSurface[i]))continue;let delta=surface[i]-state.postRockSurface[i];
+  if(delta>=0){state.soilDepthM[i]+=delta;nativeDepositM3+=delta*A;}else{let cut=-delta,soilCut=Math.min(cut,state.soilDepthM[i]);state.soilDepthM[i]-=soilCut;cut-=soilCut;
+   while(cut>1e-9){const id=exposedRockId(state.layers,state.remainingThicknessM,state.topLayer,i),r=ROCKS[id],removed=removeRockThickness(state.layers,state.remainingThicknessM,state.topLayer,i,cut);if(!removed)break;cut-=removed;nativeCutKg+=removed*A*(r.densityKgM3[0]+r.densityKgM3[1])/2;}
+  }
+  state.exposedRockId[i]=exposedRockId(state.layers,state.remainingThicknessM,state.topLayer,i);state.exposure[i]=rockClamp(1-state.soilDepthM[i]/1.5,0,1);const p=effectiveRockProperties(state.exposedRockId[i],{fracture:state.fracture[i],weathering:state.weathering[i],moisture:state.moisture[i],temperatureC:state.climateForcing.temperatureC[i]});state.resistance[i]=p.erosionResistance;state.permeability[i]=p.permeabilityM2;
+ }
+ state.metrics.nativePostprocess={bedrockRemovedKg:nativeCutKg,depositedVolumeM3:nativeDepositM3};delete state.postRockSurface;return state;
+}
+function sampleRockSurface(world,gridX,gridY){
+ const s=world?.rocks;if(!s)return null;const x=Math.min(s.width-1,Math.max(0,Math.floor(gridX/s.gridStep))),y=Math.min(s.height-1,Math.max(0,Math.floor(gridY/s.gridStep))),i=y*s.width+x,id=s.exposedRockId[i];
+ return {rockId:id,rockName:ROCKS[id].name,rockExposure:s.exposure[i],soilDepthM:s.soilDepthM[i],erosionResistance:s.resistance[i],permeabilityM2:s.permeability[i],slopeStability:s.stability[i],weathering:s.weathering[i],moisture:s.moisture[i],dipDegrees:s.layers.dipRadians[i]*180/Math.PI,dipDirectionRadians:s.layers.directionRadians[i],sourceGeologyIndex:i};
+}
+function rockColumnAt(world,gridX,gridY){const p=sampleRockSurface(world,gridX,gridY);return p?rockLayerColumn(world.rocks.layers,world.rocks.remainingThicknessM,world.rocks.topLayer,p.sourceGeologyIndex):[];}
+function collectRockBuffers(value,seen=new Set()){if(!value||typeof value!=='object')return [];if(ArrayBuffer.isView(value)){if(!seen.has(value.buffer)){seen.add(value.buffer);return [value.buffer];}return [];}return Object.values(value).flatMap(v=>collectRockBuffers(v,seen));}
+
+</script>
 <script id="generator-src" type="text/plain">
 'use strict';
 const GEN_VERSION = 11;
@@ -4700,7 +4928,7 @@ function generateResources(seed, tec, ter, clim, hydro, karst, progress) {
 }
 
 // ================================================================ メイン
-function generateWorld(seed, report) {
+function generateWorld(seed, report, rockVersion = ROCK_PROFILE) {
   const t0 = Date.now();
   const timings = [];
   const progress = (stage) => { timings.push([stage, Date.now() - t0]); report(stage); };
@@ -4717,7 +4945,9 @@ function generateWorld(seed, report) {
     const i = y * W + x;
     if (type[i] && elev[i] > 800) mtnId[i] = mr.mtnIdGeo[geoIndexAt(x, y)];
   }
-  const clim = generateClimate(seed, type, elev, progress);
+  let clim = generateClimate(seed, type, elev, progress);
+  const rocks = rockVersion === ROCK_PROFILE ? generateRockWorld(seed, ter, tec, clim, W, H, progress) : null;
+  if (rocks) clim = generateClimate(seed, type, elev, progress);
   const lmClim = generateLandmarksClim(seed, ter, clim, progress);
   const hydro = generateHydrology(seed, type, regionId, elev, clim.biome, clim, progress);
   const lmPost = generateLandmarksPost(seed, tec, ter, clim, hydro, lmClim.karst, progress);
@@ -4730,6 +4960,7 @@ function generateWorld(seed, report) {
   ter.featuresForResources = features;
   const resources = generateResources(seed, tec, ter, clim, hydro, lmClim.karst, progress);
   delete ter.featuresForResources;
+  finalizeRockSurface(rocks, elev, type, W, H);
   const biomeArea = new Array(BIOME_COUNT).fill(0);
   for (let i = 0; i < N; i++) if (type[i]) biomeArea[clim.biome[i]]++;
 
@@ -4737,7 +4968,7 @@ function generateWorld(seed, report) {
   for (let i = 0; i < N; i++) { if (type[i] === 1) contCells++; else if (type[i] >= 2) islCells++; }
   const continents = ter.contAreas.length - 1;
   return {
-    elev, type, regionId, mtnId, seaId: seas.seaId, biome: clim.biome,
+    elev, type, regionId, mtnId, rocks, seaId: seas.seaId, biome: clim.biome,
     // 火山：{ x, y（ブロック）, kind（0 成層火山 / 1 盾状火山）, active（活火山）, height（火山体の高さ m）, radius（ブロック）, summit（山頂の標高 m） }
     volcanoes: ter.volcanoes, features, lakeSalt: hydro.lakeSalt,
     // 自然の資源：grid（粗いグリッド LR）＝土・肥えぐあい・地下水・木材・石材・粘土、cell（気候格子）＝漁場・野生の動植物、deposits＝鉱床
@@ -4758,7 +4989,7 @@ function generateWorld(seed, report) {
       plates: tec.plates, hotspots: tec.hotspots,
     },
     stats: {
-      version: GEN_VERSION,
+      version: rocks ? 12 : GEN_VERSION,
       width: W, height: H,
       plates: tec.plates.length,
       hotspots: tec.hotspots.length,
@@ -4793,14 +5024,14 @@ function generateWorld(seed, report) {
 }
 
 self.onmessage = function (e) {
-  const { id, seed } = e.data;
+  const { id, seed, rockVersion } = e.data;
   try {
-    const w = generateWorld(seed >>> 0, (stage) => self.postMessage({ id, kind: 'progress', stage }));
-    self.postMessage({ id, kind: 'done', elev: w.elev, type: w.type, regionId: w.regionId, mtnId: w.mtnId, seaId: w.seaId,
+    const w = generateWorld(seed >>> 0, (stage) => self.postMessage({ id, kind: 'progress', stage }), rockVersion);
+    self.postMessage({ id, kind: 'done', rocks: w.rocks, elev: w.elev, type: w.type, regionId: w.regionId, mtnId: w.mtnId, seaId: w.seaId,
       biome: w.biome, climate: w.climate, water: w.water, lakeId: w.lakeId, lakeLevels: w.lakeLevels,
       riverPts: w.riverPts, riverStarts: w.riverStarts, geology: w.geology, volcanoes: w.volcanoes, features: w.features, lakeSalt: w.lakeSalt, fauna: w.fauna,
       riverLine: w.riverLine, riverInfo: w.riverInfo, resources: w.resources, stats: w.stats },
-      [w.elev.buffer, w.type.buffer, w.regionId.buffer, w.mtnId.buffer, w.seaId.buffer, w.biome.buffer,
+      [...collectRockBuffers(w.rocks), w.elev.buffer, w.type.buffer, w.regionId.buffer, w.mtnId.buffer, w.seaId.buffer, w.biome.buffer,
        w.water.buffer, w.lakeId.buffer, w.lakeLevels.buffer, w.riverPts.buffer, w.riverStarts.buffer,
        w.climate.tempSea.buffer, w.climate.precip.buffer,
        // 気候の保存データ（月別の配列など）。同じバッファを2回渡すとエラーになるので重複を除く
@@ -4915,8 +5146,8 @@ const BOUNDARY_RGB = [null, [226, 58, 48], [52, 136, 236], [64, 196, 88]];   // 
 const HOTSPOT_RGB = [255, 168, 40];
 const GEO_RGB = { craton: [204, 180, 132], orogen: [170, 108, 84], rift: [158, 98, 176], young: [120, 176, 214], old: [24, 46, 96],
   volc: [220, 64, 44], trench: [64, 24, 84], fault: [52, 52, 52] };
-const VIEW_MODES = ['biome', 'climate', 'res', 'deer', 'elev', 'plate', 'geology'];
-const VIEW_LABELS = { biome: '表示：植生', climate: '表示：気候区分', res: '表示：資源', deer: '表示：鹿', elev: '表示：標高', plate: '表示：プレート', geology: '表示：地質' };
+const VIEW_MODES = ['biome', 'climate', 'res', 'deer', 'elev', 'plate', 'geology', 'rock', 'rockResistance', 'rockPermeability', 'rockStability'];
+const VIEW_LABELS = { biome: '表示：植生', climate: '表示：気候区分', res: '表示：資源', deer: '表示：鹿', elev: '表示：標高', plate: '表示：プレート', geology: '表示：地質', rock: '表示：岩石24種', rockResistance: '表示：侵食耐性', rockPermeability: '表示：透水性', rockStability: '表示：斜面安定性' };
 // 動物の生息地の3段階（不適地・可能地・適地）の色と、密度の色
 const FAUNA_TIER_RGB = [[112, 110, 106], [206, 190, 100], [72, 150, 74]], FAUNA_DENS_RGB = [150, 30, 18];
 let viewMode = 'biome';   // biome=植生 / climate=気候区分 / elev=標高 / plate=プレート / geology=地質
@@ -4931,6 +5162,9 @@ function swatch(rgb) { return '<span class="sw" style="background:rgb(' + rgb.jo
 function buildLegend() {
   const el = document.getElementById('legend');
   let html;
+  if (viewMode.startsWith('rock')) {
+    el.innerHTML = window.__wohRockLegend ? window.__wohRockLegend(viewMode) : '岩石の準備中';return;
+  }
   if (viewMode === 'biome') {
     html = '<div class="title">植生凡例</div><div class="cols">';
     for (const [name, b] of BIOME_LEGEND) {
@@ -5303,6 +5537,7 @@ function buildTerrain(elev, biome) {
   terrainTex = buildTexture(elev, biome, viewMode);
   const mat = new THREE.MeshLambertMaterial({ map: terrainTex });
   labPatchTerrainMaterial(mat);
+  window.__wohApplyRockMaterial?.(mat);
   terrainMesh = new THREE.Mesh(geo, mat);
   scene.add(terrainMesh);
   buildRivers(world.riverPts, world.riverStarts);
@@ -5402,7 +5637,7 @@ canvas.addEventListener('touchcancel', endTouches, { passive: false });
 
 // ------------------------------------------------------------ 生成（Worker）
 // 生成処理（Worker）には動物の共通基盤も入れる。画面側でも同じ共通基盤を時間経過・狩猟に使う
-const workerUrl = URL.createObjectURL(new Blob([document.getElementById('generator-src').textContent, '\n', document.getElementById('fauna-src').textContent], { type: 'text/javascript' }));
+const workerUrl = URL.createObjectURL(new Blob([document.getElementById('generator-src').textContent, '\n', document.getElementById('fauna-src').textContent, '\n', document.getElementById('rock-src').textContent], { type: 'text/javascript' }));
 const FA = new Function(document.getElementById('fauna-src').textContent +
   '\nreturn { ANIMAL_SPECIES, FAUNA_TIER, FAUNA_TIER_LABEL, faunaMonthly, faunaHunt, faunaSummary, faunaDensity, faunaClone, faRng, faTotal, faJuveniles };')();
 const worker = new Worker(workerUrl);
@@ -5421,7 +5656,9 @@ function seedToInt(str) {
 function randomSeed() { return String(1 + Math.floor(Math.random() * 999999999)); }
 
 let currentSeed = null, previousSeed = null;
-function generate(seedStr) {
+let currentRockVersion = null, previousRockVersion = null;
+function generate(seedStr, requestedRockVersion) {
+  const generationRockVersion = pendingLoad ? (pendingLoad.rockGenerationVersion || null) : requestedRockVersion === undefined ? 'rock-24-v1' : requestedRockVersion;
   if (busy) return;
   busy = true; setButtons();
   const id = ++jobId;
@@ -5437,11 +5674,12 @@ function generate(seedStr) {
       return;
     }
     // 履歴は直前の1つだけ（Seedのみ保持し、戻るときは同じSeedから再生成する）
+    previousRockVersion = currentRockVersion; currentRockVersion = m.rocks?.version || null;
     previousSeed = currentSeed;
     currentSeed = seedStr;
     world = { elev: m.elev, type: m.type, regionId: m.regionId, mtnId: m.mtnId, seaId: m.seaId, biome: m.biome, climate: m.climate,
       water: m.water, lakeId: m.lakeId, lakeLevels: m.lakeLevels, riverPts: m.riverPts, riverStarts: m.riverStarts,
-      geology: m.geology, volcanoes: m.volcanoes, features: m.features, lakeSalt: m.lakeSalt, fauna: m.fauna,
+      rocks: m.rocks || null, geology: m.geology, volcanoes: m.volcanoes, features: m.features, lakeSalt: m.lakeSalt, fauna: m.fauna,
       riverLine: m.riverLine, riverInfo: m.riverInfo, resources: m.resources, stats: m.stats };
     lakeId = m.lakeId; lakeLevels = m.lakeLevels;
     labOnNewWorld();
@@ -5457,7 +5695,7 @@ function generate(seedStr) {
     window.dispatchEvent(new Event('woh-world-ready'));
   };
   // 表示を更新してから重い処理を投げる
-  setTimeout(() => worker.postMessage({ id, seed: seedToInt(seedStr) }), 30);
+  setTimeout(() => worker.postMessage({ id, seed: seedToInt(seedStr), rockVersion: generationRockVersion }), 30);
 }
 
 function showInfo(seedStr, s) {
@@ -5508,7 +5746,7 @@ function bindTap(el, fn) {
   el.addEventListener('click', () => { if (Date.now() - lastTouch > 800 && !el.disabled) fn(); });
 }
 bindTap(btnRegen, () => generate(randomSeed()));
-bindTap(btnPrev, () => { if (previousSeed !== null) generate(previousSeed); });
+bindTap(btnPrev, () => { if (previousSeed !== null) generate(previousSeed, previousRockVersion); });
 function applySeed() {
   const v = seedInput.value.trim();
   seedInput.blur();
@@ -7112,7 +7350,7 @@ function dbDo(mode, fn) {
 }
 function serializeState() {
   const st = {
-    format: SAVE_FORMAT, genVersion: SAVE_GEN_VERSION, seed: currentSeed, savedAt: Date.now(),
+    format: SAVE_FORMAT, genVersion: world.rocks ? 12 : SAVE_GEN_VERSION, rockGenerationVersion: world.rocks?.version || null, seed: currentSeed, savedAt: Date.now(),
     clock: { day: clock.day, mode: clock.mode, speed: clock.speed },
     history: { list: history.list, nextId: history.nextId },
     names: names.overrides,
@@ -7204,7 +7442,8 @@ let pendingLoad = null;
 function loadState(st) {
   if (!st || st.format !== SAVE_FORMAT) { menuMsg('この記録は読み込めません（形式が違います）'); return; }
   const go = () => { pendingLoad = st; menuShow(false); generate(st.seed, false); };
-  if (st.genVersion !== SAVE_GEN_VERSION) {
+  if(st.genVersion === 12 && st.rockGenerationVersion !== 'rock-24-v1'){menuMsg('この岩石生成バージョンには未対応です');return;}
+  if (st.genVersion !== SAVE_GEN_VERSION && st.genVersion !== 12) {
     confirmBox('この記録は以前の生成の仕組みで作られました。地形が変わっている可能性があります。読み込みますか？', go);
   } else go();
 }
@@ -7424,7 +7663,7 @@ window.__geo = { get world() { return world; }, get seed() { return currentSeed;
 
 const wohPositionMarker=new THREE.Mesh(new THREE.SphereGeometry(22,12,8),new THREE.MeshBasicMaterial({color:0xffcf30,depthTest:false}));wohPositionMarker.renderOrder=100;scene.add(wohPositionMarker);
 function wohMarkPlayer(p){if(!p||!world)return;const s=(world.geology?.kmPerBlock??3.33)*1000,X=toWorldX(p.xM/s),Z=toWorldZ(p.yM/s);wohPositionMarker.position.set(X,meshHeightAtWorld(X,Z)+5,Z);requestRender();}
-window.__wohNative={renderer,scene,camera,cam,updateCamera,overview:false,revision:0,seenRevision:0,lastChange:0,pendingPlayer:null,changed(){this.revision++;this.lastChange=performance.now();},clearTouches(){touches.clear();},get world(){return world;},get seed(){return currentSeed;},get texture(){return terrainTex;},get cartography(){return {biomes:BIOME_COLORS,lut:LUT,index:lutIndex,lake:LAKE_RGB,river:RIVER_RGB};},get positionMarker(){return wohPositionMarker;},get map(){return {scene,camera,cam,update:updateCamera,player:wohMarkPlayer,dispose(){},get mesh(){return terrainMesh;},get world(){return world;}};}};
+window.__wohNative={renderer,scene,camera,cam,updateCamera,overview:false,revision:0,seenRevision:0,lastChange:0,pendingPlayer:null,changed(){this.revision++;this.lastChange=performance.now();},clearTouches(){touches.clear();},get viewMode(){return viewMode;},get world(){return world;},get seed(){return currentSeed;},get texture(){return terrainTex;},get cartography(){return {biomes:BIOME_COLORS,lut:LUT,index:lutIndex,lake:LAKE_RGB,river:RIVER_RGB};},get positionMarker(){return wohPositionMarker;},get map(){return {scene,camera,cam,update:updateCamera,player:wohMarkPlayer,dispose(){},get mesh(){return terrainMesh;},get world(){return world;}};}};
 updateRiverPix();
 resetCamera();
 coreSetup();

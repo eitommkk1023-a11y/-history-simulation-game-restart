@@ -1,3 +1,4 @@
+import {installRockMaterials} from '../rocks/rock-material.mjs';
 import {createGrassRenderer} from '../vegetation/grass-renderer.mjs';
 import {installGameHUD} from './game-hud.mjs';
 import {createWaterSurface} from '../geography/water-surface.mjs';
@@ -19,6 +20,7 @@ const status=document.getElementById('status'),generateButton=document.getElemen
 document.getElementById('settings').open=!matchMedia('(orientation: landscape) and (max-height: 500px)').matches;
 const bridge=globalThis.__wohNative;
 const renderer=bridge.renderer;
+const rockMaterials=installRockMaterials(THREE,bridge);
 
 
 const scene=new THREE.Scene();scene.background=new THREE.Color(0xa8c8dc);scene.fog=new THREE.Fog(0xa8c8dc,4500,7800);
@@ -147,6 +149,7 @@ function makeTerrainMesh(chunk,far=false,edgeCuts){
    shader.vertexShader='varying vec2 terrainXZ;\n'+shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n terrainXZ=position.xz;');
    shader.fragmentShader='uniform vec4 nearHole; varying vec2 terrainXZ;\n'+shader.fragmentShader.replace('#include <clipping_planes_fragment>','#include <clipping_planes_fragment>\n if(terrainXZ.x>=nearHole.x&&terrainXZ.x<nearHole.z&&terrainXZ.y>=nearHole.y&&terrainXZ.y<nearHole.w)discard;');
   };material.customProgramCacheKey=()=> 'terrain-near-hole-v1';}
+ rockMaterials.patch(material);
  const mesh=new THREE.Mesh(geometry,material);scene.add(mesh);return {chunk,mesh,hole,boundary:data.boundary};
 }
 function sampleDisplayed(entry,x,y){

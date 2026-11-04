@@ -1,0 +1,25 @@
+{
+  "drawing": {
+    "test": "same new shader, procedural material disabled/enabled, 320x180, software WebGL",
+    "disabledMedianMs": 0.7999999970197678,
+    "enabledMedianMs": 0.8999999910593033,
+    "disabledDrawCalls": 81,
+    "enabledDrawCalls": 81,
+    "maxTextureUnits": 32
+  },
+  "gpuIdSamples": 104,
+  "gpuIdMatches": 104,
+  "rockKinds": 24,
+  "atlasBytes": 1125000,
+  "landscapeViewports": [
+    "844x390",
+    "1180x820"
+  ],
+  "diagnosticModes": 4,
+  "newSaveVersion": 12,
+  "legacyLoadVersion": 11,
+  "legacyPositionRestored": true,
+  "previousWorldGenerationPreserved": true,
+  "pageErrors": [],
+  "shaderErrors": []
+}
