@@ -4,6 +4,7 @@ import {seamGeometry} from '../geography/terrain-seams.mjs';
 import {createTerrainWorkQueue} from '../geography/terrain-work-queue.mjs';
 import {createPlayableTerrain,playerFromSource,playerToSource,playableOverviewHeight,PLAYABLE_SURFACE_VERSION} from './playable-scale.mjs';
 import {selectTerrainLOD} from '../geography/terrain-lod.mjs';
+import {createTerrainPrefetch} from '../geography/terrain-prefetch.mjs';
 import {createChunkWindow} from '../geography/chunk-window.mjs';
 import {createTerrainChunk} from '../geography/terrain-chunk.mjs';
 import {humanGait,solveHumanLeg} from '../player/human-gait.mjs';
@@ -111,7 +112,7 @@ function updateCamera(){
 function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();if(state?.map){state.map.camera.aspect=innerWidth/innerHeight;state.map.camera.updateProjectionMatrix();}updateCamera();}
 function clearTerrain(){
   resetInput();crouched=false;crouchButton.classList.remove('active');crouchButton.setAttribute('aria-pressed','false');markerPoint=null;jumpHeight=0;jumpVelocity=0;
-  if(state){state.clearing=true;state.window.clear();state.work.clear();for(const mesh of [state.waterMesh,state.farWaterMesh])if(mesh){scene.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();}for(const entry of state.fallback.values())releaseMesh(entry);}
+  if(state){state.clearing=true;state.prefetch.clear();state.window.clear();state.work.clear();for(const mesh of [state.waterMesh,state.farWaterMesh])if(mesh){scene.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();}for(const entry of state.fallback.values())releaseMesh(entry);}
   state=null;marker.visible=false;
 }
 function groundAt(xM,yM){
@@ -195,7 +196,7 @@ function refreshWater(xM,yM){
 function refreshChunks(xM,yM){
  const fast=!!bridge.debugFastActive&&wasMoving;
  if(state.fastRender!==fast){
-  state.dropOldChunks=fast;
+  state.dropOldChunks=fast;state.prefetch.clear();
   state.window.clear();state.work.clear();state.far=new Map();
   if(fast){for(const e of state.fallback.values())releaseMesh(e);state.fallback.clear();}
   state.window=makeWindow(state.terrain,fast);state.fastRender=fast;state.lodKey='';
@@ -203,6 +204,7 @@ function refreshChunks(xM,yM){
  }
  const previousNear=[...state.entries,...state.fallback.values()];
  state.window.update(xM,yM);
+ if(!fast&&wasMoving)state.prefetch.request(xM,yM,state.travelDirection.x,state.travelDirection.y);
  for(const e of state.entries){const key=e.chunk.sizeM+','+e.chunk.tileX+','+e.chunk.tileY;if(state.fallback.has(key)){releaseMesh(state.fallback.get(key));state.fallback.delete(key);}}
  const cx=Math.floor(xM/64),cy=Math.floor(yM/64),lodKey=cx+','+cy;
  state.nearCenter={x:cx,y:cy};
@@ -225,7 +227,7 @@ function refreshChunks(xM,yM){
 function makeWindow(terrain,fast){
  const sizeM=fast?512:64,segments=fast?16:32;
  return createChunkWindow(terrain,(tx,ty)=>{
-   const chunk=createTerrainChunk(terrain,{tileX:tx,tileY:ty,sizeM,segments});
+   const chunk=(!fast&&state?.prefetch.take(tx,ty))||createTerrainChunk(terrain,{tileX:tx,tileY:ty,sizeM,segments});
    return makeTerrainMesh(chunk,fast);
  },entry=>{if(state&&!state.clearing&&!state.dropOldChunks){const key=entry.chunk.sizeM+','+entry.chunk.tileX+','+entry.chunk.tileY;if(state.fallback.has(key))releaseMesh(state.fallback.get(key));state.fallback.set(key,entry);}else releaseMesh(entry);},{sizeM});
 }
@@ -233,7 +235,7 @@ function showWorld(world,point,label){
   clearTerrain();
   const terrain=createPlayableTerrain(world),p=terrain.sampleBase(point.xM,point.yM);
   const origin={...point,elevationM:p.baseElevationM},window=makeWindow(terrain,false);
-  state={terrain,origin,window,world,map:null,fastRender:false,dropOldChunks:false,idleFast:0,terrainBuilds:0,water:createWaterSurface(terrain,world),waterKey:null,waterMesh:null,far:new Map(),fallback:new Map(),clearing:false,lodKey:'',nearCenter:{x:0,y:0},settle:.6,drawDirty:false,morphSources:[],lastJobs:0,lastTexture:bridge.texture,get entries(){return this.window.entries;},label};
+  state={terrain,origin,window,world,map:null,prefetch:createTerrainPrefetch(terrain,(x,y)=>createTerrainChunk(terrain,{tileX:x,tileY:y})),travelDirection:{x:0,y:0},lastPrefetchJobs:0,fastRender:false,dropOldChunks:false,idleFast:0,terrainBuilds:0,water:createWaterSurface(terrain,world),waterKey:null,waterMesh:null,far:new Map(),fallback:new Map(),clearing:false,lodKey:'',nearCenter:{x:0,y:0},settle:.6,drawDirty:false,morphSources:[],lastJobs:0,lastTexture:bridge.texture,get entries(){return this.window.entries;},label};
   state.work=createTerrainWorkQueue({build:q=>{
    const entry=makeTerrainMesh(createTerrainChunk(terrain,q),true,q.edgeCuts);prepareMorph(entry,state.morphSources);positionTerrain(entry);setNearHole(entry);return entry;
   },release:releaseMesh,commit:(next)=>{
@@ -255,7 +257,7 @@ function findDryPoint(terrain,world){
       const i=(y+dy)*width+x+dx;if(!world.type[i]||world.water[i])dry=false;
     }
     if(!dry)continue;
-    const p=terrain.sampleBase(point.xM,point.yM);
+    const p=(terrain.sampleMacro??terrain.sampleBase)(point.xM,point.yM);
     if(p.baseElevationM>terrain.elevationToMeters(10) && p.baseElevationM<terrain.elevationToMeters(1800) && p.slopeDegrees<15){best=point;bestDistance=distance;}
   }
   if(best)return best;
@@ -342,7 +344,7 @@ function frame(time){
       const next=globalThis.__wohDev?.step(markerPoint,input,dt,state.terrain)??stepTerrainWalker(markerPoint,input,dt,groundAt);
       const dx=next.xM-markerPoint.xM,dy=next.yM-markerPoint.yM;
       wasMoving=Math.hypot(dx,dy)>0;if(!wasMoving)setSprint(false);
-      if(wasMoving){gaitDistance+=Math.hypot(dx,dy);{const target=Math.atan2(dx,dy),delta=Math.atan2(Math.sin(target-marker.rotation.y),Math.cos(target-marker.rotation.y));marker.rotation.y+=delta*(1-Math.exp(-18*Math.min(dt,.05)));}placeMarker(next.xM,next.yM,false);}
+      if(wasMoving){state.travelDirection={x:dx,y:dy};gaitDistance+=Math.hypot(dx,dy);{const target=Math.atan2(dx,dy),delta=Math.atan2(Math.sin(target-marker.rotation.y),Math.cos(target-marker.rotation.y));marker.rotation.y+=delta*(1-Math.exp(-18*Math.min(dt,.05)));}placeMarker(next.xM,next.yM,false);}
       document.getElementById('movementNotice').textContent=next.blocked?'深い水・急な地形・世界の外へは進めません':'';
     }else{if(wasMoving)setSprint(false);wasMoving=false;document.getElementById('movementNotice').textContent='';}
   }
@@ -355,7 +357,8 @@ function frame(time){
     if(!wasMoving&&state.fastRender){state.idleFast+=Math.min(dt,.05);if(state.idleFast>.15){placeMarker(markerPoint.xM,markerPoint.yM,false);state.drawDirty=true;}}else state.idleFast=0;
     if(state.lastTexture!==bridge.texture){for(const entry of [...state.entries,...state.far.values(),...state.fallback.values()]){entry.mesh.material.map=bridge.texture;entry.mesh.material.needsUpdate=true;}state.lastTexture=bridge.texture;state.drawDirty=true;}
     if(state.fastRender&&state.fallback.size){for(const entry of state.fallback.values())releaseMesh(entry);state.fallback.clear();}
-    state.lastJobs=state.work.tick(3,2);let terrainChanged=state.drawDirty;state.drawDirty=false;
+    const workStart=performance.now();state.lastPrefetchJobs=!state.fastRender&&!overview&&wasMoving?state.prefetch.tick():0;
+    state.lastJobs=state.work.tick(Math.max(0,3-(performance.now()-workStart)),state.lastPrefetchJobs?1:2);let terrainChanged=state.drawDirty;state.drawDirty=false;
     for(const entry of state.far.values())if(entry.morph){
       terrainChanged=true;
       const m=entry.morph;m.elapsed+=Math.min(dt,.05);const t=Math.min(1,m.elapsed/.35),blend=t*t*(3-2*t),positions=entry.mesh.geometry.attributes.position;
@@ -385,7 +388,7 @@ document.getElementById('distance').oninput=e=>{if(overview){bridge.cam.dist=Num
 window.addEventListener('resize',resize);
 window.visualViewport?.addEventListener('resize',resize);
 // The preview's diagnostic state supports inspection of the rendered ground surface.
-globalThis.__chunkPreview={get character(){return marker;},get camera(){return overview&&state?.map?state.map.camera:camera;},get motion(){return {mode:motionMode,leg:legs[0].rotation.x,hip:hips.position.y};},get air(){return {height:jumpHeight,velocity:jumpVelocity};},get view(){return {overview,yaw,pitch,target:state?.map?[state.map.cam.tx,0,state.map.cam.tz]:[0,0,0]};},get state(){return state;},get markerPoint(){return markerPoint;},groundAt,placeMarker,lookAt(xM,yM){if(!markerPoint)return;yaw=Math.atan2(markerPoint.xM-xM,markerPoint.yM-yM);pitch=-.05;updateCamera();}};
+globalThis.__chunkPreview={get character(){return marker;},get camera(){return overview&&state?.map?state.map.camera:camera;},get motion(){return {mode:motionMode,leg:legs[0].rotation.x,hip:hips.position.y};},get air(){return {height:jumpHeight,velocity:jumpVelocity};},get view(){return {overview,yaw,pitch,target:state?.map?[state.map.cam.tx,0,state.map.cam.tz]:[0,0,0]};},get state(){return state;},get markerPoint(){return markerPoint;},groundAt,placeMarker,lookAt(xM,yM,viewPitch=-.05){if(!markerPoint)return;yaw=Math.atan2(markerPoint.xM-xM,markerPoint.yM-yM);pitch=viewPitch;updateCamera();}};
 function adoptNativeWorld(){
  const world=bridge.world;if(!world)return;
  const terrain=createPlayableTerrain(world),saved=playerFromSource(bridge.pendingPlayer);
