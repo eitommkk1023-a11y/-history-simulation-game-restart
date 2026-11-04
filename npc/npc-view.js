@@ -61,14 +61,24 @@ function relation(people, id) {
   if (P.group[id] === P.group[me]) return '同じ集団';
   return '他の集団';
 }
+// 気持ちの強さを言葉に（0〜255、128が普通）
+const level = (v) => v < 80 ? '低い' : v < 112 ? 'やや低い' : v < 144 ? 'ふつう' : v < 176 ? 'やや高い' : '高い';
+// あなたから見た、その人への気持ち（信頼・好意・尊敬）：家族は決まった値、それ以外は交流の記録。なければ null
+function bond(people, id) {
+  const P = people.npc, me = people.player && people.player.id; if (me === undefined || me < 0 || id === me) return null;
+  const rel = relation(people, id), kin = { '配偶者': [210, 200, 170], '子': [200, 200, 160], '親': [200, 190, 200], 'きょうだい': [190, 180, 150], '孫': [190, 200, 150], '甥・姪': [170, 170, 150], '配偶者の親': [160, 140, 170] }[rel];
+  const b = P.bondOf(me, id); if (b) return b;
+  return kin || null;
+}
+const bondText = (b) => b ? `信頼 ${level(b[0])}／好意 ${level(b[1])}／尊敬 ${level(b[2])}` : '（まだ付き合いがない）';
 // タップしたときの説明
 function viewDescribe(people, id) {
   const P = people.npc, a = Math.floor(P.age(id)), j = P.job[id], ad = P.adultAge(id);
   const job = a < ad - 4 ? (a < 10 ? '子ども' : '見習い前') : !j ? (P.flags[id] & 8 ? '引退' : '無職') : JOBS[j].name;
   const sk = []; for (let k = 0; k < NSKILL; k++) { const v = P.skills[id * NSKILL + k]; if (v > 0) sk.push([JOBS[k + 1].skill, v]); } sk.sort((x, y) => y[1] - x[1]);
   const e = people.ethnicities[(P.eth[id] || P.groupEth[P.group[id]]) - 1];
-  return { id, age: a, sex: P.sex[id] === 1 ? '男' : '女', job, relation: relation(people, id), skills: sk.slice(0, 3).map(([n, v]) => n + ' ' + v), eth: e ? e.id : 0, married: P.spouse[id] !== NONE, isYou: !!people.player && people.player.id === id };
+  return { id, age: a, sex: P.sex[id] === 1 ? '男' : '女', job, relation: relation(people, id), skills: sk.slice(0, 3).map(([n, v]) => n + ' ' + v), eth: e ? e.id : 0, married: P.spouse[id] !== NONE, leader: !!(people.groups[P.group[id] - 1] && people.groups[P.group[id] - 1].leader === id), council: !!(people.groups[P.group[id] - 1] && (people.groups[P.group[id] - 1].council || []).includes(id)), bond: bondText(bond(people, id)), isYou: !!people.player && people.player.id === id };
 }
-const api = { DAY_SEC, workPhase, role, viewPosition, viewCandidates, viewColor, viewScale, relation, viewDescribe };
+const api = { bond, bondText, DAY_SEC, workPhase, role, viewPosition, viewCandidates, viewColor, viewScale, relation, viewDescribe };
 if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohNpcView = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

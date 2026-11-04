@@ -42,6 +42,7 @@
   ];
   JOBS.forEach((j) => { for (const key of ['train', 'apt']) if (j[key]) j[key] = j[key].map(([n, w]) => { if (!(n in SI)) throw new Error('項目名が不明: ' + n); return [SI[n], w]; }); });
   const J_FARM = 9, J_HERD = 10, J_TRADE = 11;
+  const SOC_K = 6;   // 1人が記録する、家族以外の関係の数（信頼・好意・尊敬の3つの値を持つ）
   // 仕事以外の活動で伸びる能力（プレイヤーが選べる「学ぶ」「体を鍛える」）
   const ACT_TRAIN = { study: [['学習力', 1], ['洞察力', .6], ['記憶力', .6], ['計画力', .4]], body: [['筋力', 1], ['持久力', 1], ['敏捷性', .7], ['瞬発力', .7]] };
   for (const k in ACT_TRAIN) ACT_TRAIN[k] = ACT_TRAIN[k].map(([n, w]) => [SI[n], w]);
@@ -77,6 +78,7 @@
       this.pool = [];   // 結婚相手候補の男性（遅延削除）
       this.focus = new Map();   // 重要人物
       this.stats = { births: 0, deaths: 0, marriages: 0, jobChanges: 0, retired: 0 };
+      this.members = [];   // 集団ごとの住民の番号（交流の相手を選ぶ用。移った人・亡くなった人は、選ぶときに取り除く）
       this.groupEth = new Uint16Array(0); this.ethSecondary = new Map(); this.adultAgeFn = null; this.pendingCause = 0;
       this.actId = -1; this.actKind = 'auto'; this.actJob = 0;   // プレイヤーの人物の今の活動（auto／work／gather／hunt／fish／study／body／family）。actJob＝活動が食料の仕事のときの職業番号
       this.hazardFn = null; this.fertFn = null; this.onBirth = null; this.onDeath = null;   // 民族・集団の状況（飢え・寒さ・病気）を人の死亡・出産に反映するための関数
@@ -84,6 +86,56 @@
       this.ensureGroups(groups);
       this._alloc(cap);
     }
+    // ---- 人間関係：家族以外の相手との、信頼・好意・尊敬（0〜255、128が普通）。交流のたびに、お互いの性格・年齢・技能で変わる
+    _pers(i) { if (!(this.flags[i] & 16)) { const o = i * 4; this.pers[o] = this.stat(i, SI['社交性']); this.pers[o + 1] = this.stat(i, SI['共感性']); this.pers[o + 2] = this.stat(i, SI['誠実性']); this.pers[o + 3] = this.stat(i, SI['信頼傾向']); this.flags[i] |= 16; } return i * 4; }
+    _skillOf(i) { const j = this.job[i]; return j ? this.skills[i * NSKILL + j - 1] : 0; }
+    // 相手を選ぶ：mode 'job'＝同じ仕事の人／それ以外＝同じ集団の誰か（亡くなった人・移った人は取り除く）
+    _partner(i, mode) {
+      const g = this.group[i], L = this.members[g];
+      for (let t = 0; t < 6 && L.length > 1; t++) {
+        const k = Math.floor(this.random() * L.length), j = L[k];
+        if (this.death[j] !== ALIVE || this.group[j] !== g) { L[k] = L[L.length - 1]; L.pop(); continue; }
+        if (j === i || this.age(j) < 8 || (mode === 'job' && this.job[j] !== this.job[i])) continue;
+        return j;
+      }
+      return -1;
+    }
+    // i から見た j への関係の枠（なければ作る。いっぱいなら、一番ふつうの関係を置き換える。置き換える相手がいなければ -1）
+    _slot(i, j, create) {
+      const b = i * SOC_K; let weak = -1, wd = 1e9;
+      for (let s = 0; s < SOC_K; s++) {
+        const r = this.relId[b + s];
+        if (r === j) return b + s;
+        if (r === NONE) { if (create) { this.relId[b + s] = j; const v = (b + s) * 3; this.relV[v] = this.relV[v + 1] = this.relV[v + 2] = 128; return b + s; } return -1; }
+        const v = (b + s) * 3, d = Math.abs(this.relV[v] - 128) + Math.abs(this.relV[v + 1] - 128) + Math.abs(this.relV[v + 2] - 128);
+        if (d < wd) { wd = d; weak = s; }
+      }
+      if (create && weak >= 0 && wd < 14) { this.relId[b + weak] = j; const v = (b + weak) * 3; this.relV[v] = this.relV[v + 1] = this.relV[v + 2] = 128; return b + weak; }
+      return -1;
+    }
+    _bond(i, j) {   // i が j との交流で感じたこと
+      const slot = this._slot(i, j, true); if (slot < 0) return;
+      const pi = this._pers(i), pj = this._pers(j), P = this.pers, v = slot * 3, R = this.relV;
+      const likable = (0.4 * P[pj] + 0.35 * P[pj + 1] + 0.25 * P[pj + 2]) / 255;   // j の人あたりのよさ
+      const dLike = (likable - 0.5) * 16 + (P[pi] / 255 - 0.5) * 5 + (this.random() - 0.5) * 6;
+      const dTrust = ((P[pj + 2] / 255) - 0.5) * 14 * (0.5 + P[pi + 3] / 255) + (this.random() - 0.5) * 4;
+      const dResp = ((this._skillOf(j) - this._skillOf(i)) / 255) * 10 + ((this.age(j) - this.age(i)) / 40) * 3 + (this.random() - 0.5) * 3;
+      const cl = (x) => x < 0 ? 0 : x > 255 ? 255 : x;
+      R[v] = cl(R[v] + this._round(Math.abs(dTrust)) * Math.sign(dTrust)); R[v + 1] = cl(R[v + 1] + this._round(Math.abs(dLike)) * Math.sign(dLike)); R[v + 2] = cl(R[v + 2] + this._round(Math.abs(dResp)) * Math.sign(dResp));
+    }
+    _interact(i) {
+      for (let k = 0; k < 2; k++) {
+        let j = -1;
+        if (this.random() < 0.55) {   // 顔なじみとよく会う：すでに関係のある相手から選ぶ
+          const s = Math.floor(this.random() * SOC_K), r = this.relId[i * SOC_K + s];
+          if (r !== NONE && this.death[r] === ALIVE && this.group[r] === this.group[i]) j = r;
+        }
+        if (j < 0) j = this._partner(i, k === 0 ? 'job' : 'any');
+        if (j >= 0) { this._bond(i, j); this._bond(j, i); }
+      }
+    }
+    // i から見た j（家族以外）：[信頼, 好意, 尊敬]。記録がなければ null
+    bondOf(i, j) { const s = this._slot(i, j, false); return s < 0 ? null : [this.relV[s * 3], this.relV[s * 3 + 1], this.relV[s * 3 + 2]]; }
     // 結婚相手を探す（プレイヤーの人物が「家族」の活動を選んだとき）：同じ集団の、親族でない、異性の独身の成人。見つかれば結婚する
     _seekPartner(i, a) {
       const g = this.group[i], cand = [];
@@ -108,17 +160,18 @@
       if (n <= this.groups) return;
       const g0 = this.groups, grow = (a, per) => { const b = new a.constructor(n * per); b.set(a); return b; };
       this.groupEth = grow(this.groupEth, 1); this.gdemand = grow(this.gdemand, NJOB); this.gflags = grow(this.gflags, 1); this.gcount = grow(this.gcount, NJOB); this.gwork = grow(this.gwork, 1);
-      this.groups = n; while (this.pool.length < n) this.pool.push([]);
+      this.groups = n; while (this.pool.length < n) this.pool.push([]); while (this.members.length < n) this.members.push([]);
       for (let g = g0; g < n; g++) this.setGroup(g, {});
     }
     // 別の集団へ移る（職業の人数の集計と、結婚候補の列を直す）
-    moveToGroup(i, g2) { const j = this.job[i]; if (j) this._setJob(i, 0); this.group[i] = g2; this.flags[i] &= ~1; if (j) this._setJob(i, j); }
+    moveToGroup(i, g2) { const j = this.job[i]; if (j) this._setJob(i, 0); this.group[i] = g2; this.members[g2].push(i); this.flags[i] &= ~1; if (j) this._setJob(i, j); }
     _alloc(cap) {
       const grow = (name, T, per, fill) => { const a = new T(cap * per); if (fill !== undefined) a.fill(fill); if (this[name]) a.set(this[name].subarray(0, this.n * per)); this[name] = a; };
       grow('birth', Int32Array, 1); grow('death', Int32Array, 1, ALIVE); grow('sex', Uint8Array, 1); grow('group', Uint16Array, 1);
       grow('mother', Uint32Array, 1, NONE); grow('father', Uint32Array, 1, NONE); grow('spouse', Uint32Array, 1, NONE);
       grow('job', Uint8Array, 1); grow('flags', Uint8Array, 1);   // flags: bit0 結婚候補の列に入っている／bit1 生まれつきの値を計算済み／bit2 職業を選んだことがある／bit3 引退
       grow('eth', Uint16Array, 1); grow('house', Uint32Array, 1, NONE); grow('cause', Uint8Array, 1);   // 主たる民族（0＝育ち中で未確定）／世帯ID／死因（0＝生存）
+      grow('relId', Uint32Array, SOC_K, NONE); grow('relV', Uint8Array, SOC_K * 3); grow('pers', Uint8Array, 4);   // 関係の相手／信頼・好意・尊敬／性格の計算結果（社交性・共感性・誠実性・信頼傾向）
       grow('skills', Uint8Array, NSKILL);        // 技能（0〜255）
       grow('train', Int8Array, NABIL);           // 訓練による能力の変化
       grow('gen', Uint8Array, NABIL * 2);        // 生まれつきの能力・潜在能力の計算結果（働き始める年齢で埋める）
@@ -135,7 +188,7 @@
     }
     _add(group, sex, birthDay, mother, father) {
       if (this.n >= this.cap) this._alloc(this.cap * 2);
-      const i = this.n++; this.birth[i] = birthDay; this.sex[i] = sex; this.group[i] = group; this.mother[i] = mother; this.father[i] = father;
+      const i = this.n++; this.members[group].push(i); this.birth[i] = birthDay; this.sex[i] = sex; this.group[i] = group; this.mother[i] = mother; this.father[i] = father;
       return i;
     }
     addFounder(group, ageYears) { return this._add(group, this.random() < .5 ? 0 : 1, this.day - Math.floor(ageYears * YEAR + this.random() * YEAR), NONE, NONE); }
@@ -272,6 +325,7 @@
       if (this.random() < qm) { if (this.onDeath) this.onDeath(i); this._die(i); return; }
       if (!this.eth[i] && a >= 12) this._assignEth(i);   // 12歳：育った集団の民族になる（親の民族は副次的な帰属として残る）
       const adult = this.adultAge(i);
+      if (a >= 10) this._interact(i);   // 交流（人間関係）
       // 仕事：14歳で見習いとして職業を選ぶ／まれに転職／60歳以降に引退
       if (a >= adult - 4 && !(this.flags[i] & 8)) {
         if (!(this.flags[i] & 2)) this._fillGen(i);
@@ -327,6 +381,6 @@
       return { personality: Int32Array.from(pairs), train: Int32Array.from(tr), skills: Int32Array.from(sk) };
     }
   }
-  const api = { ACT_TRAIN, NEEDS, JOB_APPEAL, Population, STAT_NAMES, PERSONALITY, COGNITIVE, PHYSICAL, NSTAT, NP, NABIL, NJOB, NSKILL, JOBS, SI, ageFactor, growthExpected, mix, bell, YEAR, MONTH };
+  const api = { SOC_K, ACT_TRAIN, NEEDS, JOB_APPEAL, Population, STAT_NAMES, PERSONALITY, COGNITIVE, PHYSICAL, NSTAT, NP, NABIL, NJOB, NSKILL, JOBS, SI, ageFactor, growthExpected, mix, bell, YEAR, MONTH };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohNpc = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
