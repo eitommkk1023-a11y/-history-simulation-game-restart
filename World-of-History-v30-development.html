@@ -8366,7 +8366,7 @@ function stepTerrainWalker(position,input,dt,groundAt){
   if(!Number.isFinite(dt)||dt<=0)return result;
   const ix=Number.isFinite(input.x)?input.x:0,iy=Number.isFinite(input.y)?input.y:0;
   const yaw=Number.isFinite(input.yaw)?input.yaw:0;
-  const length=Math.max(1,Math.hypot(ix,iy)),speed=input.crouch?.65:input.sprint?4:1.5;
+  const length=Math.max(1,Math.hypot(ix,iy)),speed=input.crouch?PLAYER_SPEED.crouch:input.sprint?PLAYER_SPEED.dash:PLAYER_SPEED.run;
   const dx=(ix*Math.cos(yaw)+iy*Math.sin(yaw))/length*speed*Math.min(dt,.05);
   const dy=(-ix*Math.sin(yaw)+iy*Math.cos(yaw))/length*speed*Math.min(dt,.05);
   const distance=Math.hypot(dx,dy);if(!distance)return result;
@@ -8483,7 +8483,7 @@ function measuredSpeed(previous,current,elapsedMs,maxSpeed){
 
 function installGameHUD(){
  const bridge=globalThis.__wohNative,style=document.createElement('style');
- style.textContent=`#hudStats{position:fixed;z-index:110;left:calc(8px + env(safe-area-inset-left));top:calc(8px + env(safe-area-inset-top));width:230px;height:40px;padding:8px;background:#132a40e8;color:white;border-radius:8px;font:13px system-ui;pointer-events:none}#uiToggle{left:calc(250px + env(safe-area-inset-left))!important;right:auto!important;top:calc(8px + env(safe-area-inset-top))!important;width:98px;min-height:44px!important}#miniMap{position:fixed;z-index:25;left:auto;right:calc(8px + env(safe-area-inset-right));top:calc(8px + env(safe-area-inset-top));width:132px;height:154px;background:#12263bee;border:1px solid #7799ae;border-radius:8px;touch-action:manipulation;color:white;font:11px system-ui;text-align:center;padding:0}#miniMap canvas{width:132px;height:132px;display:block;touch-action:manipulation}#leftMenu{display:none;position:fixed;z-index:100;left:calc(8px + env(safe-area-inset-left));top:calc(54px + env(safe-area-inset-top));width:230px;max-height:calc(100dvh - 194px - env(safe-area-inset-top) - env(safe-area-inset-bottom));overflow:auto;background:#12263bf5;border:1px solid #7799ae;border-radius:8px;padding:6px}.integration-ui-hidden #leftMenu{display:none!important}body:not(.integration-third) #hudStats,body:not(.integration-third) #uiToggle,body:not(.integration-third) #miniMap,body:not(.integration-third) #joystick,body:not(.integration-third) #actions,body:not(.integration-third) #movementNotice{display:none!important}#toolbar{padding-right:8px!important}body.integration-third #toolbar{padding-right:8px!important;top:calc(60px + env(safe-area-inset-top))!important}body.integration-third #legend{display:none!important}#timebar{top:calc(var(--tb-h,64px) + 6px)!important}#info{top:calc(var(--tb-h,64px) + 6px)!important;max-height:min(62vh,calc(100vh - var(--tb-h,64px) - var(--lab-h,0px) - 18px))!important}#toasts{top:calc(var(--tb-h,64px) + 36px)!important}.sheet{top:calc(var(--tb-h,60px) + 6px)!important}#modeTabs{display:flex;gap:4px;margin-bottom:6px}#leftMenu button,#leftMenu input,#leftMenu select{font:14px system-ui;min-height:44px;touch-action:manipulation}#modeTabs button{flex:1;border:1px solid #7799ae;border-radius:6px;background:#294e70;color:white}#modeTabs button.active{background:#84601e}#developerPanel{position:static!important;inset:auto!important;max-width:100%!important;max-height:none!important;padding:0!important;background:none!important;border:0!important;overflow:visible!important}#developerPanel button{max-width:100%}#developerPanel p{font-size:12px}#devSpeeds{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:4px 0}#devSpeeds button{margin:0!important;width:100%;min-height:44px}#devRestore{width:100%;margin:4px 0!important}#developerPane[hidden],#standardPane[hidden]{display:none!important}#joystick{left:calc(8px + env(safe-area-inset-left))!important;bottom:calc(16px + env(safe-area-inset-bottom))!important}#actions{right:calc(16px + env(safe-area-inset-right))!important;left:auto!important;bottom:calc(16px + env(safe-area-inset-bottom))!important;grid-template-columns:repeat(3,64px)!important;gap:8px!important}#actions #sprint{grid-column:1!important;grid-row:1!important}#actions #jump{grid-column:2!important;grid-row:1!important}#actions #crouch{grid-column:3!important;grid-row:1!important}#devBadge{left:calc(140px + env(safe-area-inset-left))!important;bottom:calc(86px + env(safe-area-inset-bottom))!important;font-size:11px}#movementNotice{left:8px!important;right:auto!important;max-width:340px;bottom:140px!important}#leftMenu::-webkit-scrollbar{width:4px}`;
+ style.textContent=`#hudStats{position:fixed;z-index:110;left:calc(8px + env(safe-area-inset-left));top:calc(8px + env(safe-area-inset-top));width:230px;height:40px;padding:8px;background:#132a40e8;color:white;border-radius:8px;font:13px system-ui;pointer-events:none}#uiToggle{left:calc(250px + env(safe-area-inset-left))!important;right:auto!important;top:calc(8px + env(safe-area-inset-top))!important;width:98px;min-height:44px!important}#miniMap{position:fixed;z-index:25;left:auto;right:calc(8px + env(safe-area-inset-right));top:calc(8px + env(safe-area-inset-top));width:132px;height:154px;background:#12263bee;border:1px solid #7799ae;border-radius:8px;touch-action:manipulation;color:white;font:11px system-ui;text-align:center;padding:0}#miniMap canvas{width:132px;height:132px;display:block;touch-action:manipulation}#leftMenu{display:none;position:fixed;z-index:100;left:calc(8px + env(safe-area-inset-left));top:calc(54px + env(safe-area-inset-top));width:230px;max-height:calc(100dvh - 194px - env(safe-area-inset-top) - env(safe-area-inset-bottom));overflow:auto;background:#12263bf5;border:1px solid #7799ae;border-radius:8px;padding:6px}.integration-ui-hidden #leftMenu{display:none!important}body:not(.integration-third) #hudStats,body:not(.integration-third) #uiToggle,body:not(.integration-third) #miniMap,body:not(.integration-third) #joystick,body:not(.integration-third) #actions,body:not(.integration-third) #movementNotice{display:none!important}#toolbar{padding-right:8px!important}body.integration-third #toolbar{padding-right:8px!important;top:calc(60px + env(safe-area-inset-top))!important}body.integration-third #legend,body.integration-third:not(.integration-ui-hidden) #miniMap{display:none!important}#timebar{top:calc(var(--tb-h,64px) + 6px)!important}#legend{max-height:calc(100vh - var(--tb-h,64px) - 52px - env(safe-area-inset-bottom))!important;overflow-y:auto!important;pointer-events:auto!important;touch-action:pan-y!important;-webkit-overflow-scrolling:touch}#info{top:calc(var(--tb-h,64px) + 6px)!important;max-height:min(62vh,calc(100vh - var(--tb-h,64px) - var(--lab-h,0px) - 18px))!important}#toasts{top:calc(var(--tb-h,64px) + 36px)!important}.sheet{top:calc(var(--tb-h,60px) + 6px)!important}#modeTabs{display:flex;gap:4px;margin-bottom:6px}#leftMenu button,#leftMenu input,#leftMenu select{font:14px system-ui;min-height:44px;touch-action:manipulation}#modeTabs button{flex:1;border:1px solid #7799ae;border-radius:6px;background:#294e70;color:white}#modeTabs button.active{background:#84601e}#developerPanel{position:static!important;inset:auto!important;max-width:100%!important;max-height:none!important;padding:0!important;background:none!important;border:0!important;overflow:visible!important}#developerPanel button{max-width:100%}#developerPanel p{font-size:12px}#devSpeeds{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:4px 0}#devSpeeds button{margin:0!important;width:100%;min-height:44px}#devRestore{width:100%;margin:4px 0!important}#developerPane[hidden],#standardPane[hidden]{display:none!important}#joystick{left:calc(8px + env(safe-area-inset-left))!important;bottom:calc(16px + env(safe-area-inset-bottom))!important}#actions{right:calc(16px + env(safe-area-inset-right))!important;left:auto!important;bottom:calc(16px + env(safe-area-inset-bottom))!important;grid-template-columns:repeat(3,64px)!important;gap:8px!important}#actions #sprint{grid-column:1!important;grid-row:1!important}#actions #jump{grid-column:2!important;grid-row:1!important}#actions #crouch{grid-column:3!important;grid-row:1!important}#devBadge{left:calc(140px + env(safe-area-inset-left))!important;bottom:calc(86px + env(safe-area-inset-bottom))!important;font-size:11px}#movementNotice{left:8px!important;right:auto!important;max-width:340px;bottom:140px!important}#leftMenu::-webkit-scrollbar{width:4px}`;
  document.head.appendChild(style);
  const stats=document.createElement('div');stats.id='hudStats';stats.textContent='FPS —　0.0 km/h';
  const mini=document.createElement('button');mini.id='miniMap';mini.setAttribute('aria-label','北が上のミニマップ。タップで範囲切替');mini.innerHTML='<canvas width="264" height="264"></canvas><span id="mapRange">北固定・地域</span>';
@@ -8522,7 +8522,7 @@ function installGameHUD(){
  function tick(now){requestAnimationFrame(tick);const view=globalThis.__chunkPreview;if(document.hidden||!view?.state||!view.markerPoint){lastTime=now;lastPosition=null;return;}
   if(wasRendered)frames.push(now);wasRendered=false;while(frames.length&&frames[0]<now-1000)frames.shift();
   const world=view.state.world,p=view.markerPoint,dt=now-lastTime;
-  const kph=lastWorld===world&&!view.view.overview?measuredSpeed(lastPosition,p,dt,4*(globalThis.__wohDev?.multiplier||1)):0;
+  const kph=lastWorld===world&&!view.view.overview?measuredSpeed(lastPosition,p,dt,PLAYER_SPEED.dash*(globalThis.__wohDev?.multiplier||1)):0;
   speeds.push({time:now,kph});while(speeds.length&&speeds[0].time<now-400)speeds.shift();lastTime=now;lastWorld=world;lastPosition={...p};
   if(now-lastUI<250)return;lastUI=now;
   if(cachedWorld!==world||(cachedRevision!==bridge.revision&&now-lastMapBuild>1000)){buildMap(world);cachedWorld=world;cachedRevision=bridge.revision;lastMapBuild=now;}
@@ -8582,10 +8582,10 @@ for(const [side,x]of [['left',-.13],['right',.13]]){
 let crouched=false,gaitPhase=0,gaitDistance=0,motionMode='idle',landing=0;
 function animatePlayer(dt){
  const airborne=jumpHeight>0||jumpVelocity!==0,step=Math.min(dt,.05);
- motionMode=airborne?(wasMoving?(sprintOn?'run-jump':'walk-jump'):'jump'):
-  crouched?(wasMoving?'crouch-walk':'crouch'):wasMoving?(sprintOn?'run':'walk'):'idle';
+ motionMode=airborne?(wasMoving?'run-jump':'jump'):
+  crouched?(wasMoving?'crouch-walk':'crouch'):wasMoving?'run':'idle';
  const ease=(a,b)=>a+(b-a)*(dt>0?1-Math.exp(-18*step):1);
- const mode=crouched?'crouch-walk':sprintOn?'run':'walk';
+ const mode=crouched?'crouch-walk':'run';
  if(wasMoving&&!airborne)gaitPhase+=gaitDistance*humanGait(gaitPhase,mode).cyclesPerMeter;
  gaitDistance=0;landing=Math.max(0,landing-step*4);
  const gait=humanGait(gaitPhase,mode),groundHip=crouched?.59:wasMoving?gait.hip:.875;
@@ -8600,13 +8600,13 @@ function animatePlayer(dt){
   const pose=solveHumanLeg(z,hips.position.y-.035-lift-delta);
   legs[i].rotation.x=airborne?ease(legs[i].rotation.x,-.35+(i?.18:0)):pose.hip;
   knees[i].rotation.x=airborne?ease(knees[i].rotation.x,.8):pose.knee;
-  const swing=wasMoving?Math.cos((gaitPhase+i*.5)*Math.PI*2)*(sprintOn?.65:.30):0;
+  const swing=wasMoving?Math.cos((gaitPhase+i*.5)*Math.PI*2)*(sprintOn?.8:.55):0;
   arms[i].rotation.x=ease(arms[i].rotation.x,airborne?-.65:swing+(crouched?-.25:0));
-  elbows[i].rotation.x=ease(elbows[i].rotation.x,airborne?-.9:sprintOn&&wasMoving?-1.35:crouched?-.75:-.25);
+  elbows[i].rotation.x=ease(elbows[i].rotation.x,airborne?-.9:wasMoving&&!crouched?(sprintOn?-1.5:-1.15):crouched?-.75:-.25);
   wrists[i].rotation.x=ease(wrists[i].rotation.x,-.05);
   ankles[i].rotation.x=ease(ankles[i].rotation.x,airborne?.15:-(legs[i].rotation.x+knees[i].rotation.x)+(wasMoving?foot.toe:0));
  }
- torso.rotation.x=ease(torso.rotation.x,crouched?.35:wasMoving?(sprintOn?.16:.04):0);
+ torso.rotation.x=ease(torso.rotation.x,crouched?.35:wasMoving?(sprintOn?.24:.12):0);
  torso.rotation.y=ease(torso.rotation.y,wasMoving?Math.sin(gaitPhase*Math.PI*2)*.065:0);
 }
 scene.add(marker);
@@ -8790,6 +8790,7 @@ function findDryPoint(terrain,world){
   if(best)return best;
   throw new Error('検証用の乾いた地点が見つかりません。別のSeedを試してください。');
 }
+const PLAYER_SPEED={crouch:.65,run:4,dash:10};   // 移動速度（m/s）［仮］：しゃがみ／ランニング（普通の移動）／ダッシュ
 let drag=null,stickId=null,sprintOn=false,wasMoving=false;
 const keys=new Set(),stickInput={x:0,y:0};
 const joystick=document.getElementById('joystick'),stick=document.getElementById('stick'),sprint=document.getElementById('sprint');
@@ -8821,11 +8822,15 @@ function toggleCrouch(){if(overview||jumpHeight>0||jumpVelocity!==0)return;crouc
 pressAction(crouchButton,toggleCrouch);
 function startJump(){if(!overview&&state&&!crouched&&jumpHeight===0&&jumpVelocity===0)jumpVelocity=5;}
 pressAction(jumpButton,startJump);
-document.getElementById('uiToggle').onclick=()=>{
+function toggleUiNow(){
   const hidden=document.body.classList.toggle('integration-ui-hidden');resetInput();
   document.getElementById('uiToggle').textContent=hidden?'UIを表示':'UIを隠す';
   document.getElementById('uiToggle').setAttribute('aria-pressed',String(hidden));
-};
+}
+// 指が触れた瞬間に切り替える（クリックの確定を待たない）。キーボードなどのクリックは従来どおり
+{const ut=document.getElementById('uiToggle');let tUi=0;
+ ut.addEventListener('pointerdown',e=>{e.preventDefault();tUi=Date.now();toggleUiNow();});
+ ut.addEventListener('click',()=>{if(Date.now()-tUi>700)toggleUiNow();});}
 const movementKeys=new Set(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight','Space','KeyC']);
 window.addEventListener('keydown',e=>{if(/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)||e.target.isContentEditable)return;
   if(movementKeys.has(e.code)){e.preventDefault();if(e.code==='KeyC'){if(!e.repeat)toggleCrouch();}else if(e.code==='Space'){if(!e.repeat)startJump();}else if(e.code.startsWith('Shift')&&!e.repeat)setSprint(!sprintOn);else keys.add(e.code);}});
@@ -8935,7 +8940,7 @@ installGameHUD();
 
 })();</script><script>(()=>{/** Bundled only into explicitly requested development builds. Not an authorization system. */
 function developerStep(p,input,dt,terrain,multiplier){
- const length=Math.max(1,Math.hypot(input.x,input.y)),distance=(input.sprint?4:1.5)*multiplier*Math.min(.05,Math.max(0,dt||0));
+ const length=Math.max(1,Math.hypot(input.x,input.y)),distance=(input.sprint?PLAYER_SPEED.dash:PLAYER_SPEED.run)*multiplier*Math.min(.05,Math.max(0,dt||0));
  const dx=(input.x*Math.cos(input.yaw)+input.y*Math.sin(input.yaw))/length*distance,dy=(-input.x*Math.sin(input.yaw)+input.y*Math.cos(input.yaw))/length*distance;
  const xM=Math.max(.3,Math.min(terrain.widthM-.3,p.xM+dx)),yM=Math.max(.3,Math.min(terrain.heightM-.3,p.yM+dy));
  return {xM,yM,elevationM:terrain.sampleBase(xM,yM).baseElevationM,blocked:xM===p.xM&&yM===p.yM};
