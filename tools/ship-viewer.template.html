@@ -18,6 +18,7 @@ canvas{width:100%;flex:1 1 0;min-height:90px;background:#0c1116;border-radius:6p
 .stats{display:grid;grid-template-columns:repeat(4,auto);gap:2px 10px;margin-top:4px;font-size:12px}
 .stats span{color:var(--mu)}.stats b{font-weight:600;font-variant-numeric:tabular-nums}
 button{background:#25323d;color:var(--tx);border:1px solid var(--ln);border-radius:8px;padding:3px 9px;font-size:13px;min-height:30px}
+button:disabled{opacity:.4}
 button.on{background:var(--ac);color:#04202e;border-color:var(--ac)}
 .btns{display:flex;gap:6px;margin-top:3px;flex-wrap:wrap}
 .warn{color:var(--wn)}.bad{color:var(--bd)}.good{color:var(--ok)}
@@ -35,6 +36,7 @@ button.on{background:var(--ac);color:#04202e;border-color:var(--ac)}
   <div class="row"><label>風の来る方位</label><input id="wd" type="range" min="0" max="359" step="1" value="0"><output id="wdO"></output></div>
   <div class="row"><label>目標方位</label><input id="hd" type="range" min="0" max="359" step="1" value="60"><output id="hdO"></output></div>
   <div class="btns"><button id="bSq">横帆</button><button id="bFa" class="on">縦帆</button><button id="bRun" class="on">動かす</button><button id="bRst">最初から</button><button id="bX2">倍速 ×1</button></div>
+  <div class="btns"><button id="bMan">自動操舵</button><button id="bL" disabled>◀ 左舵</button><button id="bR" disabled>右舵 ▶</button><span style="color:var(--mu);font-size:12px;align-self:center">手動：ボタン長押し／←→キー</span></div>
   <div class="stats" id="st2"></div>
  </section>
 </div>
@@ -98,7 +100,7 @@ function drawStability() {
 }
 
 // ---------- navigation panel ----------
-let vessel = null, sailType = 'foreAndAft', running = true, speedX = 1, trail = [];
+let manual = false, held = 0, vessel = null, sailType = 'foreAndAft', running = true, speedX = 1, trail = [];
 function resetVessel() {
   vessel = Ship.createVessel({ ship, analysis, rudder: { x: 0.5, areaM2: 6 }, sails: [{ id: 's', type: sailType, areaM2: 500, x: 21, zCe: 12 }] });
   vessel.state.psi = +$('hd').value * DEG; vessel.state.u = 2; trail = [];
@@ -134,7 +136,7 @@ function drawNav() {
 }
 function tick(now) {
   const dt = Math.min((now - last) / 1000, 0.1); last = now;
-  if (running) { acc += dt * speedX; let n = 0; while (acc >= 0.1 && n++ < 40) { acc -= 0.1; if (frame++ % 10 === 0) vessel.autoTrim(env()); vessel.steerTowards(+$('hd').value); vessel.step(0.1, env()); if (frame % 5 === 0) { trail.push([vessel.state.X, vessel.state.Y]); if (trail.length > 1500) trail.shift(); } } }
+  if (running) { acc += dt * speedX; let n = 0; while (acc >= 0.1 && n++ < 40) { acc -= 0.1; if (frame++ % 10 === 0) vessel.autoTrim(env()); if (manual) vessel.setRudder(held * 25); else vessel.steerTowards(+$('hd').value); vessel.step(0.1, env()); if (frame % 5 === 0) { trail.push([vessel.state.X, vessel.state.Y]); if (trail.length > 1500) trail.shift(); } } }
   drawNav(); requestAnimationFrame(tick);
 }
 // ---------- wiring ----------
@@ -146,6 +148,11 @@ $('bSq').onclick = () => setType('square'); $('bFa').onclick = () => setType('fo
 $('bRun').onclick = () => { running = !running; $('bRun').classList.toggle('on', running); $('bRun').textContent = running ? '動かす' : '止めた'; };
 $('bRst').onclick = resetVessel;
 $('bX2').onclick = () => { speedX = speedX === 1 ? 4 : speedX === 4 ? 10 : 1; $('bX2').textContent = '倍速 ×' + speedX; };
+const setManual = (m) => { manual = m; held = 0; $('bMan').classList.toggle('on', m); $('bMan').textContent = m ? '手動操舵' : '自動操舵'; $('bL').disabled = $('bR').disabled = !m; $('hd').disabled = m; };
+$('bMan').onclick = () => setManual(!manual);
+[['bL', -1], ['bR', 1]].forEach(([id, d]) => { const b = $(id); b.addEventListener('pointerdown', (e) => { e.preventDefault(); held = d; }); ['pointerup', 'pointerleave', 'pointercancel'].forEach((t) => b.addEventListener(t, () => { if (held === d) held = 0; })); });
+addEventListener('keydown', (e) => { if (!manual) return; if (e.key === 'ArrowLeft' || e.key === 'a') held = -1; if (e.key === 'ArrowRight' || e.key === 'd') held = 1; });
+addEventListener('keyup', (e) => { if (['ArrowLeft', 'ArrowRight', 'a', 'd'].includes(e.key)) held = 0; });
 addEventListener('resize', drawStability);
 buildShip(); resetVessel(); out(); drawStability();
 window.__viewer = { Ship, get vessel() { return vessel; }, get analysis() { return analysis; } };
