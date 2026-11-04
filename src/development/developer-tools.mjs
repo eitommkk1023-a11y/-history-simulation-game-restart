@@ -15,7 +15,7 @@ export function installDeveloperTools(){
  function valid(){const v=get(),p=v?.markerPoint;if(!p)return false;const g=v.groundAt(p.xM,p.yM);return !!g&&g.slopeDegrees<=40&&g.waterDepthM<=.6;}
  function choose(value){
   const v=get();if(!v?.state)return;
-  if(multiplier===1&&value>1)safe=globalThis.__wohPlayerSave();
+  if(multiplier===1&&value>1)safe={xM:v.markerPoint.xM,yM:v.markerPoint.yM,yaw:v.view.yaw};
   multiplier=value;globalThis.__wohNative.debugFastActive=value>1;
   if(value===1){if(!valid()&&safe)v.placeMarker(safe.xM,safe.yM);safe=null;window.dispatchEvent(new Event('blur'));}
   panel.hidden=false;badge.hidden=value===1;badge.textContent='開発移動 ×'+value;

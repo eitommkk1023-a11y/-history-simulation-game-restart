@@ -2,7 +2,7 @@ import {installGameHUD} from './game-hud.mjs';
 import {createWaterSurface} from '../geography/water-surface.mjs';
 import {seamGeometry} from '../geography/terrain-seams.mjs';
 import {createTerrainWorkQueue} from '../geography/terrain-work-queue.mjs';
-import {createWorldTerrain} from '../geography/world-terrain.mjs';
+import {createPlayableTerrain,playerFromSource,playerToSource} from './playable-scale.mjs';
 import {selectTerrainLOD} from '../geography/terrain-lod.mjs';
 import {createChunkWindow} from '../geography/chunk-window.mjs';
 import {createTerrainChunk} from '../geography/terrain-chunk.mjs';
@@ -125,7 +125,7 @@ function placeMarker(xM,yM,render=true){
   const q=state.terrain.toLocal(xM,yM,p.elevationM,state.origin);
   marker.position.set(q.x,q.y+jumpHeight,q.z);marker.visible=true;
   status.textContent=`${state.label}｜標高 ${p.elevationM.toFixed(2)}m・斜面 ${p.slopeDegrees.toFixed(1)}°｜${state.entries.length}近景・${state.far.size}遠景チャンク`;
-  bridge.map.player(markerPoint);if(render)updateCamera();
+  bridge.map.player(playerToSource(markerPoint));if(render)updateCamera();
 }
 function releaseMesh({mesh}){scene.remove(mesh);mesh.traverse(o=>{if(o.geometry)o.geometry.dispose();});mesh.material.dispose();}
 function makeTerrainMesh(chunk,far=false){
@@ -224,7 +224,7 @@ function makeWindow(terrain,fast){
 }
 function showWorld(world,point,label){
   clearTerrain();
-  const terrain=createWorldTerrain(world),p=terrain.sampleBase(point.xM,point.yM);
+  const terrain=createPlayableTerrain(world),p=terrain.sampleBase(point.xM,point.yM);
   const origin={...point,elevationM:p.baseElevationM},window=makeWindow(terrain,false);
   state={terrain,origin,window,world,map:null,fastRender:false,dropOldChunks:false,idleFast:0,terrainBuilds:0,water:createWaterSurface(terrain,world),waterKey:null,waterMesh:null,far:new Map(),fallback:new Map(),clearing:false,lodKey:'',nearCenter:{x:0,y:0},settle:.6,drawDirty:false,morphSources:[],lastJobs:0,lastTexture:bridge.texture,get entries(){return this.window.entries;},label};
   state.work=createTerrainWorkQueue({build:q=>{
@@ -299,7 +299,7 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden)resetInput(
 function activateWorldOverview(){
  if(!state)return;
  if(!state.map)state.map=bridge.map;
-state.map.player(markerPoint);
+state.map.player(playerToSource(markerPoint));
  document.getElementById('distance').value=state.map.cam.dist;
  updateCamera();
 }
@@ -381,7 +381,7 @@ window.visualViewport?.addEventListener('resize',resize);
 globalThis.__chunkPreview={get character(){return marker;},get camera(){return overview&&state?.map?state.map.camera:camera;},get motion(){return {mode:motionMode,leg:legs[0].rotation.x,hip:hips.position.y};},get air(){return {height:jumpHeight,velocity:jumpVelocity};},get view(){return {overview,yaw,pitch,target:state?.map?[state.map.cam.tx,0,state.map.cam.tz]:[0,0,0]};},get state(){return state;},get markerPoint(){return markerPoint;},groundAt,placeMarker};
 function adoptNativeWorld(){
  const world=bridge.world;if(!world)return;
- const terrain=createWorldTerrain(world),saved=bridge.pendingPlayer;
+ const terrain=createPlayableTerrain(world),saved=playerFromSource(bridge.pendingPlayer);
  let point=null;
  if(saved&&Number.isFinite(saved.xM)&&Number.isFinite(saved.yM)&&saved.xM>=0&&saved.yM>=0&&saved.xM<=terrain.widthM&&saved.yM<=terrain.heightM){point={xM:saved.xM,yM:saved.yM};if(Number.isFinite(saved.yaw))yaw=saved.yaw;}
  if(!point&&state?.world===world&&markerPoint)point={...markerPoint};
@@ -389,7 +389,7 @@ function adoptNativeWorld(){
  showWorld(world,point,'Seed '+bridge.seed);bridge.pendingPlayer=null;bridge.seenRevision=bridge.revision;
 }
 window.addEventListener('woh-world-ready',adoptNativeWorld);
-window.__wohPlayerSave=()=>globalThis.__wohDev?.savedPlayer()??(markerPoint?{xM:markerPoint.xM,yM:markerPoint.yM,yaw}:null);
+window.__wohPlayerSave=()=>playerToSource(globalThis.__wohDev?.savedPlayer()??(markerPoint?{xM:markerPoint.xM,yM:markerPoint.yM,yaw}:null));
 document.body.classList.add('integration-ui-hidden','integration-third');
 animatePlayer(0);resize();if(bridge.world)adoptNativeWorld();
 
