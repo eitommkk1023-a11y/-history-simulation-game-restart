@@ -43,6 +43,18 @@
   JOBS.forEach((j) => { for (const key of ['train', 'apt']) if (j[key]) j[key] = j[key].map(([n, w]) => { if (!(n in SI)) throw new Error('項目名が不明: ' + n); return [SI[n], w]; }); });
   const J_FARM = 9, J_HERD = 10, J_TRADE = 11;
 
+  // ---- 欲求（資料の第6章）：生まれつきの強さは性格から計算（保存しない）。仕事が満たす度合い（JOB_APPEAL）は仮の値
+  const NEEDS = ['生存・安全', '家族', '財産', '権力・地位', '信仰・思想', '知識', '自由'];
+  const NNEED = NEEDS.length;
+  const JOB_APPEAL = [
+    null,
+    [.7, .5, .3, .1, .2, .3, .6], [.7, .5, .4, .3, .2, .3, .7], [.7, .5, .4, .1, .2, .3, .6], [.5, .5, .6, .3, .2, .6, .4],
+    [.5, .6, .6, .4, .3, .4, .3], [.5, .5, .5, .2, .1, .3, .5], [.5, .6, .4, .6, .6, .7, .3], [.8, .4, .4, .7, .3, .2, .2],
+    [.8, .6, .5, .2, .3, .2, .2], [.7, .6, .6, .3, .3, .3, .5], [.4, .4, .8, .6, .2, .6, .7],
+  ];
+  // 全体の平均（測定値）。個人の「ほかの人と比べた違い」を見るために使う
+  const NEED_MEAN = [.73, .45, .43, .48, .36, .45, .43];
+  const JOB_ABAR = Array.from({ length: NNEED }, (_, n) => { let t = 0; for (let j = 1; j < NJOB; j++) t += JOB_APPEAL[j][n]; return t / (NJOB - 1); });
   // 年齢による能力の変化（成長期と衰え）。k は項目番号
   function ageFactor(k, a) {
     if (k < NP + NC) { if (a < 18) return 0.5 + 0.5 * (a / 18); return a <= 55 ? 1 : Math.max(0.5, 1 - 0.006 * (a - 55)); }   // 認知
@@ -60,6 +72,7 @@
       this.rng = (this.seed ^ 0xa5a5a5a5) >>> 0 || 1;
       this.delta = new Map();          // 性格の変化など（まれ）。key = id*64+項目 → 変化量
       this.pool = Array.from({ length: groups }, () => []);   // 結婚相手候補の男性（遅延削除）
+      this.focus = new Map();   // 重要人物
       this.stats = { births: 0, deaths: 0, marriages: 0, jobChanges: 0, retired: 0 };
       this.gdemand = new Float32Array(groups * NJOB); this.gflags = new Uint8Array(groups); this.gcount = new Uint32Array(groups * NJOB); this.gwork = new Uint32Array(groups);
       for (let g = 0; g < groups; g++) this.setGroup(g, {});
@@ -121,17 +134,39 @@
       let tot = 0; for (let j = 1; j < NJOB; j++) if (this._avail(j, fl)) tot += d[j];
       if (tot <= 0) return 0;
       const father = this.father[i], fj = father !== NONE && this.death[father] === ALIVE ? this.job[father] : 0;
-      const sc = new Float64Array(NJOB); let sum = 0;
+      const sc = new Float64Array(NJOB); let sum = 0, w = this._w || (this._w = new Float32Array(NNEED)); this.needWeights(i, w);
       for (let j = 1; j < NJOB; j++) {
         if (!this._avail(j, fl) || d[j] <= 0) continue;
         const t = d[j] / tot, share = cnt[j] / work;
-        let v = Math.min(4, Math.max(0.05, t / (share + 0.02))) * Math.pow(0.15 + this.aptitude(i, j), 3) * (0.7 + 0.6 * this.random());
+        let v = Math.min(4, Math.max(0.05, t / (share + 0.02))) * Math.pow(0.15 + this.aptitude(i, j), 3) * Math.exp(4 * this.jobAppeal(w, j)) * (0.7 + 0.6 * this.random());
         if (j === fj) v *= 1.6; if (j === cur) v *= 1.5;
         sc[j] = v; sum += v;
       }
       let r = this.random() * sum; for (let j = 1; j < NJOB; j++) { r -= sc[j]; if (r <= 0 && sc[j] > 0) return j; }
       return cur;
     }
+    // 欲求の重み（0〜1）：性格と、家族の状況・年齢から。保存しない
+    needWeights(i, out = new Float32Array(NNEED)) {
+      const g = (n) => this.genetic(i, SI[n]) / 255, a = this.age(i);
+      const stab = g('感情安定性'), cau = g('慎重さ'), emp = g('共感性'), amb = g('野心'), soc = g('社交性'), cur = g('好奇心'), hon = g('誠実性'), fle = g('柔軟性');
+      const fam = (this.spouse[i] !== NONE ? .25 : 0) + (a >= 20 && a < 45 ? .15 : 0);
+      out[0] = Math.min(1, .45 + (1 - stab) * .3 + cau * .25);
+      out[1] = Math.min(1, .2 + emp * .35 + fam);
+      out[2] = Math.min(1, .15 + amb * .25 + cau * .2 + hon * .1);
+      out[3] = Math.min(1, amb * .75 + soc * .2);
+      out[4] = Math.min(1, .1 + (1 - fle) * .3 + emp * .15 + (a > 45 ? .15 : 0));
+      out[5] = Math.min(1, cur * .6 + this.genetic(i, SI['学習力']) / 255 * .3);
+      out[6] = Math.min(1, cur * .25 + (1 - hon) * .2 + (1 - cau) * .3 + (a < 30 ? .1 : 0));
+      return out;
+    }
+    // 職業の魅力（0〜1）＝欲求の重みで平均した、仕事が満たす度合い
+    // 魅力（正なら平均より魅力的）＝ Σ (欲求の重み−全体の平均) × (その職業が満たす度合い−職業全体の平均)
+    jobAppeal(w, j) { const A = JOB_APPEAL[j]; let s = 0; for (let n = 0; n < NNEED; n++) s += (w[n] - NEED_MEAN[n]) * (A[n] - JOB_ABAR[n]); return s; }
+    // いま一番強い欲求（重み×まだ満たされていない度合い。満たされ具合は呼び出し側が与える：民族ごとの状態、なければ中間）
+    topNeed(i) { const w = this.needWeights(i), sat = this.satisfaction ? this.satisfaction(i) : null; let b = 0, bv = -1; for (let n = 0; n < NNEED; n++) { const v = w[n] / NEED_MEAN[n] * (1 - (sat ? sat[n] : .5)); if (v > bv) { bv = v; b = n; } } return b; }
+    // 重要人物（資料の第3層）：詳細に考える人。民族・職業・出来事などの理由と、開始日を持つ。個人ID・経験・家族は維持する
+    promote(i, reason) { this.focus.set(i, { reason, since: this.day, goal: this.topNeed(i) }); }
+    demote(i) { this.focus.delete(i); }
     _avail(j, fl) { return j === J_FARM ? !!(fl & 1) : j === J_HERD ? !!(fl & 2) : j === J_TRADE ? !!(fl & 4) : true; }
     _setJob(i, j) {
       const g = this.group[i], old = this.job[i];
@@ -192,7 +227,7 @@
         if (!(this.flags[i] & 2)) this._fillGen(i);
         if (!(this.flags[i] & 4)) { const j = this.pickJob(i); if (j) { this._setJob(i, j); } this.flags[i] |= 4; }
         else if (a >= 60 && this.random() < 0.03) { this._setJob(i, 0); this.flags[i] |= 8; this.stats.retired++; }
-        else if (this.job[i] && a < 50 && this.random() < 0.002) { const j = this.pickJob(i); if (j && j !== this.job[i]) { this._setJob(i, j); this.stats.jobChanges++; } }
+        else if (this.job[i] && a < 50 && this.random() < 0.003) { const j = this.pickJob(i); if (j && j !== this.job[i]) { this._setJob(i, j); this.stats.jobChanges++; } }
         if (this.job[i]) this._work(i, a);
       }
       if (a < 16) return;
@@ -240,6 +275,6 @@
       return { personality: Int32Array.from(pairs), train: Int32Array.from(tr), skills: Int32Array.from(sk) };
     }
   }
-  const api = { Population, STAT_NAMES, PERSONALITY, COGNITIVE, PHYSICAL, NSTAT, NP, NABIL, NJOB, NSKILL, JOBS, SI, ageFactor, growthExpected, mix, bell, YEAR, MONTH };
+  const api = { NEEDS, JOB_APPEAL, Population, STAT_NAMES, PERSONALITY, COGNITIVE, PHYSICAL, NSTAT, NP, NABIL, NJOB, NSKILL, JOBS, SI, ageFactor, growthExpected, mix, bell, YEAR, MONTH };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohNpc = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
