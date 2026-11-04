@@ -1,3 +1,4 @@
+import {createGrassRenderer} from '../vegetation/grass-renderer.mjs';
 import {installGameHUD} from './game-hud.mjs';
 import {createWaterSurface} from '../geography/water-surface.mjs';
 import {seamGeometry} from '../geography/terrain-seams.mjs';
@@ -112,7 +113,7 @@ function updateCamera(){
 function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();if(state?.map){state.map.camera.aspect=innerWidth/innerHeight;state.map.camera.updateProjectionMatrix();}updateCamera();}
 function clearTerrain(){
   resetInput();crouched=false;crouchButton.classList.remove('active');crouchButton.setAttribute('aria-pressed','false');markerPoint=null;jumpHeight=0;jumpVelocity=0;
-  if(state){state.clearing=true;state.prefetch.clear();state.window.clear();state.work.clear();for(const mesh of [state.waterMesh,state.farWaterMesh])if(mesh){scene.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();}for(const entry of state.fallback.values())releaseMesh(entry);}
+  if(state){state.clearing=true;state.grass?.dispose();state.prefetch.clear();state.window.clear();state.work.clear();for(const mesh of [state.waterMesh,state.farWaterMesh])if(mesh){scene.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();}for(const entry of state.fallback.values())releaseMesh(entry);}
   state=null;marker.visible=false;
 }
 function groundAt(xM,yM){
@@ -127,6 +128,7 @@ function placeMarker(xM,yM,render=true){
   markerPoint={xM,yM,elevationM:p.elevationM};
   const q=state.terrain.toLocal(xM,yM,p.elevationM,state.origin);
   marker.position.set(q.x,q.y+jumpHeight,q.z);marker.visible=true;
+  state.grass?.update(xM,yM,state.origin,!overview&&!state.fastRender);
   status.textContent=`${state.label}｜標高 ${p.elevationM.toFixed(2)}m・斜面 ${p.slopeDegrees.toFixed(1)}°｜${state.entries.length}近景・${state.far.size}遠景チャンク`;
   bridge.map.player(playerToSource(markerPoint));if(render)updateCamera();
 }
@@ -243,6 +245,7 @@ function showWorld(world,point,label){
    for(const entry of state.fallback.values())releaseMesh(entry);state.fallback.clear();state.morphSources=[];
   }});
 
+  state.grass=createGrassRenderer(THREE,scene,terrain,groundAt,bridge.seed);
   placeMarker(point.xM,point.yM);
   if(overview)activateWorldOverview();
   if(matchMedia('(orientation: landscape) and (max-height: 500px)').matches)document.getElementById('settings').open=false;
@@ -313,7 +316,7 @@ state.map.player(playerToSource(markerPoint));
  updateCamera();
 }
 document.getElementById('viewMode').onclick=()=>{
- if(!state)return;overview=!overview;bridge.overview=overview;bridge.clearTouches();document.body.classList.toggle('integration-third',!overview);resetInput();jumpHeight=0;jumpVelocity=0;
+ if(!state)return;overview=!overview;bridge.overview=overview;state.grass?.setEnabled(!overview&&!state.fastRender);bridge.clearTouches();document.body.classList.toggle('integration-third',!overview);resetInput();jumpHeight=0;jumpVelocity=0;
  if(markerPoint)marker.position.y=markerPoint.elevationM-state.origin.elevationM;
  document.getElementById('enterMapCenter').hidden=!overview;document.getElementById('overviewDistance').hidden=!overview;document.getElementById('actions').hidden=overview;
  joystick.setAttribute('aria-label',overview?'世界地図の移動':'移動スティック');
@@ -368,7 +371,8 @@ function frame(time){
     if(wasMoving||jumpHeight>0||jumpVelocity!==0)state.settle=.6;
     const animate=!overview&&state.settle>0;state.settle=Math.max(0,state.settle-Math.min(dt,.05));
     if(animate)animatePlayer(dt);
-    if(animate||terrainChanged)updateCamera();
+    const grassChanged=state.grass?.tick();
+    if(animate||terrainChanged||grassChanged)updateCamera();
   }
   requestAnimationFrame(frame);
 }
