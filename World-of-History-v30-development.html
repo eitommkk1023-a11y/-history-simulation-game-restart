@@ -864,7 +864,7 @@ function faunaClone(F) {
  * SI except MPa/Mohs/degrees. Matrix permeability excludes the regional fracture network.
  * Sources and empirical-parameter boundaries: docs/reports/rock-model-method.md.
  */
-const ROCK_PROFILES=Object.freeze(['rock-24-v1','rock-24-v2']),ROCK_PROFILE='rock-24-v2';   // v1：従来の岩石分布（旧セーブ用）／v2：地質の成り立ちから地層を作る
+const ROCK_PROFILES=Object.freeze(['rock-24-v1','rock-24-v2','rock-24-v3']),ROCK_PROFILE='rock-24-v3';   // v1：従来の岩石分布（旧セーブ用）／v2：地質の成り立ちから地層を作る／v3：v2＋造山帯の見直し＋気候の計算を1回に
 const rockRows=[
  ['granite','花崗岩','igneous',[2600,2750],[6,7],[100,250],[7,20],[.001,.03],[1e-21,1e-17],2.2,.00008,.001,.000002,3.1,790,8e-6,38,[177,171,163],0,{quartz:.3,feldspar:.6,mica:.1},'大陸地殻深部の珪長質マグマの緩慢冷却','block'],
  ['diorite','閃緑岩','igneous',[2700,2950],[6,7],[100,250],[8,22],[.002,.04],[1e-21,1e-17],2.3,.00009,.001,.000002,2.5,800,8e-6,37,[125,132,127],0,{plagioclase:.6,amphibole:.3,biotite:.1},'中間質マグマの深成貫入','block'],
@@ -1414,6 +1414,8 @@ const HIGHLAND_RELIEF = 1300;    // 高地を刻む谷の深さの目安（m）
 const GEO_TIME_MYR = 30;                   // 再現する地質年代の長さ（百万年）
 const GEO_STEP_MYR = 2;                    // 時間刻み（百万年）
 const CONT_CRUST_FRAC = 0.49;              // 初期の大陸地殻の割合（大陸棚の分だけ陸地より広い）
+const TEC_BELT_T = 0.70;            // v3：縫合帯のノイズがこれ以上の所を古い造山帯にする［仮］
+const TEC_MARGIN_CELLS = 2;         // v3：大陸の縁のこの区画数（1区画＝約26.6km）以内を、古い造山帯の縁とする［仮］
 const MICROCONT_RANGE = [16, 26];            // 微小大陸（大陸から離れた小さな大陸地殻）の数
 const PLATE_SPEED_CM = [1, 6];             // プレート速度の範囲（cm/年）
 const HOTSPOT_RANGE = [2, 5];              // ホットスポット数の範囲
@@ -1511,7 +1513,7 @@ function stampGeo(arr, cx, cy, r, amount, filter) {
   }
 }
 
-function simulateTectonics(seed, progress) {
+function simulateTectonics(seed, progress, profile = 1) {
   progress('プレートの生成');
   const rng = subRng(seed, 'tectonics');
   const plateN = makeNoise(rng), contWarpA = makeNoise(rng), contWarpB = makeNoise(rng), contShape = makeNoise(rng);
@@ -1618,7 +1620,9 @@ function simulateTectonics(seed, progress) {
       const i = y * TW + x;
       if (isC[i]) {
         const belt = ridged(beltN, x * 0.03, y * 0.03, 3);   // 古い縫合帯（過去の衝突の跡）
-        const core = dEdge[i] >= 7 && fbm(cratonN, x * 0.02, y * 0.02, 3) > -0.25 && belt < 0.72;
+        // 古い造山帯：v1・v2 は「縁から7区画以内」「安定地塊のノイズが低い所」「縫合帯」の和（陸の約3割）。
+        // v3 は線状の縫合帯と、大陸の縁の狭い帯（約50km）だけ。塊状の区分けと、縁の一律の造山帯はやめた
+        const core = profile >= 2 ? (dEdge[i] >= TEC_MARGIN_CELLS && belt < TEC_BELT_T) : (dEdge[i] >= 7 && fbm(cratonN, x * 0.02, y * 0.02, 3) > -0.25 && belt < 0.72);
         crust[i] = core ? CRUST.CRATON : CRUST.OROGEN;
         // 大陸の縁は引き伸ばされて薄い（大陸棚になる）
         // 微小大陸は縁の薄い部分が狭く、周りより高い台地になっている
@@ -5040,7 +5044,9 @@ function generateWorld(seed, report, rockVersion = ROCK_PROFILE) {
   const timings = [];
   const progress = (stage) => { timings.push([stage, Date.now() - t0]); report(stage); };
 
-  const tec = simulateTectonics(seed, progress);
+  // 世代 rock-24-v3：造山帯の見直し＋気候の計算を1回に（v1・v2 は従来どおり）
+  const v3 = rockVersion === 'rock-24-v3';
+  const tec = simulateTectonics(seed, progress, v3 ? 2 : 1);
   const ter = buildLandform(seed, tec, progress);
   ensureArchipelagos(seed, tec, ter, progress);
   const lmGeo = generateLandmarksGeo(seed, tec, ter, progress);
@@ -5054,7 +5060,8 @@ function generateWorld(seed, report, rockVersion = ROCK_PROFILE) {
   }
   let clim = generateClimate(seed, type, elev, progress);
   const rocks = ROCK_PROFILES.includes(rockVersion) ? generateRockWorld(seed, ter, tec, clim, W, H, progress, rockVersion) : null;
-  if (rocks) clim = generateClimate(seed, type, elev, progress);
+  // 侵食で標高が変わるのは平均 5.6m（気候区分が変わる区画 0.6%）。v3 は気候を作り直さない
+  if (rocks && !v3) clim = generateClimate(seed, type, elev, progress);
   const lmClim = generateLandmarksClim(seed, ter, clim, progress);
   const hydro = generateHydrology(seed, type, regionId, elev, clim.biome, clim, progress);
   const lmPost = generateLandmarksPost(seed, tec, ter, clim, hydro, lmClim.karst, progress);
@@ -5771,7 +5778,7 @@ function randomSeed() { return String(1 + Math.floor(Math.random() * 999999999))
 let currentSeed = null, previousSeed = null;
 let currentRockVersion = null, previousRockVersion = null;
 function generate(seedStr, requestedRockVersion) {
-  const generationRockVersion = pendingLoad ? (pendingLoad.rockGenerationVersion || null) : requestedRockVersion === undefined ? 'rock-24-v2' : requestedRockVersion;
+  const generationRockVersion = pendingLoad ? (pendingLoad.rockGenerationVersion || null) : requestedRockVersion === undefined ? 'rock-24-v3' : requestedRockVersion;
   if (busy) return;
   busy = true; setButtons();
   const id = ++jobId;
@@ -7555,7 +7562,7 @@ let pendingLoad = null;
 function loadState(st) {
   if (!st || st.format !== SAVE_FORMAT) { menuMsg('この記録は読み込めません（形式が違います）'); return; }
   const go = () => { pendingLoad = st; menuShow(false); generate(st.seed, false); };
-  if(st.genVersion === 12 && !['rock-24-v1','rock-24-v2'].includes(st.rockGenerationVersion)){menuMsg('この岩石生成バージョンには未対応です');return;}
+  if(st.genVersion === 12 && !['rock-24-v1','rock-24-v2','rock-24-v3'].includes(st.rockGenerationVersion)){menuMsg('この岩石生成バージョンには未対応です');return;}
   if (st.genVersion !== SAVE_GEN_VERSION && st.genVersion !== 12) {
     confirmBox('この記録は以前の生成の仕組みで作られました。地形が変わっている可能性があります。読み込みますか？', go);
   } else go();
@@ -7796,7 +7803,7 @@ dbDo('readonly', st => st.get('auto')).then(st => {
  * SI except MPa/Mohs/degrees. Matrix permeability excludes the regional fracture network.
  * Sources and empirical-parameter boundaries: docs/reports/rock-model-method.md.
  */
-const ROCK_PROFILES=Object.freeze(['rock-24-v1','rock-24-v2']),ROCK_PROFILE='rock-24-v2';   // v1：従来の岩石分布（旧セーブ用）／v2：地質の成り立ちから地層を作る
+const ROCK_PROFILES=Object.freeze(['rock-24-v1','rock-24-v2','rock-24-v3']),ROCK_PROFILE='rock-24-v3';   // v1：従来の岩石分布（旧セーブ用）／v2：地質の成り立ちから地層を作る／v3：v2＋造山帯の見直し＋気候の計算を1回に
 const rockRows=[
  ['granite','花崗岩','igneous',[2600,2750],[6,7],[100,250],[7,20],[.001,.03],[1e-21,1e-17],2.2,.00008,.001,.000002,3.1,790,8e-6,38,[177,171,163],0,{quartz:.3,feldspar:.6,mica:.1},'大陸地殻深部の珪長質マグマの緩慢冷却','block'],
  ['diorite','閃緑岩','igneous',[2700,2950],[6,7],[100,250],[8,22],[.002,.04],[1e-21,1e-17],2.3,.00009,.001,.000002,2.5,800,8e-6,37,[125,132,127],0,{plagioclase:.6,amphibole:.3,biotite:.1},'中間質マグマの深成貫入','block'],
