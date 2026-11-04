@@ -986,9 +986,281 @@ function galleyMassItems() {
   ];
 }
 
-return { boxBarge, galleonLikeHull, galleonLikeMassItems, galleyHull, galleyMassItems };
+/** Plain-data designs (JSON-safe) for the fleet. Placeholder values, NOT historical specifications. */
+const sampleDesigns = Object.freeze({
+  galleon: Object.freeze({
+    hull: galleonLikeHull(), massItems: galleonLikeMassItems(),
+    sails: [{ id: 'main', type: 'foreAndAft', areaM2: 500, x: 21, zCe: 12 }], rudder: { x: 0.5, areaM2: 6 },
+    openings: [{ id: 'gunport', x: 20, y: 5.3, z: 5.2 }],
+  }),
+  galley: Object.freeze({
+    hull: galleyHull(), massItems: galleyMassItems(), sails: [], rudder: { x: 0.5, areaM2: 1.5 },
+    oars: [{ id: 'P', side: 'port', rowers: 50, x: 18 }, { id: 'S', side: 'starboard', rowers: 50, x: 18 }],
+  }),
+});
+
+return { boxBarge, galleonLikeHull, galleonLikeMassItems, galleyHull, galleyMassItems, sampleDesigns };
 })();
-const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_params, M_dynamics, M_flooding, M_ship_model, M_samples);
+const M_fleet = (() => {
+/**
+ * Fleet registry: ship ids, designs, simulation LOD, JSON save/restore (Ver.25-26 basic part).
+ * LOD only changes the integration step (near: 0.1 s, far: 0.5 s) and which ships are stepped;
+ * the state is the same object, so a ship never jumps when its LOD changes.
+ * Ships beyond dormantRadius are NOT simulated (their state is frozen and dormantSeconds counts up);
+ * catching up on that time (e.g. a voyage model) is not implemented yet.
+ * People, cargo and owners are only referenced by id in `refs`; no ledger is duplicated here.
+ * Designs are plain JSON data so they can be saved.
+ */
+const { createShip } = M_ship_model;
+const { analyzeHydrostatics } = M_hydrostatics;
+const { createVessel } = M_dynamics;
+const FORMAT = 1;
+const LOD = Object.freeze({ near: 'near', far: 'far', dormant: 'dormant' });
+
+function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0.1, farDt = 0.5, maxSubsteps = 40 } = {}) {
+  const designs = new Map(), analyses = new Map(), ships = new Map();
+  let nextId = 1, time = 0;
+  const events = [];
+
+  function registerDesign(id, d) {
+    if (typeof id !== 'string' || !id) throw new TypeError('design id must be a non-empty string');
+    if (!d?.hull?.stations || !Array.isArray(d.massItems)) throw new TypeError('design needs hull.stations and massItems');
+    designs.set(id, JSON.parse(JSON.stringify(d))); analyses.delete(id);
+  }
+
+  function build(designId) {
+    const d = designs.get(designId);
+    if (!d) throw new RangeError(`unknown design ${designId}`);
+    const ship = createShip({ id: designId, hull: d.hull, massItems: d.massItems, openings: d.openings });
+    if (!analyses.has(designId)) analyses.set(designId, analyzeHydrostatics(ship));
+    const analysis = analyses.get(designId);
+    if (analysis.status !== 'ok') throw new RangeError(`design ${designId} does not float (${analysis.status})`);
+    return createVessel({ ship, analysis, sails: d.sails ?? [], rudder: d.rudder, oars: d.oars ?? [], windageAreaM2: d.windageAreaM2 ?? 0 });
+  }
+
+  function addShip({ designId, X = 0, Y = 0, headingDeg = 0, id, refs = {} } = {}) {
+    const shipId = id ?? `ship-${nextId++}`;
+    if (ships.has(shipId)) throw new RangeError(`duplicate ship id ${shipId}`);
+    if (id) { const m = /^ship-(\d+)$/.exec(id); if (m) nextId = Math.max(nextId, +m[1] + 1); }
+    const vessel = build(designId);
+    Object.assign(vessel.state, { X, Y, psi: headingDeg * Math.PI / 180 });
+    const rec = { id: shipId, designId, vessel, lod: LOD.near, lifecycle: 'afloat', dormantSeconds: 0, refs: { owner: null, crew: [], cargo: [], ...refs }, history: [{ type: 'ship_created', time }] };
+    ships.set(shipId, rec);
+    return shipId;
+  }
+
+  const get = (id) => { const s = ships.get(id); if (!s) throw new RangeError(`unknown ship ${id}`); return s; };
+
+  /** Advance every ship by dt seconds. focus = {X, Y} decides the LOD (usually the player's position). */
+  function step(dt, env = {}, focus = null) {
+    time += dt;
+    for (const s of ships.values()) {
+      if (s.lifecycle !== 'afloat') continue;
+      const v = s.vessel, d = focus ? Math.hypot(v.state.X - focus.X, v.state.Y - focus.Y) : 0;
+      s.lod = d <= nearRadiusM ? LOD.near : d <= farRadiusM ? LOD.far : LOD.dormant;
+      if (s.lod === LOD.dormant) { s.dormantSeconds += dt; continue; }
+      const h = s.lod === LOD.near ? nearDt : farDt, n = Math.min(maxSubsteps, Math.max(1, Math.round(dt / h)));
+      const sub = dt / n;
+      for (let i = 0; i < n; i++) v.step(sub, env);
+      for (const e of v.takeEvents()) { const ev = { ...e, shipId: s.id }; events.push(ev); s.history.push(ev); }
+    }
+  }
+
+  const num = (v) => (Number.isFinite(v) ? v : null);
+
+  function serialize() {
+    return JSON.parse(JSON.stringify({
+      format: FORMAT, nextId, time,
+      designs: Object.fromEntries(designs),
+      ships: [...ships.values()].map((s) => {
+        const v = s.vessel, st = v.state;
+        return {
+          id: s.id, designId: s.designId, lifecycle: s.lifecycle, dormantSeconds: s.dormantSeconds, refs: s.refs, history: s.history.slice(-200),
+          state: { ...st, anchor: st.anchor ? { ...st.anchor, breakingN: num(st.anchor.breakingN) } : null },
+          sails: v.sails.map((x) => ({ id: x.id, trimDeg: x.trimDeg, deployed: x.deployed })),
+          oars: v.oars.map((o) => ({ id: o.id, effort: o.effort, stamina: o.stamina })),
+        };
+      }),
+    }));
+  }
+
+  function restore(data) {
+    if (!data || data.format !== FORMAT) throw new RangeError('unsupported fleet save format');
+    designs.clear(); analyses.clear(); ships.clear(); events.length = 0;
+    for (const [id, d] of Object.entries(data.designs)) registerDesign(id, d);
+    nextId = data.nextId; time = data.time;
+    for (const r of data.ships) {
+      const vessel = build(r.designId);
+      Object.assign(vessel.state, r.state);
+      if (r.state.anchor) vessel.state.anchor = { ...r.state.anchor, breakingN: r.state.anchor.breakingN ?? Infinity };
+      for (const x of r.sails) { const sl = vessel.sails.find((s) => s.id === x.id); if (sl) { sl.trimDeg = x.trimDeg; sl.deployed = x.deployed; } }
+      for (const x of r.oars) { const o = vessel.oars.find((q) => q.id === x.id); if (o) { o.effort = x.effort; o.stamina = x.stamina; } }
+      ships.set(r.id, { id: r.id, designId: r.designId, vessel, lod: LOD.near, lifecycle: r.lifecycle, dormantSeconds: r.dormantSeconds, refs: r.refs, history: r.history });
+    }
+  }
+
+  return {
+    registerDesign, addShip, step, serialize, restore, get,
+    has: (id) => ships.has(id),
+    list: () => [...ships.values()],
+    ids: () => [...ships.keys()],
+    designIds: () => [...designs.keys()],
+    removeShip: (id) => ships.delete(id),
+    takeEvents: () => events.splice(0),
+    get time() { return time; },
+  };
+}
+
+return { LOD, createFleet };
+})();
+const M_hull_mesh = (() => {
+/**
+ * Render mesh built from the physics hull (display only; physics keeps using the sections).
+ * Output is plain arrays so it needs no 3D library and can be tested. Axes of the output
+ * match Three.js with north up: x = starboard, y = up, z = -forward (bow toward -z). Origin: keel baseline,
+ * ship x = 0 at hull.xMin. Rotate a mesh by rotation.y = -heading to match the world.
+ * The mesh is closed (every edge is shared by two triangles): skin, deck, keel flat and end caps.
+ */
+function buildHullMesh(hull, { stations = 28, levels = 14 } = {}) {
+  if (!Number.isInteger(stations) || stations < 2 || !Number.isInteger(levels) || levels < 2) throw new RangeError('stations and levels must be integers >= 2');
+  const eps = 1e-6, rings = [];
+  for (let i = 0; i <= stations; i++) {
+    const x = hull.xMin + eps + (hull.xMax - hull.xMin - 2 * eps) * i / stations;
+    const sec = hull.sectionAt(x), z0 = sec[0].z, z1 = sec[sec.length - 1].z, side = [];
+    for (let k = 0; k <= levels; k++) {
+      const z = z0 + (z1 - z0) * k / levels;
+      let b = sec[sec.length - 1].b;
+      for (let j = 1; j < sec.length; j++) if (z <= sec[j].z) { const a = sec[j - 1], c = sec[j], w = c.z === a.z ? 1 : (z - a.z) / (c.z - a.z); b = a.b + (c.b - a.b) * w; break; }
+      side.push([Math.max(b, 1e-4), z]);
+    }
+    const ring = [...side.map(([b, z]) => [b, z]), ...side.slice().reverse().map(([b, z]) => [-b, z])];
+    rings.push({ x: x - hull.xMin, ring });
+  }
+  const per = rings[0].ring.length, positions = [], indices = [];
+  for (const { x, ring } of rings) for (const [y, z] of ring) positions.push(y, z, -x);
+  for (let i = 0; i < stations; i++) for (let j = 0; j < per; j++) {
+    const a = i * per + j, b = i * per + (j + 1) % per, c = (i + 1) * per + j, d = (i + 1) * per + (j + 1) % per;
+    indices.push(a, c, b, b, c, d);
+  }
+  // End caps: fan around a centre vertex.
+  const cap = (ringIndex, flip) => {
+    const base = ringIndex * per, centre = positions.length / 3;
+    let cy = 0, cz = 0; for (let j = 0; j < per; j++) { cy += positions[(base + j) * 3]; cz += positions[(base + j) * 3 + 1]; }
+    positions.push(cy / per, cz / per, positions[base * 3 + 2]);
+    for (let j = 0; j < per; j++) { const a = base + j, b = base + (j + 1) % per; indices.push(centre, flip ? b : a, flip ? a : b); }
+  };
+  cap(0, false); cap(stations, true);
+  // Fix winding so triangle normals point outwards (checked against the centroid).
+  const P = positions;
+  let cx = 0, cy = 0, cz = 0; for (let v = 0; v < P.length; v += 3) { cx += P[v]; cy += P[v + 1]; cz += P[v + 2]; }
+  const nv = P.length / 3; cx /= nv; cy /= nv; cz /= nv;
+  let vol = 0;
+  for (let t = 0; t < indices.length; t += 3) {
+    const [a, b, c] = [indices[t] * 3, indices[t + 1] * 3, indices[t + 2] * 3];
+    vol += (P[a] - cx) * ((P[b + 1] - cy) * (P[c + 2] - cz) - (P[b + 2] - cz) * (P[c + 1] - cy)) - (P[a + 1] - cy) * ((P[b] - cx) * (P[c + 2] - cz) - (P[b + 2] - cz) * (P[c] - cx)) + (P[a + 2] - cz) * ((P[b] - cx) * (P[c + 1] - cy) - (P[b + 1] - cy) * (P[c] - cx));
+  }
+  if (vol < 0) for (let t = 0; t < indices.length; t += 3) { const tmp = indices[t + 1]; indices[t + 1] = indices[t + 2]; indices[t + 2] = tmp; }
+  // Smooth vertex normals.
+  const normals = new Float32Array(P.length);
+  for (let t = 0; t < indices.length; t += 3) {
+    const ia = indices[t] * 3, ib = indices[t + 1] * 3, ic = indices[t + 2] * 3;
+    const ux = P[ib] - P[ia], uy = P[ib + 1] - P[ia + 1], uz = P[ib + 2] - P[ia + 2], vx = P[ic] - P[ia], vy = P[ic + 1] - P[ia + 1], vz = P[ic + 2] - P[ia + 2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    for (const i of [ia, ib, ic]) { normals[i] += nx; normals[i + 1] += ny; normals[i + 2] += nz; }
+  }
+  for (let i = 0; i < normals.length; i += 3) { const l = Math.hypot(normals[i], normals[i + 1], normals[i + 2]) || 1; normals[i] /= l; normals[i + 1] /= l; normals[i + 2] /= l; }
+  return { positions: Float32Array.from(P), normals, indices: Uint32Array.from(indices), vertexCount: nv, triangleCount: indices.length / 3 };
+}
+
+return { buildHullMesh };
+})();
+const M_world_environment = (() => {
+/**
+ * Read-only adapter: existing world data (window.__geo.world) -> ship environment.
+ * Ship frame: X east, Y north, metres. World blocks: x east, y SOUTH (y grows southward), so
+ * block y = origin.y - Y / blockM. This flip lives only here.
+ * Reads: world.elev/type (3000 x 3000 blocks), world.climate.cell {gridStep, gridW, gridH,
+ * windDir[12*n] (0-255 = 0-360 deg, direction the wind comes FROM, north = 0, clockwise),
+ * windSpeed[12*n] (x10 m/s), currentU/currentV[n] (x100 m/s, east/north)}.
+ * Resolution is one block (~3.33 km) for depth and one climate cell for wind/current: coasts and
+ * shoals smaller than that are NOT resolved. No tides, waves or seabed-type data exist yet.
+ * Wind is monthly-mean (no gusts); the month is blended with the neighbour around mid-month.
+ */
+const TWO_PI = Math.PI * 2;
+const DAYS_PER_MONTH = 30, DAYS_PER_YEAR = 360;
+
+function createWorldEnvironment(world, {
+  origin, width = 3000, height = 3000, blockM = 3330, dayAt = () => 0, seabed = 'sand',
+} = {}) {
+  if (!world?.elev || !world?.type) throw new TypeError('world.elev and world.type are required');
+  const n = width * height;
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1) throw new TypeError('invalid world size');
+  if (world.elev.length !== n || world.type.length !== n) throw new TypeError(`world.elev/type must have ${n} cells`);
+  if (!origin || !Number.isFinite(origin.x) || !Number.isFinite(origin.y)) throw new TypeError('origin {x, y} (block coordinates of ship position 0,0) is required');
+  if (!(blockM > 0)) throw new RangeError('blockM must be > 0');
+  const cell = world.climate?.cell;
+  if (!cell) throw new TypeError('world.climate.cell is required');
+  const { gridStep: step, gridW: gw, gridH: gh } = cell, cn = gw * gh;
+  if (!(step > 0) || !Number.isInteger(gw) || !Number.isInteger(gh)) throw new TypeError('invalid climate grid');
+  if (cell.windDir?.length !== 12 * cn || cell.windSpeed?.length !== 12 * cn) throw new TypeError('windDir/windSpeed must have 12 * gridW * gridH entries');
+  if (cell.currentU?.length !== cn || cell.currentV?.length !== cn) throw new TypeError('currentU/currentV must have gridW * gridH entries');
+
+  const toBlock = (X, Y) => ({ x: origin.x + X / blockM, y: origin.y - Y / blockM });
+  const toShip = (bx, by) => ({ X: (bx - origin.x) * blockM, Y: (origin.y - by) * blockM });
+  const clampI = (v, hi) => Math.min(hi, Math.max(0, v));
+
+  /** Bilinear sample of a scalar field on cell centres (centre of cell i is at i + 0.5). */
+  function bilinear(fx, fy, w, h, at) {
+    const x = fx - 0.5, y = fy - 0.5, x0 = Math.floor(x), y0 = Math.floor(y), tx = x - x0, ty = y - y0;
+    const g = (i, j) => at(clampI(i, w - 1), clampI(j, h - 1));
+    return (g(x0, y0) * (1 - tx) + g(x0 + 1, y0) * tx) * (1 - ty) + (g(x0, y0 + 1) * (1 - tx) + g(x0 + 1, y0 + 1) * tx) * ty;
+  }
+
+  function monthWind(month, fx, fy) {
+    const base = month * cn, at = (c) => (i, j) => {
+      const k = base + j * gw + i, th = cell.windDir[k] / 256 * TWO_PI, sp = cell.windSpeed[k] / 10;
+      return c === 0 ? -Math.sin(th) * sp : -Math.cos(th) * sp; // direction the wind blows TOWARD: east, north
+    };
+    return { x: bilinear(fx, fy, gw, gh, at(0)), y: bilinear(fx, fy, gw, gh, at(1)) };
+  }
+
+  function wind(X, Y, t = 0) {
+    const b = toBlock(X, Y), fx = b.x / step, fy = b.y / step;
+    const day = dayAt(t), doy = ((day % DAYS_PER_YEAR) + DAYS_PER_YEAR) % DAYS_PER_YEAR;
+    const mf = (doy - 15) / DAYS_PER_MONTH, m0 = Math.floor(mf), w1 = mf - m0;
+    const a = monthWind(((m0 % 12) + 12) % 12, fx, fy), c = monthWind((((m0 + 1) % 12) + 12) % 12, fx, fy);
+    return { x: a.x * (1 - w1) + c.x * w1, y: a.y * (1 - w1) + c.y * w1 };
+  }
+
+  const isLandAt = (bx, by) => world.type[clampI(Math.floor(by), height - 1) * width + clampI(Math.floor(bx), width - 1)] !== 0;
+
+  function current(X, Y) {
+    const b = toBlock(X, Y);
+    if (isLandAt(b.x, b.y)) return { x: 0, y: 0 };
+    const fx = b.x / step, fy = b.y / step;
+    return {
+      x: bilinear(fx, fy, gw, gh, (i, j) => cell.currentU[j * gw + i]) / 100,
+      y: bilinear(fx, fy, gw, gh, (i, j) => cell.currentV[j * gw + i]) / 100,
+    };
+  }
+
+  function depth(X, Y) {
+    const b = toBlock(X, Y);
+    if (isLandAt(b.x, b.y)) return 0;
+    const e = bilinear(b.x, b.y, width, height, (i, j) => world.elev[j * width + i]);
+    return e < 0 ? -e : 0;
+  }
+
+  const seabedFn = typeof seabed === 'function' ? seabed : () => seabed;
+  return Object.freeze({
+    wind, current, depth, seabed: (X, Y, t) => seabedFn(X, Y, t),
+    toBlock, toShip, blockM,
+  });
+}
+
+return { createWorldEnvironment };
+})();
+const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_params, M_dynamics, M_flooding, M_ship_model, M_samples, M_fleet, M_hull_mesh, M_world_environment);
 
 (() => {
 'use strict';
