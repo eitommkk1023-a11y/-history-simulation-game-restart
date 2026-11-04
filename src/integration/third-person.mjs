@@ -1,3 +1,4 @@
+import {installRockLegend} from '../rocks/rock-display.mjs';
 import {installRockMaterials} from '../rocks/rock-material.mjs';
 import {createGrassRenderer} from '../vegetation/grass-renderer.mjs';
 import {installGameHUD} from './game-hud.mjs';
@@ -411,3 +412,4 @@ document.body.classList.add('integration-ui-hidden','integration-third');
 animatePlayer(0);resize();if(bridge.world)adoptNativeWorld();
 
 installGameHUD();
+installRockLegend(bridge);

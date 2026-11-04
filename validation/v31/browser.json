@@ -1,0 +1,17 @@
+{
+  "seed": 12345,
+  "viewports": [
+    "667x375",
+    "844x390",
+    "1180x820"
+  ],
+  "rockNames": 24,
+  "numericModes": 3,
+  "autoOpen": true,
+  "reopen": true,
+  "noControlOverlap": true,
+  "noCompositorHoles": true,
+  "UIHideKeepsMovementActions": true,
+  "overview": true,
+  "errors": []
+}

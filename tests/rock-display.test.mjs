@@ -1,0 +1,6 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {ROCKS} from '../src/rocks/catalog.mjs';
+import {rockDiagnosticRGB,rockDisplayValue,rockRampRGB,rockLegendContent} from '../src/rocks/rock-display.mjs';
+test('rock legend identifies every category and explains the mapped surface',()=>{const html=rockLegendContent('rock');for(const r of ROCKS)assert.ok(html.includes(r.name));for(const group of ['火成岩','堆積岩','変成岩'])assert.ok(html.includes(group));assert.ok(html.includes('表土'));assert.equal(new Set(ROCKS.map(r=>rockDiagnosticRGB(r.id).join(','))).size,24);});
+test('quantitative legends explain actual numbers, units and stability thresholds',()=>{assert.ok(rockLegendContent('rockResistance').includes('単位なし'));assert.ok(rockLegendContent('rockPermeability').includes('m²'));const html=rockLegendContent('rockStability');assert.ok(html.includes('1未満'));assert.ok(html.includes('1〜1.5'));assert.ok(html.includes('歩行'));assert.equal(rockDisplayValue('rockResistance',{erosionResistance:.2}),0);assert.equal(rockDisplayValue('rockResistance',{erosionResistance:4}),1);assert.notDeepEqual(rockRampRGB('rockStability',84),rockRampRGB('rockStability',85));});
+test('legacy worlds and unknown modes cannot show a misleading rock key',()=>{assert.ok(rockLegendContent('rock',false).includes('旧世代'));assert.equal(rockLegendContent('biome'),'');});

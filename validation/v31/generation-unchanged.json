@@ -1,0 +1,17 @@
+[
+  {
+    "script": "generator-src",
+    "identicalToV30": true,
+    "sha256": "0b1727dc56f5345f7b8de02d8c9b8990670164a147819715c9fe4353dd6de161"
+  },
+  {
+    "script": "rock-src",
+    "identicalToV30": true,
+    "sha256": "34e3bced05199994f58646c35fed7c7b207886bb928a84709b0c337f002b1f50"
+  },
+  {
+    "script": "fauna-src",
+    "identicalToV30": true,
+    "sha256": "96206396bf2f8e90362eacc61492466ec126ef2aaeaa3ca7a3ea031be0533ad8"
+  }
+]

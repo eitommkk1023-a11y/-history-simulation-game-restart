@@ -24,7 +24,8 @@ export async function integrateRocks(html,root){
  patch('  if (st.genVersion !== SAVE_GEN_VERSION) {',"  if(st.genVersion === 12 && st.rockGenerationVersion !== 'rock-24-v1'){menuMsg('この岩石生成バージョンには未対応です');return;}\n  if (st.genVersion !== SAVE_GEN_VERSION && st.genVersion !== 12) {");
  patch("'plate', 'geology'];","'plate', 'geology', 'rock', 'rockResistance', 'rockPermeability', 'rockStability'];");
  patch("geology: '表示：地質' };","geology: '表示：地質', rock: '表示：岩石24種', rockResistance: '表示：侵食耐性', rockPermeability: '表示：透水性', rockStability: '表示：斜面安定性' };");
- patch("  if (viewMode === 'biome') {","  if (viewMode.startsWith('rock')) {\n    el.innerHTML = window.__wohRockLegend ? window.__wohRockLegend(viewMode) : '岩石の準備中';return;\n  }\n  if (viewMode === 'biome') {");
+ patch("  if (viewMode === 'biome') {","  if (viewMode.startsWith('rock')) {\n    el.classList.remove('interactive'); el.innerHTML = window.__wohRockLegend ? window.__wohRockLegend(viewMode) : '岩石の準備中';return;\n  }\n  if (viewMode === 'biome') {");
+ patch('      data[o + 3] = 255;', "      data[o + 3] = mode.startsWith('rock') ? (type[i] ? (wt ? 128 : 255) : 0) : 255;");
  patch('  labPatchTerrainMaterial(mat);','  labPatchTerrainMaterial(mat);\n  window.__wohApplyRockMaterial?.(mat);');
  return html;
 }

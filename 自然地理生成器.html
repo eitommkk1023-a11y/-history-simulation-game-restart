@@ -5163,7 +5163,7 @@ function buildLegend() {
   const el = document.getElementById('legend');
   let html;
   if (viewMode.startsWith('rock')) {
-    el.innerHTML = window.__wohRockLegend ? window.__wohRockLegend(viewMode) : '岩石の準備中';return;
+    el.classList.remove('interactive'); el.innerHTML = window.__wohRockLegend ? window.__wohRockLegend(viewMode) : '岩石の準備中';return;
   }
   if (viewMode === 'biome') {
     html = '<div class="title">植生凡例</div><div class="cols">';
@@ -5372,7 +5372,7 @@ function buildTexture(elev, biome, mode) {
       data[o] = Math.min(255, r * shade);
       data[o + 1] = Math.min(255, g * shade);
       data[o + 2] = Math.min(255, b * shade);
-      data[o + 3] = 255;
+      data[o + 3] = mode.startsWith('rock') ? (type[i] ? (wt ? 128 : 255) : 0) : 255;
     }
   }
   if (mode !== 'plate') paintVolcanoes(data, elev);
@@ -5760,7 +5760,7 @@ const btnView = document.getElementById('btnView');
 const displayChoices=document.createElement('div');displayChoices.id='displayChoices';displayChoices.className='scrollable';displayChoices.style.touchAction='pan-y';displayChoices.hidden=true;displayChoices.setAttribute('role','group');displayChoices.setAttribute('aria-label','表示を選択');document.body.appendChild(displayChoices);
 function closeDisplayChoices(){displayChoices.hidden=true;btnView.setAttribute('aria-expanded','false');}
 for(const mode of VIEW_MODES){const option=document.createElement('button');option.dataset.view=mode;option.textContent=VIEW_LABELS[mode].replace('表示：','');displayChoices.appendChild(option);bindTap(option,()=>{
- closeDisplayChoices();if(mode===viewMode)return;viewMode=mode;btnView.textContent=VIEW_LABELS[viewMode];buildLegend();rebuildTexture();faDirty=true;faunaUpdateOverlay();if(depMarks)depMarks.visible=viewMode==='res';requestRender();
+ closeDisplayChoices();if(mode===viewMode){document.dispatchEvent(new CustomEvent('woh-display-changed',{detail:{mode}}));return;}viewMode=mode;document.dispatchEvent(new CustomEvent('woh-display-changed',{detail:{mode}}));btnView.textContent=VIEW_LABELS[viewMode];buildLegend();rebuildTexture();faDirty=true;faunaUpdateOverlay();if(depMarks)depMarks.visible=viewMode==='res';requestRender();
 });}
 bindTap(btnView,()=>{displayChoices.hidden=!displayChoices.hidden;btnView.setAttribute('aria-expanded',String(!displayChoices.hidden));displayChoices.style.top=Math.min(window.innerHeight-110,document.getElementById('toolbar').getBoundingClientRect().bottom+4)+'px';for(const b of displayChoices.children)b.classList.toggle('selected',b.dataset.view===viewMode);});
 document.addEventListener('pointerdown',e=>{if(!displayChoices.contains(e.target)&&e.target!==btnView)closeDisplayChoices();});

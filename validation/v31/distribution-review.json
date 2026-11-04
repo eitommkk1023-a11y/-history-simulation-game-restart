@@ -1,0 +1,10 @@
+{
+  "seed": 12345,
+  "profile": "rock-24-v1",
+  "sameFormationLandNeighbourPairs": 111226,
+  "differentInitialRockIdPairs": 80710,
+  "differentFraction": 0.7256396885620269,
+  "sourceGeologyCellM": 26640,
+  "phaseChangeAtTwoDegreeDipM": 929.7225921546258,
+  "interpretation": "one-seed observation; fixed repeating layer templates are undersampled on the coarse grid; UI-only correction in v31"
+}

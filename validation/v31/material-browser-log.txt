@@ -1,0 +1,1 @@
+WebGL1 material with four preserved legacy texture samplers compiles; 24 IDs, 96 legend colors, and 8 water-mask pixels match.
