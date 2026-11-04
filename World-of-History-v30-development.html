@@ -253,6 +253,7 @@
   <div class="row"><span class="k">自分の民族</span><span class="v" id="iMine">-</span></div>
   <div class="row"><span class="k">あなた</span><span class="v" id="iYou">-</span></div>
   <div class="row"><span class="k">首長</span><span class="v" id="iLeader">-</span></div>
+  <div class="row"><span class="k">提案</span><span class="v"><select id="iProp" style="max-width:150px;font-size:12px;background:#0e1a2a;color:#e8f0f8;border:1px solid #ffffff30;border-radius:6px;padding:2px 4px;touch-action:manipulation"></select> <button id="iPropGo" style="font-size:12px;padding:2px 8px;border-radius:6px;border:1px solid #ffffff40;background:#183d5c;color:#e8f0f8;touch-action:manipulation">提案する</button><div id="iPropMsg" style="font-size:11px;opacity:.9;margin-top:2px"></div></span></div>
   <div class="row"><span class="k">活動</span><span class="v"><select id="iAct" style="max-width:140px;font-size:12px;background:#0e1a2a;color:#e8f0f8;border:1px solid #ffffff30;border-radius:6px;padding:2px 4px;touch-action:manipulation"></select></span></div>
   <div class="row"><span class="k">河川</span><span class="v" id="iRiver">-</span></div>
   <div class="row"><span class="k">湖</span><span class="v" id="iLake">-</span></div>
@@ -5858,6 +5859,57 @@ function peLeaders(people, ev, rel, force, yearly, silent) {
     } else if (g.leader === undefined) g.leader = best;
   }
 }
+// ---------------------------------------------------------------- 提案：集団の方針・移住をプレイヤーの人物が提案する
+// 集団の成人（最大30人を抽出）が、それぞれ賛成か反対かを判断する。必要な賛成：首長の提案は40%、一般の人は50%、首長が反対しているときは+10ポイント
+const PROPOSALS = [['hunt', '方針：狩猟を優先'], ['gather', '方針：採集を優先'], ['fish', '方針：漁を優先'], ['auto', '方針：自動に戻す'], ['migrate', '移住：今いる場所へ']];
+const PROP_NEED = { leader: 0.4, member: 0.5, leaderOppose: 0.1 };
+const PROP_VOTERS = 30, PROP_COOLDOWN = 60;
+function peVoterScore(people, v, proposer, kind, g, dist) {
+  const P = people.npc, rnd = () => P.random();
+  // 提案者への信頼（家族は高い）と、年長者の重み、首長の提案の重み
+  const b = P.bondOf(v, proposer); let trust = b ? b[0] : 128;
+  if (P.spouse[v] === proposer || P.mother[v] === proposer || P.father[v] === proposer || P.mother[proposer] === v || P.father[proposer] === v) trust += 50;
+  else if ((P.mother[v] !== NONE && P.mother[v] === P.mother[proposer]) || (P.father[v] !== NONE && P.father[v] === P.father[proposer])) trust += 35;
+  let sc = (trust - 128) / 5 + Math.max(-8, Math.min(8, (P.age(proposer) - 30) / 3)) + (g.leader === proposer ? 12 : 0);
+  const cautious = (P.stat(v, SI['慎重さ']) - 128) / 5, curious = (P.stat(v, SI['好奇心']) - 128) / 6, jb = P.job[v];
+  if (kind === 'migrate') {
+    sc += 38 * Math.min(1, g.hunger / 4) - (g.hunger === 0 ? 22 : 0) - cautious * 1.2 + curious - dist / 6;
+    if (P.house[v] !== NONE && P.house[v] === P.house[proposer]) sc += 4;
+  } else {
+    const focus = kind === 'gather' ? 1 : kind === 'hunt' ? 2 : kind === 'fish' ? 3 : 0;
+    if (focus) sc += jb === focus ? 35 : (jb >= 1 && jb <= 3 ? -10 : 0);
+    sc += (g.hunger >= 2 ? 10 : 0) - cautious;
+  }
+  return sc + (rnd() - 0.5) * 16;
+}
+// 提案の可否を調べ、投票して、通れば反映する。ctx：{ world, x, y（移住先のブロック座標）, day }
+function peopleProposal(people, kind, ctx) {
+  const P = people.npc, pl = people.player; if (!pl || pl.over || pl.id < 0) return { ok: false, reason: 'noPlayer' };
+  if (!PROPOSALS.some(p => p[0] === kind)) return { ok: false, reason: 'unknown' };
+  const me = pl.id, g = people.groups[P.group[me] - 1]; if (!g || !g.alive) return { ok: false, reason: 'noGroup' };
+  if (P.age(me) < P.adultAge(me)) return { ok: false, reason: 'minor' };
+  if (P.day < (pl.proposalReady || 0)) return { ok: false, reason: 'cooldown', wait: Math.ceil(((pl.proposalReady || 0) - P.day) / 30) };
+  let dist = 0, target = null;
+  if (kind === 'migrate') {
+    if (g.moveTo) return { ok: false, reason: 'moving' };
+    const S = peCache && peCache.world === ctx.world ? peCache : null; if (!S) return { ok: false, reason: 'noWorld' };
+    const k = peNearestRiver(S, ctx.x, ctx.y, PE.RIVER_SNAP); if (k < 0) return { ok: false, reason: 'noRiver' };
+    target = peDryNear(S, ctx.world, ctx.world.riverPts[k * 3], ctx.world.riverPts[k * 3 + 1]);
+    if (peSeaBetween(S, ctx.world, g.x, g.y, target.x, target.y)) return { ok: false, reason: 'sea' };
+    dist = Math.hypot(target.x - g.x, target.y - g.y); if (dist < 6) return { ok: false, reason: 'near' };
+  } else if (g.policy === kind) return { ok: false, reason: 'same' };
+  // 投票（成人から最大30人）
+  const L = P.members[g.id], adults = []; for (const v of L) if (P.death[v] === ALIVE && P.group[v] === g.id && v !== me && P.age(v) >= P.adultAge(v)) adults.push(v);
+  const voters = []; const pool = adults.slice(); for (let i = 0; i < PROP_VOTERS && pool.length; i++) { const k = Math.floor(P.random() * pool.length); voters.push(pool[k]); pool[k] = pool[pool.length - 1]; pool.pop(); }
+  if (!voters.length) return { ok: false, reason: 'alone' };
+  let yes = 0; for (const v of voters) if (peVoterScore(people, v, me, kind, g, dist) > 0) yes++;
+  const support = yes / voters.length, isLeader = g.leader === me;
+  let leaderOppose = false; if (!isLeader && g.leader >= 0 && P.death[g.leader] === ALIVE) leaderOppose = peVoterScore(people, g.leader, me, kind, g, dist) <= 0;
+  const need = isLeader ? PROP_NEED.leader : PROP_NEED.member + (leaderOppose ? PROP_NEED.leaderOppose : 0), passed = support >= need;
+  pl.proposalReady = P.day + PROP_COOLDOWN * (passed ? 1 : 2);
+  if (passed) { if (kind === 'migrate') { g.moveTo = { x: target.x, y: target.y, by: 'player' }; } else g.policy = kind; }
+  return { ok: true, passed, kind, support, need, voters: voters.length, isLeader, leaderOppose, group: g.id, eth: g.ethId, x: g.x, y: g.y };
+}
 // ---------------------------------------------------------------- プレイヤーの人物と、文化ごとの継承
 // 継承の決まり（民族ごと）：0長子相続 1男系長子 2末子相続 3母系相続 4兄弟相続 5能力による選出 6指名。割合［仮］
 const SUCCESSION = ['長子相続', '男系長子', '末子相続', '母系相続', '兄弟相続', '能力による選出', '指名'];
@@ -6503,8 +6555,8 @@ function peopleEthCounts(people) {
   const P = people.npc, o = {}; for (let i = 0; i < P.n; i++) { if (P.death[i] !== ALIVE) continue; const e = P.eth[i] || P.groupEth[P.group[i]]; o[e] = (o[e] || 0) + 1; } return o;
 }
 
-if (typeof module !== 'undefined' && module.exports) module.exports = { LEADERSHIP, peLeaders, ACTIVITIES, peopleSetActivity, peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
-else root.WohPeople = { LEADERSHIP, ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+if (typeof module !== 'undefined' && module.exports) module.exports = { PROPOSALS, peopleProposal, LEADERSHIP, peLeaders, ACTIVITIES, peopleSetActivity, peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+else root.WohPeople = { PROPOSALS, peopleProposal, LEADERSHIP, ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
 <script id="npc-view">
@@ -7927,13 +7979,29 @@ function peopleNew() {
   people = WohPeople.peopleGenerate(seedToInt(currentSeed), { world, plantFood: peoplePlant, fauna, FA, month: 0 });
 }
 // 情報パネルの人口の表示（毎月・世界ができたとき・読み込んだとき）
+const PE_PROP_REASON = { noPlayer: '人物がいない', unknown: '提案が分からない', noGroup: '集団がない', minor: 'まだ成人していないので提案できない', cooldown: null, moving: '集団は移動中', noWorld: '世界の準備中', noRiver: '近くに川がない（移住先は川沿い）', sea: '海を越える所へは行けない', near: 'いまの場所に近すぎる', same: 'すでにその方針', alone: '提案を聞く大人がいない' };
+function peoplePropInit() {
+  const sel = document.getElementById('iProp'), go = document.getElementById('iPropGo'); if (!sel || sel.options.length) return;
+  for (const [k, name] of WohPeople.PROPOSALS) { const o = document.createElement('option'); o.value = k; o.textContent = name; sel.appendChild(o); }
+  const msg = document.getElementById('iPropMsg'), fire = () => {
+    if (!people) return; const kind = sel.value, a = globalThis.__wohAvatar?.block?.();
+    if (kind === 'migrate' && !a) { msg.textContent = '3D の場所が決まっていない'; return; }
+    const r = WohPeople.peopleProposal(people, kind, { world, x: a ? a.x : 0, y: a ? a.y : 0 });
+    if (!r.ok) { msg.textContent = r.reason === 'cooldown' ? `あと${r.wait}か月は新しく提案できない` : (PE_PROP_REASON[r.reason] || '提案できない'); return; }
+    const pct = Math.round(r.support * 100), need = Math.round(r.need * 100), label = sel.options[sel.selectedIndex].textContent;
+    msg.textContent = `${r.passed ? '通った' : '通らなかった'}（賛成 ${pct}%／必要 ${need}%${r.leaderOppose ? '・首長は反対' : ''}）`;
+    postEvent({ cat: 'people', imp: 1, relevant: true, group: 'player-proposal', text: `あなたの提案「${label}」は、賛成${pct}%（必要${need}%）で${r.passed ? '通った' : '通らなかった'}`, place: { x: r.x, y: r.y } });
+    peopleInfoUpdate();
+  };
+  go.addEventListener('click', fire);
+}
 function peopleActInit() {
   const sel = document.getElementById('iAct'); if (!sel || sel.options.length) return;
   for (const [k, name] of WohPeople.ACTIVITIES) { const o = document.createElement('option'); o.value = k; o.textContent = name; sel.appendChild(o); }
   sel.addEventListener('change', () => { if (people) { WohPeople.peopleSetActivity(people, sel.value); postEvent({ cat: 'people', imp: 0, group: 'player-act', text: `あなたの活動を「${sel.options[sel.selectedIndex].textContent}」に変えた` }); } });
 }
 function peopleInfoUpdate() {
-  peopleActInit();
+  peopleActInit(); peoplePropInit();
   { const sel = document.getElementById('iAct'), y0 = people ? WohPeople.peopleYou(people) : null; if (sel) { sel.disabled = !y0 || y0.over; if (y0) sel.value = y0.activity; } }
   const a = document.getElementById('iPeople'), b = document.getElementById('iMine'), c = document.getElementById('iYou'); if (!a || !b) return;
   if (!people) { a.textContent = '-'; b.textContent = '-'; if (c) c.textContent = '-'; return; }
@@ -10726,7 +10794,7 @@ function npcTapAt(cx,cy){
  renderer.domElement.addEventListener('pointerdown',e=>{tap={x:e.clientX,y:e.clientY,t:performance.now(),id:e.pointerId};},true);
  renderer.domElement.addEventListener('pointerup',e=>{const s=tap;tap=null;if(!s||s.id!==e.pointerId||overview)return;if(Math.hypot(e.clientX-s.x,e.clientY-s.y)>10||performance.now()-s.t>400)return;npcTapAt(e.clientX,e.clientY);});}
 globalThis.__wohNpcView={get count(){return npcList.length;},get selected(){return npcSel;},screens:npcScreens,tapAt:npcTapAt};
-globalThis.__wohAvatar={toPlayer(){const pe=window.__geo?.people,y=pe&&globalThis.WohPeople?.peopleYou(pe);if(!y?.camp||!state)return false;const q=state.terrain.gridToMeters(y.camp.x,y.camp.y);placeMarker(q.xM,q.yM);return true;},get point(){return markerPoint;}};
+globalThis.__wohAvatar={toPlayer(){const pe=window.__geo?.people,y=pe&&globalThis.WohPeople?.peopleYou(pe);if(!y?.camp||!state)return false;const q=state.terrain.gridToMeters(y.camp.x,y.camp.y);placeMarker(q.xM,q.yM);return true;},get point(){return markerPoint;},block(){if(!state||!markerPoint)return null;const q=state.terrain.metersToGrid(markerPoint.xM,markerPoint.yM);return {x:q.x,y:q.y};}};
 window.__wohPlayerSave=()=>playerToSource(globalThis.__wohDev?.savedPlayer()??(markerPoint?{xM:markerPoint.xM,yM:markerPoint.yM,yaw}:null));
 document.body.classList.add('integration-ui-hidden','integration-third');
 animatePlayer(0);resize();if(bridge.world)adoptNativeWorld();

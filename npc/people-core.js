@@ -278,6 +278,57 @@ function peLeaders(people, ev, rel, force, yearly, silent) {
     } else if (g.leader === undefined) g.leader = best;
   }
 }
+// ---------------------------------------------------------------- 提案：集団の方針・移住をプレイヤーの人物が提案する
+// 集団の成人（最大30人を抽出）が、それぞれ賛成か反対かを判断する。必要な賛成：首長の提案は40%、一般の人は50%、首長が反対しているときは+10ポイント
+const PROPOSALS = [['hunt', '方針：狩猟を優先'], ['gather', '方針：採集を優先'], ['fish', '方針：漁を優先'], ['auto', '方針：自動に戻す'], ['migrate', '移住：今いる場所へ']];
+const PROP_NEED = { leader: 0.4, member: 0.5, leaderOppose: 0.1 };
+const PROP_VOTERS = 30, PROP_COOLDOWN = 60;
+function peVoterScore(people, v, proposer, kind, g, dist) {
+  const P = people.npc, rnd = () => P.random();
+  // 提案者への信頼（家族は高い）と、年長者の重み、首長の提案の重み
+  const b = P.bondOf(v, proposer); let trust = b ? b[0] : 128;
+  if (P.spouse[v] === proposer || P.mother[v] === proposer || P.father[v] === proposer || P.mother[proposer] === v || P.father[proposer] === v) trust += 50;
+  else if ((P.mother[v] !== NONE && P.mother[v] === P.mother[proposer]) || (P.father[v] !== NONE && P.father[v] === P.father[proposer])) trust += 35;
+  let sc = (trust - 128) / 5 + Math.max(-8, Math.min(8, (P.age(proposer) - 30) / 3)) + (g.leader === proposer ? 12 : 0);
+  const cautious = (P.stat(v, SI['慎重さ']) - 128) / 5, curious = (P.stat(v, SI['好奇心']) - 128) / 6, jb = P.job[v];
+  if (kind === 'migrate') {
+    sc += 38 * Math.min(1, g.hunger / 4) - (g.hunger === 0 ? 22 : 0) - cautious * 1.2 + curious - dist / 6;
+    if (P.house[v] !== NONE && P.house[v] === P.house[proposer]) sc += 4;
+  } else {
+    const focus = kind === 'gather' ? 1 : kind === 'hunt' ? 2 : kind === 'fish' ? 3 : 0;
+    if (focus) sc += jb === focus ? 35 : (jb >= 1 && jb <= 3 ? -10 : 0);
+    sc += (g.hunger >= 2 ? 10 : 0) - cautious;
+  }
+  return sc + (rnd() - 0.5) * 16;
+}
+// 提案の可否を調べ、投票して、通れば反映する。ctx：{ world, x, y（移住先のブロック座標）, day }
+function peopleProposal(people, kind, ctx) {
+  const P = people.npc, pl = people.player; if (!pl || pl.over || pl.id < 0) return { ok: false, reason: 'noPlayer' };
+  if (!PROPOSALS.some(p => p[0] === kind)) return { ok: false, reason: 'unknown' };
+  const me = pl.id, g = people.groups[P.group[me] - 1]; if (!g || !g.alive) return { ok: false, reason: 'noGroup' };
+  if (P.age(me) < P.adultAge(me)) return { ok: false, reason: 'minor' };
+  if (P.day < (pl.proposalReady || 0)) return { ok: false, reason: 'cooldown', wait: Math.ceil(((pl.proposalReady || 0) - P.day) / 30) };
+  let dist = 0, target = null;
+  if (kind === 'migrate') {
+    if (g.moveTo) return { ok: false, reason: 'moving' };
+    const S = peCache && peCache.world === ctx.world ? peCache : null; if (!S) return { ok: false, reason: 'noWorld' };
+    const k = peNearestRiver(S, ctx.x, ctx.y, PE.RIVER_SNAP); if (k < 0) return { ok: false, reason: 'noRiver' };
+    target = peDryNear(S, ctx.world, ctx.world.riverPts[k * 3], ctx.world.riverPts[k * 3 + 1]);
+    if (peSeaBetween(S, ctx.world, g.x, g.y, target.x, target.y)) return { ok: false, reason: 'sea' };
+    dist = Math.hypot(target.x - g.x, target.y - g.y); if (dist < 6) return { ok: false, reason: 'near' };
+  } else if (g.policy === kind) return { ok: false, reason: 'same' };
+  // 投票（成人から最大30人）
+  const L = P.members[g.id], adults = []; for (const v of L) if (P.death[v] === ALIVE && P.group[v] === g.id && v !== me && P.age(v) >= P.adultAge(v)) adults.push(v);
+  const voters = []; const pool = adults.slice(); for (let i = 0; i < PROP_VOTERS && pool.length; i++) { const k = Math.floor(P.random() * pool.length); voters.push(pool[k]); pool[k] = pool[pool.length - 1]; pool.pop(); }
+  if (!voters.length) return { ok: false, reason: 'alone' };
+  let yes = 0; for (const v of voters) if (peVoterScore(people, v, me, kind, g, dist) > 0) yes++;
+  const support = yes / voters.length, isLeader = g.leader === me;
+  let leaderOppose = false; if (!isLeader && g.leader >= 0 && P.death[g.leader] === ALIVE) leaderOppose = peVoterScore(people, g.leader, me, kind, g, dist) <= 0;
+  const need = isLeader ? PROP_NEED.leader : PROP_NEED.member + (leaderOppose ? PROP_NEED.leaderOppose : 0), passed = support >= need;
+  pl.proposalReady = P.day + PROP_COOLDOWN * (passed ? 1 : 2);
+  if (passed) { if (kind === 'migrate') { g.moveTo = { x: target.x, y: target.y, by: 'player' }; } else g.policy = kind; }
+  return { ok: true, passed, kind, support, need, voters: voters.length, isLeader, leaderOppose, group: g.id, eth: g.ethId, x: g.x, y: g.y };
+}
 // ---------------------------------------------------------------- プレイヤーの人物と、文化ごとの継承
 // 継承の決まり（民族ごと）：0長子相続 1男系長子 2末子相続 3母系相続 4兄弟相続 5能力による選出 6指名。割合［仮］
 const SUCCESSION = ['長子相続', '男系長子', '末子相続', '母系相続', '兄弟相続', '能力による選出', '指名'];
@@ -923,6 +974,6 @@ function peopleEthCounts(people) {
   const P = people.npc, o = {}; for (let i = 0; i < P.n; i++) { if (P.death[i] !== ALIVE) continue; const e = P.eth[i] || P.groupEth[P.group[i]]; o[e] = (o[e] || 0) + 1; } return o;
 }
 
-if (typeof module !== 'undefined' && module.exports) module.exports = { LEADERSHIP, peLeaders, ACTIVITIES, peopleSetActivity, peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
-else root.WohPeople = { LEADERSHIP, ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+if (typeof module !== 'undefined' && module.exports) module.exports = { PROPOSALS, peopleProposal, LEADERSHIP, peLeaders, ACTIVITIES, peopleSetActivity, peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+else root.WohPeople = { PROPOSALS, peopleProposal, LEADERSHIP, ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
