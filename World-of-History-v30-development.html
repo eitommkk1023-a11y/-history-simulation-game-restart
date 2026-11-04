@@ -5780,7 +5780,7 @@ canvas.addEventListener('touchcancel', endTouches, { passive: false });
 const workerUrl = URL.createObjectURL(new Blob([document.getElementById('generator-src').textContent, '\n', document.getElementById('fauna-src').textContent, '\n', document.getElementById('rock-src').textContent], { type: 'text/javascript' }));
 const FA = new Function(document.getElementById('fauna-src').textContent +
   '\nreturn { ANIMAL_SPECIES, FAUNA_TIER, FAUNA_TIER_LABEL, faunaMonthly, faunaHunt, faunaSummary, faunaDensity, faunaClone, faRng, faTotal, faJuveniles };')();
-const worker = new Worker(workerUrl);
+let worker = null;   // 生成のたびに作り、終わったら終了して、生成の途中データのメモリを返す
 let jobId = 0, busy = false;
 const loading = document.getElementById('loading'), loadingText = document.getElementById('loadingText');
 
@@ -5804,15 +5804,19 @@ function generate(seedStr, requestedRockVersion) {
   const id = ++jobId;
   loadingText.textContent = '世界を生成中…';
   loading.classList.add('show');
+  worker = new Worker(workerUrl);
+  const job = worker;
   worker.onmessage = (e) => {
     const m = e.data;
     if (m.id !== id) return;
     if (m.kind === 'progress') { loadingText.textContent = '世界を生成中…（' + m.stage + '）'; return; }
     if (m.kind === 'error') {
+      job.terminate(); worker = null;
       busy = false; setButtons(); loading.classList.remove('show');
       showError('生成エラー: ' + m.message);
       return;
     }
+    job.terminate(); worker = null;   // 完了：ワーカーの持つ途中データを解放
     // 履歴は直前の1つだけ（Seedのみ保持し、戻るときは同じSeedから再生成する）
     previousRockVersion = currentRockVersion; currentRockVersion = m.rocks?.version || null;
     previousSeed = currentSeed;
