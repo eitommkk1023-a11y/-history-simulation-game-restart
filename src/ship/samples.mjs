@@ -32,3 +32,23 @@ export function galleonLikeMassItems({ gunZ = 6.0 } = {}) {
     { id: 'crew-stores', massKg: 60000, x: 18, y: 0, z: 4.8 },
   ];
 }
+
+/** Slender oared galley, ~36 m, 5 m beam. Placeholder values, NOT a historical specification. */
+export function galleyHull() {
+  const sec = (b) => [{ z: 0, b: 0.25 * b }, { z: 0.5, b: 0.65 * b }, { z: 1.2, b: 0.9 * b }, { z: 2.2, b }];
+  return {
+    stations: [
+      { x: 0, points: [{ z: 0.9, b: 0.3 }, { z: 1.5, b: 0.9 }, { z: 2.2, b: 1.2 }] },
+      { x: 4, points: sec(2.0) }, { x: 12, points: sec(2.4) }, { x: 20, points: sec(2.5) }, { x: 28, points: sec(2.2) },
+      { x: 33, points: [{ z: 0.2, b: 0.2 }, { z: 0.8, b: 0.7 }, { z: 1.4, b: 1.1 }, { z: 2.2, b: 1.3 }] },
+      { x: 36, points: [{ z: 1.0, b: 0.1 }, { z: 2.2, b: 0.5 }] },
+    ],
+  };
+}
+export function galleyMassItems() {
+  return [
+    { id: 'hull-structure', massKg: 14000, x: 18, y: 0, z: 1.0 },
+    { id: 'rowers', massKg: 8000, x: 18, y: 0, z: 1.4 },
+    { id: 'gear-stores', massKg: 4000, x: 18, y: 0, z: 0.8 },
+  ];
+}

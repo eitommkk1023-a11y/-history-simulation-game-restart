@@ -7,13 +7,23 @@
  * Forces: hull friction (ITTC-1957 line) + form + simple wave-making, keel lift and cross-flow
  * drag, yaw damping, rudder, sails (apparent wind), hull windage. Sail heel from the GZ curve.
  * ALL COEFFICIENTS ARE EXPERIMENTAL placeholders, NOT approved rules or calibrated data.
- * Not modelled yet: roll/pitch/heave dynamics, waves, oars, mooring, shallow-water effects.
+ * Oars (Ver.10): thrust = eta*P/(U+U0) per bank, power drains stamina. Anchors/grounding (Ver.12):
+ * spring-damper rode, holding limit from seabed/scope, dragging, parting; seabed contact friction with
+ * normal force limited by lost buoyancy (rho g Awp pen). Depth comes from env.depth(x, y, t) (m, or a number).
+ * Not modelled yet: roll/pitch/heave dynamics, waves, mooring lines/berthing, tides generation, hull damage effects.
  */
 import { deriveHullParams } from './hull-params.mjs';
 import { analyzeHydrostatics, WATER_DENSITY } from './hydrostatics.mjs';
 
 const DEG = Math.PI / 180, G_ACC = 9.80665, NU_SEA = 1.2e-6;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+/** Seabed presets (EXPERIMENTAL): hold = anchor holding coefficient (holding force / anchor weight), mu = hull friction. */
+export const SEABED = Object.freeze({
+  sand: Object.freeze({ hold: 12, mu: 0.4 }), mud: Object.freeze({ hold: 8, mu: 0.25 }), clay: Object.freeze({ hold: 10, mu: 0.3 }),
+  gravel: Object.freeze({ hold: 10, mu: 0.5 }), rock: Object.freeze({ hold: 4, mu: 0.6 }),
+});
+const depthAt = (env, x, y, t) => (typeof env?.depth === 'function' ? env.depth(x, y, t) : env?.depth ?? Infinity);
+const seabedAt = (env, x, y, t) => SEABED[typeof env?.seabed === 'function' ? env.seabed(x, y, t) : env?.seabed ?? 'sand'] ?? SEABED.sand;
 const sail_defaults = Object.freeze({ cnMax: 1.5, cnSlope: 4, cd0: 0.05 });
 
 /** Sail presets: minTrimDeg = how close to the centreline the sail chord can be set (square sails are limited by shrouds/yard bracing); trim can go up to 90 deg (square to the wind). */
@@ -39,7 +49,7 @@ export function heelFromMoment(analysis, momentNm) {
   return { heelDeg: sgn * peak.heelDeg, overpowered: need > 0 && need > m * peak.gz };
 }
 
-export function createVessel({ ship, analysis, hullParams, sails = [], rudder, waterDensity = WATER_DENSITY.seawater, airDensity = 1.225,
+export function createVessel({ ship, analysis, hullParams, sails = [], rudder, oars = [], waterDensity = WATER_DENSITY.seawater, airDensity = 1.225,
   windageAreaM2 = 0, form = 0.2, keelLiftSlope = 2, crossFlowCd = 1.0, initial = {} } = {}) {
   const an = analysis ?? analyzeHydrostatics(ship, { waterDensity });
   const hp = hullParams ?? deriveHullParams(ship, an);
@@ -54,8 +64,15 @@ export function createVessel({ ship, analysis, hullParams, sails = [], rudder, w
     return { ...type, ...s, deployed: s.deployed ?? 1, trimDeg: s.trimDeg ?? (SAIL_TYPES[s.type ?? 'foreAndAft'].minTrimDeg), xRel: s.x - hp.cgX };
   });
   if (new Set(sailList.map((s) => s.id)).size !== sailList.length) throw new TypeError('duplicate sail id');
+  const oarList = oars.map((o) => {
+    if (!o?.id || !['port', 'starboard'].includes(o.side) || !(o.rowers >= 0)) throw new TypeError('oar bank needs id, side (port/starboard) and rowers >= 0');
+    return { powerPerRowerW: 120, efficiency: 0.6, enduranceS: 600, recoveryS: 300, sync: 0.9, ...o, effort: 0, stamina: 1,
+      yRel: (o.side === 'port' ? -1 : 1) * Math.abs(o.y ?? hp.beamM / 2), xRel: (o.x ?? hp.cgX) - hp.cgX };
+  });
+  if (new Set(oarList.map((o) => o.id)).size !== oarList.length) throw new TypeError('duplicate oar bank id');
+  const events = [];
   const s0 = { x: 0, y: 0, headingDeg: 0, u: 0, v: 0, r: 0, ...initial };
-  const st = { time: 0, X: s0.x, Y: s0.y, psi: s0.headingDeg * DEG, u: s0.u, v: s0.v, r: s0.r, rudderDeg: 0, rudderTargetDeg: 0, heelDeg: 0, overpowered: false };
+  const st = { time: 0, X: s0.x, Y: s0.y, psi: s0.headingDeg * DEG, u: s0.u, v: s0.v, r: s0.r, rudderDeg: 0, rudderTargetDeg: 0, heelDeg: 0, overpowered: false, anchor: null, aground: false, groundingDamageMJ: 0 };
   if (rud) rud.xRel = rud.x - hp.cgX;
 
   const fwd = () => [Math.sin(st.psi), Math.cos(st.psi)];
@@ -90,6 +107,34 @@ export function createVessel({ ship, analysis, hullParams, sails = [], rudder, w
     return { x: wx - (st.u + c.u), y: wy - (st.v + c.v) };
   }
 
+  const pointWorld = (xb, yb) => { const f = fwd(), sd = stb(); return [st.X + xb * f[0] + yb * sd[0], st.Y + xb * f[1] + yb * sd[1]]; };
+  const bowRel = ship.hull.xMax - hp.cgX, sternRel = ship.hull.xMin - hp.cgX;
+
+  /** Spring-damper anchor rode. Returns null while the rode is slack. */
+  function rode(A, env) {
+    const B = pointWorld(bowRel, 0), dx = A.X - B[0], dy = A.Y - B[1], d = Math.hypot(dx, dy);
+    const Lh = Math.sqrt(Math.max(A.rodeM ** 2 - A.depthM ** 2, 0));
+    const ext = d - Lh;
+    if (!(ext > 0) || d < 1e-9) return null;
+    const ux = dx / d, uy = dy / d, f = fwd(), sd = stb();
+    const vx = st.u * f[0] + st.v * sd[0], vy = st.u * f[1] + st.v * sd[1];
+    const k = A.stiffnessN / A.rodeM, c = 0.3 * 2 * Math.sqrt(k * m);
+    const T = Math.max(0, k * ext - c * (vx * ux + vy * uy));
+    const Fw = [T * ux, T * uy];
+    return { T, Tstatic: k * ext, k, ext, Lh, ux, uy, forceBody: [Fw[0] * f[0] + Fw[1] * f[1], Fw[0] * sd[0] + Fw[1] * sd[1]], attach: bowRel };
+  }
+
+  /** Seabed contact: depth under bow/centre/stern vs draft; support limited by lost buoyancy. */
+  function ground(env) {
+    let dMin = Infinity;
+    for (const xb of [sternRel, 0, bowRel]) { const p = pointWorld(xb, 0); dMin = Math.min(dMin, depthAt(env, p[0], p[1], st.time)); }
+    const clearance = dMin - T, pen = -clearance, c = pointWorld(0, 0);
+    if (!(pen > 0)) return { contact: false, clearance };
+    const sb = seabedAt(env, c[0], c[1], st.time);
+    return { contact: true, clearance, mu: sb.mu, normalN: Math.min(m * G_ACC, waterDensityUsed * G_ACC * an.upright.waterplaneArea * pen) };
+  }
+  const waterDensityUsed = waterDensity;
+
   function forces(env = {}) {
     const c = currentBody(env), uw = st.u - c.u, vw = st.v - c.v; // water-relative
     const U = Math.hypot(uw, vw), q = 0.5 * waterDensity;
@@ -118,6 +163,30 @@ export function createVessel({ ship, analysis, hullParams, sails = [], rudder, w
       Y += Yr; N += Yr * rud.xRel;
       out.rudderForceN = Yr;
     }
+    // Oars: thrust = eta * P / (U + U0). Left/right difference turns the ship.
+    let oarThrust = 0;
+    for (const o of oarList) {
+      const e = clamp(o.effort, -1, 1), P = o.rowers * o.powerPerRowerW * Math.abs(e) * (0.4 + 0.6 * o.stamina) * o.sync;
+      if (P <= 0) continue;
+      const sg = Math.sign(e), F = sg * o.efficiency * P / (Math.max(sg * uw, 0) + 0.5);
+      X += F; N -= F * o.yRel; N += 0; oarThrust += F;
+    }
+    if (oarList.length) out.oarThrustN = oarThrust;
+    // Anchor rode
+    const A = st.anchor;
+    if (A) {
+      const r = rode(A, env);
+      if (r) { const fxy = r.forceBody; X += fxy[0]; Y += fxy[1]; N += r.attach * fxy[1]; out.rodeTensionN = r.T; }
+    }
+    // Seabed contact
+    const g0 = ground(env);
+    if (g0.contact) {
+      const sp = Math.hypot(st.u, st.v), k = Math.tanh(sp / 0.05), mu = g0.mu * g0.normalN;
+      if (sp > 1e-9) { X -= mu * k * st.u / sp; Y -= mu * k * st.v / sp; }
+      N -= 0.1 * mu * L * Math.tanh(st.r / 0.02);
+      out.groundNormalN = g0.normalN;
+    }
+    out.clearanceM = g0.clearance;
     // Sails
     const aw = apparentWind(env);
     let Fsx = 0, Fsy = 0, Mheel = 0;
@@ -174,6 +243,28 @@ export function createVessel({ ship, analysis, hullParams, sails = [], rudder, w
     const f = fwd(), s = stb();
     st.X += dt * (st.u * f[0] + st.v * s[0]); st.Y += dt * (st.u * f[1] + st.v * s[1]);
     st.psi += dt * st.r; st.time += dt;
+    for (const o of oarList) {
+      const e = Math.abs(clamp(o.effort, -1, 1));
+      o.stamina = clamp(o.stamina - dt * e * e / o.enduranceS + dt * (1 - o.stamina) * Math.max(0, 0.5 - e) / o.recoveryS, 0, 1);
+    }
+    const A = st.anchor;
+    if (A) {
+      const r = rode(A, env);
+      if (r && r.Tstatic > A.breakingN) { st.anchor = null; events.push({ type: 'anchor_parted', time: st.time }); }
+      else if (r && r.Tstatic > A.holdN) {
+        if (!A.dragging) events.push({ type: 'anchor_dragging', time: st.time });
+        A.dragging = true;
+        const hold = r.Lh + A.holdN / r.k, B = pointWorld(bowRel, 0), d = r.Lh + r.ext;
+        A.X = B[0] + (A.X - B[0]) * hold / d; A.Y = B[1] + (A.Y - B[1]) * hold / d;
+      } else if (A.dragging && (!r || r.Tstatic < 0.9 * A.holdN)) A.dragging = false;
+    }
+    const g1 = ground(env), sp = Math.hypot(st.u, st.v);
+    if (g1.contact && !st.aground) {
+      const dmg = 0.5 * m * sp * sp * (g1.mu / 0.4) / 1e6;
+      st.groundingDamageMJ += dmg;
+      events.push({ type: 'grounded', time: st.time, impactSpeed: sp, clearanceM: g1.clearance, damageMJ: dmg });
+    } else if (!g1.contact && st.aground) events.push({ type: 'refloated', time: st.time });
+    st.aground = g1.contact;
   }
 
   /** Simple PD helm: sets the rudder target to hold a compass heading (deg). Placeholder for a captain AI. */
@@ -195,11 +286,28 @@ export function createVessel({ ship, analysis, hullParams, sails = [], rudder, w
     params: Object.freeze({ ...hp, mx, my, Iz }), state: st, sails: sailList,
     forces, step, run, autoTrim, apparentWind, steerTowards,
     setRudder(deg) { st.rudderTargetDeg = deg; },
+    setOarEffort(id, e) { const o = oarList.find((x) => x.id === id); if (!o) throw new RangeError(`unknown oar bank ${id}`); o.effort = clamp(e, -1, 1); },
+    setAllOarEffort(e) { for (const o of oarList) o.effort = clamp(e, -1, 1); },
+    oars: oarList,
+    /** Drop the anchor at the bow. Returns {status}: ok | already | no_depth_data | too_deep. */
+    dropAnchor(env = {}, { anchorKg = 500, rodeM = 60, stiffnessN = 1e6, breakingN = Infinity } = {}) {
+      if (st.anchor) return { status: 'already' };
+      const B = pointWorld(bowRel, 0), depthM = depthAt(env, B[0], B[1], st.time);
+      if (!Number.isFinite(depthM)) return { status: 'no_depth_data' };
+      if (depthM >= rodeM) return { status: 'too_deep', depthM };
+      const sb = seabedAt(env, B[0], B[1], st.time), scope = rodeM / Math.max(depthM, 0.1);
+      const holdN = sb.hold * anchorKg * G_ACC * clamp(scope / 5, 0.2, 1);
+      st.anchor = { X: B[0], Y: B[1], anchorKg, rodeM, depthM, stiffnessN, breakingN, holdN, scope, dragging: false };
+      events.push({ type: 'anchor_dropped', time: st.time, depthM, scope, holdN });
+      return { status: 'ok', depthM, scope, holdN };
+    },
+    raiseAnchor() { const had = !!st.anchor; st.anchor = null; if (had) events.push({ type: 'anchor_raised', time: st.time }); return had; },
+    takeEvents() { return events.splice(0); },
     setSailTrim(id, deg) { const s = sailById(id); s.trimDeg = (deg < 0 ? -1 : 1) * clamp(Math.abs(deg), s.minTrimDeg, 90); },
     setSailDeployed(id, frac) { sailById(id).deployed = clamp(frac, 0, 1); },
     snapshot() {
       const f = fwd(), s = stb(), sx = st.u * f[0] + st.v * s[0], sy = st.u * f[1] + st.v * s[1];
-      return { time: st.time, x: st.X, y: st.Y, headingDeg: ((st.psi / DEG) % 360 + 360) % 360, u: st.u, v: st.v, yawRateDegS: st.r / DEG, speedOverGround: Math.hypot(sx, sy), velocity: { x: sx, y: sy }, heelDeg: st.heelDeg, overpowered: st.overpowered, rudderDeg: st.rudderDeg };
+      return { time: st.time, x: st.X, y: st.Y, headingDeg: ((st.psi / DEG) % 360 + 360) % 360, u: st.u, v: st.v, yawRateDegS: st.r / DEG, speedOverGround: Math.hypot(sx, sy), velocity: { x: sx, y: sy }, heelDeg: st.heelDeg, overpowered: st.overpowered, rudderDeg: st.rudderDeg, aground: st.aground, anchored: !!st.anchor, anchorDragging: !!st.anchor?.dragging, groundingDamageMJ: st.groundingDamageMJ, stamina: oarList.length ? Math.min(...oarList.map((o) => o.stamina)) : null };
     },
   };
 }
