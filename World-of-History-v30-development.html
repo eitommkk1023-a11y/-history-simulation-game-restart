@@ -6405,6 +6405,82 @@ if (typeof module !== 'undefined' && module.exports) module.exports = { ACTIVITI
 else root.WohPeople = { ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
+<script id="npc-view">
+'use strict';
+// 周辺の住民を3Dで見せるための、描画に依存しない部分：誰を描くか・どこにいるか（保存しない。個人ID・世帯・職業・時刻から計算）・タップしたときの説明。
+// 位置は「野営地の中心からの距離（メートル、3Dの世界のメートル）」。視覚上の1日は DAY_SEC 秒（現実の時間）で、世界の暦とは別。
+(function (root) {
+const Npc = typeof require !== 'undefined' ? require('./npc-core.js') : root.WohNpc;
+const { mix, JOBS, NSKILL } = Npc, NONE = 0xffffffff, ALIVE = 0x7fffffff;
+const DAY_SEC = 600;
+const rnd = (a, b, c) => mix(a, b, c, 909) / 4294967296;
+const smooth = (x) => { x = x < 0 ? 0 : x > 1 ? 1 : x; return x * x * (3 - 2 * x); };
+// 家（0）から仕事場所（1）への移動の割合：夜は家、日の出から少しで出かけ、日没の前に帰る
+function workPhase(t) { if (t < 0.2 || t >= 0.8) return 0; if (t < 0.28) return smooth((t - 0.2) / 0.08); if (t < 0.72) return 1; return 1 - smooth((t - 0.72) / 0.08); }
+// 振る舞い：home＝家の周り（子ども・引退した人）／wander＝野営地の周りを歩き回る（採集・農・牧畜）／away＝日中は遠くへ出る（狩人・漁師）／guard＝野営地の周りを巡回／camp＝野営地の近く
+function role(P, i) {
+  if (P.age(i) < P.adultAge(i) - 4) return 'home';
+  const j = P.job[i]; if (!j) return 'home';
+  return j === 1 || j === 9 || j === 10 ? 'wander' : j === 2 || j === 3 ? 'away' : j === 8 ? 'guard' : 'camp';
+}
+function rawPos(P, i, t) {
+  const seed = P.seed, hh = P.house[i] !== NONE ? P.house[i] : i;
+  const ha = rnd(seed, hh, 1) * Math.PI * 2, hr = 6 + rnd(seed, hh, 2) * 34;
+  const hx = Math.cos(ha) * hr + (rnd(seed, i, 3) - 0.5) * 6, hz = Math.sin(ha) * hr + (rnd(seed, i, 4) - 0.5) * 6;
+  const r = role(P, i), s = workPhase(t), ph = rnd(seed, i, 5) * Math.PI * 2, aw = rnd(seed, i, 6) * Math.PI * 2, rw = rnd(seed, i, 7), T = Math.PI * 2;
+  let wx = hx, wz = hz, dx = 0, dz = 0;
+  if (r === 'home') { dx = 4 * Math.sin(T * t * 10 + ph); dz = 4 * Math.cos(T * t * 8 + ph); return { x: hx + dx, z: hz + dz, role: r }; }
+  if (r === 'wander') { const R = 70 + rw * 110; wx = Math.cos(aw) * R; wz = Math.sin(aw) * R; dx = 12 * Math.sin(T * t * 20 + ph); dz = 12 * Math.cos(T * t * 17 + ph); }
+  else if (r === 'away') { const R = 230 + rw * 70; wx = Math.cos(aw) * R; wz = Math.sin(aw) * R; }
+  else if (r === 'guard') { const a = aw + T * t * 4; wx = Math.cos(a) * 45; wz = Math.sin(a) * 45; }
+  else { const R = 10 + rw * 30; wx = Math.cos(aw) * R; wz = Math.sin(aw) * R; dx = 3 * Math.sin(T * t * 12 + ph); dz = 3 * Math.cos(T * t * 9 + ph); }
+  return { x: hx + (wx + dx - hx) * s, z: hz + (wz + dz - hz) * s, role: r };
+}
+// 位置（野営地の中心からのメートル）、向き、歩いているか
+function viewPosition(P, i, t) {
+  const a = rawPos(P, i, t), b = rawPos(P, i, (t + 0.002) % 1), ddx = b.x - a.x, ddz = b.z - a.z, sp = Math.hypot(ddx, ddz) / (0.002 * DAY_SEC);
+  return { x: a.x, z: a.z, heading: sp > 0.02 ? Math.atan2(ddx, ddz) : 0, moving: sp > 0.25, speed: sp, role: a.role };
+}
+// 描く人の候補：groupSet に入る集団の、生きている人。上限 cap
+function viewCandidates(people, groupSet, cap) {
+  const P = people.npc, out = [];
+  for (let i = 0; i < P.n && out.length < cap; i++) if (P.death[i] === ALIVE && groupSet.has(P.group[i])) out.push(i);
+  return out;
+}
+// 民族の色（服の色）。[r,g,b] 0〜255
+function viewColor(people, i) { const e = people.ethnicities[(people.npc.eth[i] || people.npc.groupEth[people.npc.group[i]]) - 1]; return e && e.color ? e.color : [160, 160, 160]; }
+// 見た目の高さの割合（年齢）：2歳で約45%、15歳で100%
+function viewScale(P, i) { const a = P.age(i); return a >= 15 ? 1 : 0.45 + 0.55 * Math.max(0, a - 1) / 14; }
+// プレイヤーの人物から見た関係
+function relation(people, id) {
+  const P = people.npc, me = people.player && people.player.id; if (me === undefined || me < 0) return '';
+  if (id === me) return 'あなた';
+  const m = P.mother[me], f = P.father[me], sp = P.spouse[me];
+  if (sp === id) return '配偶者';
+  if (P.mother[id] === me || P.father[id] === me) return '子';
+  if ((m !== NONE && id === m) || (f !== NONE && id === f)) return '親';
+  const sib = (x, y) => (P.mother[x] !== NONE && P.mother[x] === P.mother[y]) || (P.father[x] !== NONE && P.father[x] === P.father[y]);
+  if (sib(id, me)) return 'きょうだい';
+  const pm = P.mother[id], pf = P.father[id];
+  if ((pm !== NONE && (P.mother[pm] === me || P.father[pm] === me)) || (pf !== NONE && (P.mother[pf] === me || P.father[pf] === me))) return '孫';
+  if ((pm !== NONE && sib(pm, me)) || (pf !== NONE && sib(pf, me))) return '甥・姪';
+  if (sp !== NONE && (P.mother[sp] === id || P.father[sp] === id)) return '配偶者の親';
+  if (P.house[id] !== NONE && P.house[id] === P.house[me]) return '同じ世帯';
+  if (P.group[id] === P.group[me]) return '同じ集団';
+  return '他の集団';
+}
+// タップしたときの説明
+function viewDescribe(people, id) {
+  const P = people.npc, a = Math.floor(P.age(id)), j = P.job[id], ad = P.adultAge(id);
+  const job = a < ad - 4 ? (a < 10 ? '子ども' : '見習い前') : !j ? (P.flags[id] & 8 ? '引退' : '無職') : JOBS[j].name;
+  const sk = []; for (let k = 0; k < NSKILL; k++) { const v = P.skills[id * NSKILL + k]; if (v > 0) sk.push([JOBS[k + 1].skill, v]); } sk.sort((x, y) => y[1] - x[1]);
+  const e = people.ethnicities[(P.eth[id] || P.groupEth[P.group[id]]) - 1];
+  return { id, age: a, sex: P.sex[id] === 1 ? '男' : '女', job, relation: relation(people, id), skills: sk.slice(0, 3).map(([n, v]) => n + ' ' + v), eth: e ? e.id : 0, married: P.spouse[id] !== NONE, isYou: !!people.player && people.player.id === id };
+}
+const api = { DAY_SEC, workPhase, role, viewPosition, viewCandidates, viewColor, viewScale, relation, viewDescribe };
+if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohNpcView = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
 <script>
 (function () {
 'use strict';
@@ -10425,7 +10501,8 @@ function frame(time){
     const animate=!overview&&state.settle>0;state.settle=Math.max(0,state.settle-Math.min(dt,.05));
     if(animate)animatePlayer(dt);
     const grassChanged=state.grass?.tick();
-    if(animate||terrainChanged||grassChanged)updateCamera();
+    const npcChanged=npcTick(dt);
+    if(animate||terrainChanged||grassChanged||npcChanged)updateCamera();
   }
   requestAnimationFrame(frame);
 }
@@ -10457,6 +10534,84 @@ function adoptNativeWorld(){
  showWorld(world,point,'Seed '+bridge.seed);bridge.pendingPlayer=null;bridge.seenRevision=bridge.revision;
 }
 window.addEventListener('woh-world-ready',adoptNativeWorld);
+
+// ---- 周辺の住民（NPC）の3D表示：近くの最大60人を、部品（頭・胴・腕・脚）ごとにまとめて描く（描画は6回）。位置は npc-view.js が個人ID・世帯・職業・時刻から計算する（保存しない）
+const NPC_MAX=60,NPC_RANGE=160,NPC_GROUP_RANGE=520;
+let npcParts=null,npcPrevCount=0,npcList=[],npcScanAt=0,npcUpdAt=0,npcCands=[],npcCamps=new Map(),npcSel=null,npcRing=null,npcCard=null;
+const npcM=new THREE.Matrix4(),npcBase=new THREE.Matrix4(),npcLoc=new THREE.Matrix4(),npcQ=new THREE.Quaternion(),npcP=new THREE.Vector3(),npcS=new THREE.Vector3(),npcY=new THREE.Vector3(0,1,0),npcCol=new THREE.Color(),npcV=new THREE.Vector3();
+const NPC_SKIN=[0xf1c9a5,0xd9a47a,0xb9825a,0x8d5b3d];
+function npcInit(){
+  const mk=geo=>{const m=new THREE.InstancedMesh(geo,new THREE.MeshLambertMaterial({color:0xffffff}),NPC_MAX);m.instanceColor=new THREE.InstancedBufferAttribute(new Float32Array(NPC_MAX*3),3);m.count=0;m.frustumCulled=false;m.visible=false;scene.add(m);return m;};
+  const leg=()=>new THREE.CylinderGeometry(.07,.055,.82,6).translate(0,-.41,0),arm=()=>new THREE.CylinderGeometry(.05,.04,.6,6).translate(0,-.3,0);
+  npcParts={head:mk(new THREE.SphereGeometry(.115,8,6).translate(0,1.58,0)),torso:mk(new THREE.CylinderGeometry(.17,.14,.62,8).translate(0,1.12,0)),legL:mk(leg()),legR:mk(leg()),armL:mk(arm()),armR:mk(arm())};
+  npcRing=new THREE.Mesh(new THREE.TorusGeometry(.4,.04,6,20).rotateX(Math.PI/2),new THREE.MeshBasicMaterial({color:0xffd34e}));npcRing.visible=false;npcRing.frustumCulled=false;scene.add(npcRing);
+  npcCard=document.createElement('div');npcCard.id='npcCard';
+  npcCard.style.cssText='position:fixed;z-index:130;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom));min-width:200px;max-width:min(320px,70vw);padding:8px 28px 8px 12px;border-radius:10px;background:#0e1a2aee;color:#e8f0f8;border:1px solid #ffffff2a;font:12px/1.5 system-ui,sans-serif;display:none;pointer-events:auto';
+  npcCard.innerHTML='<div id="npcCardBody"></div><button id="npcCardX" style="position:absolute;right:4px;top:2px;width:24px;height:24px;border:0;background:none;color:#e8f0f8;font-size:16px">×</button>';
+  document.body.appendChild(npcCard);
+  npcCard.querySelector('#npcCardX').addEventListener('click',()=>{npcSel=null;npcCard.style.display='none';if(npcRing)npcRing.visible=false;});
+}
+function npcHide(){if(npcParts){for(const m of Object.values(npcParts))m.visible=false;npcRing.visible=false;}}
+function npcCardUpdate(pe,V){
+  if(!npcCard)return;if(npcSel===null){npcCard.style.display='none';return;}
+  const P=pe.npc;if(P.death[npcSel]!==0x7fffffff){npcCard.querySelector('#npcCardBody').textContent='（この人は亡くなった）';npcCard.style.display='block';return;}
+  const d=V.viewDescribe(pe,npcSel);
+  npcCard.querySelector('#npcCardBody').innerHTML=`<b>${d.job}・${d.sex}・${d.age}歳</b>${d.isYou?'（あなた）':''}<br>関係：${d.relation||'-'}${d.married?'（結婚している）':''}<br>主な技能：${d.skills.join('、')||'まだない'}<br>民族：第${d.eth}民族`;
+  npcCard.style.display='block';
+}
+function npcScan(pe,V){
+  npcCamps.clear();
+  for(const g of pe.groups){if(!g.alive)continue;const q=state.terrain.gridToMeters(g.x,g.y);if(Math.hypot(q.xM-markerPoint.xM,q.yM-markerPoint.yM)<NPC_GROUP_RANGE)npcCamps.set(g.id,q);}
+  npcCands=npcCamps.size?V.viewCandidates(pe,new Set(npcCamps.keys()),600):[];
+  npcCardUpdate(pe,V);
+}
+function npcUpdate(pe,V,now){
+  const P=pe.npc,t=(now/1000/V.DAY_SEC)%1,vis=[];
+  for(const i of npcCands){
+    if(P.death[i]!==0x7fffffff)continue;const c=npcCamps.get(P.group[i]);if(!c)continue;
+    const p=V.viewPosition(P,i,t),xM=c.xM+p.x,yM=c.yM+p.z,d=Math.hypot(xM-markerPoint.xM,yM-markerPoint.yM);
+    if(d<=NPC_RANGE)vis.push({i,xM,yM,d,p});
+  }
+  vis.sort((a,b)=>a.d-b.d);npcList=[];let k=0;const N=npcParts;
+  for(const e of vis){
+    if(k>=NPC_MAX)break;
+    const gd=groundAt(e.xM,e.yM);if(!gd||gd.waterDepthM>.4)continue;
+    const q=state.terrain.toLocal(e.xM,e.yM,gd.elevationM,state.origin),sc=V.viewScale(P,e.i),col=V.viewColor(pe,e.i);
+    npcQ.setFromAxisAngle(npcY,e.p.heading);npcP.set(q.x,q.y,q.z);npcS.set(sc,sc,sc);npcBase.compose(npcP,npcQ,npcS);
+    const ph=now/1000*(2.2+e.p.speed*1.1)+e.i*.7,sw=e.p.moving?Math.sin(ph)*.7*Math.min(1,e.p.speed/1.5):0;
+    const put=(mesh,ax,px,py,pz,color)=>{npcLoc.makeRotationX(ax);npcLoc.setPosition(px,py,pz);npcM.multiplyMatrices(npcBase,npcLoc);mesh.setMatrixAt(k,npcM);mesh.setColorAt(k,color);};
+    npcCol.setRGB(col[0]/255,col[1]/255,col[2]/255);const cloth=npcCol.clone();
+    put(N.torso,0,0,0,0,cloth);put(N.armL,sw,-.22,1.38,0,cloth);put(N.armR,-sw,.22,1.38,0,cloth);
+    put(N.head,0,0,0,0,npcCol.clone().setHex(NPC_SKIN[Math.abs(e.i*2654435761|0)%4]));
+    const dark=cloth.clone().multiplyScalar(.55);put(N.legL,-sw,-.09,.82,0,dark);put(N.legR,sw,.09,.82,0,dark);
+    npcList.push({i:e.i,x:q.x,y:q.y,z:q.z,sc});k++;
+  }
+  for(const m of Object.values(N)){m.count=k;m.instanceMatrix.needsUpdate=true;if(m.instanceColor)m.instanceColor.needsUpdate=true;m.visible=k>0;}
+  const s=npcSel!==null?npcList.find(e=>e.i===npcSel):null;
+  if(s){npcRing.position.set(s.x,s.y+.05,s.z);npcRing.scale.setScalar(s.sc);npcRing.visible=true;}else npcRing.visible=false;
+}
+function npcTick(dt){
+  const pe=window.__geo?.people,V=globalThis.WohNpcView;
+  if(!pe||!V||!state||!markerPoint||overview||document.hidden){npcHide();return false;}
+  if(!npcParts)npcInit();
+  const now=performance.now();
+  if(now-npcScanAt>1000){npcScanAt=now;npcScan(pe,V);}
+  if(now-npcUpdAt<66)return false;npcUpdAt=now;
+  npcUpdate(pe,V,now);const redraw=npcList.length>0||npcPrevCount>0;npcPrevCount=npcList.length;return redraw;   // 描く人がいるときだけ再描画する
+}
+function npcScreens(){
+  const rect=renderer.domElement.getBoundingClientRect();camera.updateMatrixWorld();
+  return npcList.map(e=>{npcV.set(e.x,e.y+1.6*e.sc,e.z).project(camera);return {i:e.i,sx:(npcV.x*.5+.5)*rect.width+rect.left,sy:(-npcV.y*.5+.5)*rect.height+rect.top,behind:npcV.z>1};});
+}
+function npcTapAt(cx,cy){
+  const pe=window.__geo?.people,V=globalThis.WohNpcView;if(!pe||!V||!npcParts)return false;
+  let best=null,bd=44;for(const s of npcScreens()){if(s.behind)continue;const d=Math.hypot(s.sx-cx,s.sy-cy);if(d<bd){bd=d;best=s.i;}}
+  npcSel=best;npcCardUpdate(pe,V);return best!==null;
+}
+{let tap=null;
+ renderer.domElement.addEventListener('pointerdown',e=>{tap={x:e.clientX,y:e.clientY,t:performance.now(),id:e.pointerId};},true);
+ renderer.domElement.addEventListener('pointerup',e=>{const s=tap;tap=null;if(!s||s.id!==e.pointerId||overview)return;if(Math.hypot(e.clientX-s.x,e.clientY-s.y)>10||performance.now()-s.t>400)return;npcTapAt(e.clientX,e.clientY);});}
+globalThis.__wohNpcView={get count(){return npcList.length;},get selected(){return npcSel;},screens:npcScreens,tapAt:npcTapAt};
 globalThis.__wohAvatar={toPlayer(){const pe=window.__geo?.people,y=pe&&globalThis.WohPeople?.peopleYou(pe);if(!y?.camp||!state)return false;const q=state.terrain.gridToMeters(y.camp.x,y.camp.y);placeMarker(q.xM,q.yM);return true;},get point(){return markerPoint;}};
 window.__wohPlayerSave=()=>playerToSource(globalThis.__wohDev?.savedPlayer()??(markerPoint?{xM:markerPoint.xM,yM:markerPoint.yM,yaw}:null));
 document.body.classList.add('integration-ui-hidden','integration-third');
