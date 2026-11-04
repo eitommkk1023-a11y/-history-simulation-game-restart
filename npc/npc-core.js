@@ -74,16 +74,22 @@
       this.pool = [];   // 結婚相手候補の男性（遅延削除）
       this.focus = new Map();   // 重要人物
       this.stats = { births: 0, deaths: 0, marriages: 0, jobChanges: 0, retired: 0 };
+      this.groupEth = new Uint16Array(0); this.ethSecondary = new Map(); this.adultAgeFn = null; this.pendingCause = 0;
       this.hazardFn = null; this.fertFn = null; this.onBirth = null; this.onDeath = null;   // 民族・集団の状況（飢え・寒さ・病気）を人の死亡・出産に反映するための関数
       this.gdemand = new Float32Array(0); this.gflags = new Uint8Array(0); this.gcount = new Uint32Array(0); this.gwork = new Uint32Array(0); this.groups = 0;
       this.ensureGroups(groups);
       this._alloc(cap);
     }
+    // 民族の確定：育った集団の民族。両親の民族が違えば副次的な帰属に残す
+    _assignEth(i) {
+      const e = this.groupEth[this.group[i]]; if (!e) return; this.eth[i] = e;
+      const m = this.mother[i]; if (m !== NONE && this.eth[m] && this.eth[m] !== e) this.ethSecondary.set(i, [this.eth[m]]);
+    }
     // 民族・集団の数を増やす（分裂で集団が増えるとき）
     ensureGroups(n) {
       if (n <= this.groups) return;
       const g0 = this.groups, grow = (a, per) => { const b = new a.constructor(n * per); b.set(a); return b; };
-      this.gdemand = grow(this.gdemand, NJOB); this.gflags = grow(this.gflags, 1); this.gcount = grow(this.gcount, NJOB); this.gwork = grow(this.gwork, 1);
+      this.groupEth = grow(this.groupEth, 1); this.gdemand = grow(this.gdemand, NJOB); this.gflags = grow(this.gflags, 1); this.gcount = grow(this.gcount, NJOB); this.gwork = grow(this.gwork, 1);
       this.groups = n; while (this.pool.length < n) this.pool.push([]);
       for (let g = g0; g < n; g++) this.setGroup(g, {});
     }
@@ -94,6 +100,7 @@
       grow('birth', Int32Array, 1); grow('death', Int32Array, 1, ALIVE); grow('sex', Uint8Array, 1); grow('group', Uint16Array, 1);
       grow('mother', Uint32Array, 1, NONE); grow('father', Uint32Array, 1, NONE); grow('spouse', Uint32Array, 1, NONE);
       grow('job', Uint8Array, 1); grow('flags', Uint8Array, 1);   // flags: bit0 結婚候補の列に入っている／bit1 生まれつきの値を計算済み／bit2 職業を選んだことがある／bit3 引退
+      grow('eth', Uint16Array, 1); grow('house', Uint32Array, 1, NONE); grow('cause', Uint8Array, 1);   // 主たる民族（0＝育ち中で未確定）／世帯ID／死因（0＝生存）
       grow('skills', Uint8Array, NSKILL);        // 技能（0〜255）
       grow('train', Int8Array, NABIL);           // 訓練による能力の変化
       grow('gen', Uint8Array, NABIL * 2);        // 生まれつきの能力・潜在能力の計算結果（働き始める年齢で埋める）
@@ -130,6 +137,8 @@
       return clamp(Math.round((this.base(id, k) + this.train[id * NABIL + k - NP]) * ageFactor(k, this.age(id))));
     }
     addDelta(id, k, amount) { const key = id * 64 + k; const v = Math.max(-128, Math.min(127, (this.delta.get(key) || 0) + amount)); if (v) this.delta.set(key, v); else this.delta.delete(key); }
+    // 成人の年齢（文化＝民族ごとに違う。既定18歳）。見習い（職業を選ぶ）は成人の4年前、結婚は成人から
+    adultAge(i) { const e = this.eth[i] || this.groupEth[this.group[i]]; return this.adultAgeFn ? this.adultAgeFn(e) : 18; }
     age(id) { return ((this.day - this.birth[id]) / YEAR); }
     alive(id) { return this.death[id] === ALIVE; }
     // 職業への向き：項目の重み付き平均（0〜1）
@@ -193,16 +202,18 @@
     // 世界の開始時：初期の人々が「それまでの人生」で身につけた職業・技能・訓練を、年齢から一括で決める（世界の生成中に1回だけ）。
     // 14歳から今までの月数ぶん、毎月の成長式を指数関数で積んだもの。引退済みの高齢者も含む
     initFounders() {
-      const segs = [[14, 16, 0.5, 0.5, 1], [16, 30, 1, 1, 1], [30, 50, 1, 1, 0.6], [50, 60, 0.6, 1, 0.3]];   // [始め,終わり歳, 技能の速さ, 訓練の速さ, 訓練の年齢係数]
       for (let i = 0; i < this.n; i++) {
-        if (this.death[i] !== ALIVE || this.flags[i] & 4) continue;
-        const a = this.age(i); if (a < 14) continue;
+        if (this.death[i] !== ALIVE) continue;
+        const a = this.age(i); if (a >= 12 && !this.eth[i]) this._assignEth(i);
+        if (this.flags[i] & 4) continue;
+        const w0 = this.adultAge(i) - 4; if (a < w0) continue;
+        const segs = [[w0, w0 + 2, 0.5, 0.5, 1], [w0 + 2, 30, 1, 1, 1], [30, 50, 1, 1, 0.6], [50, 60, 0.6, 1, 0.3]];   // [始め,終わり歳, 技能の速さ, 訓練の速さ, 訓練の年齢係数]
         this._fillGen(i); this.flags[i] |= 4;
         const j = this.pickJob(i); if (!j) continue;
         this._setJob(i, j);
         const learn = this.base(i, SI['学習力']) / 255;
         // 今の職業に就いてからの年数：転職は年約2.4%（月0.2%）の確率で起こるので、勤続年数は指数分布
-        const til = Math.min(a, 60, 14 + (a < 50 ? -Math.log(1 - this.random()) / 0.024 : 1e9));
+        const til = Math.min(a, 60, w0 + (a < 50 ? -Math.log(1 - this.random()) / 0.024 : 1e9));
         let u = 255;   // 技能の「伸びしろ」255−s
         for (const [s0, s1, rs] of segs) { if (til <= s0) break; const m = (Math.min(til, s1) - s0) * 12; u *= Math.exp(-rs * (0.5 + learn) * m / 255); }
         this.skills[i * NSKILL + j - 1] = Math.min(255, this._round(255 - u));
@@ -217,7 +228,7 @@
     }
     // 年間の死亡率（昔の社会のたたき台。乳児20%・成人は加齢で急上昇）
     static qDeath(a) { return a < 1 ? 0.20 : a < 5 ? 0.04 : a < 15 ? 0.008 : 0.005 + 0.0003 * Math.exp(0.09 * a); }
-    _die(i) { this.death[i] = this.day; this.stats.deaths++; this._setJob(i, 0); const s = this.spouse[i]; if (s !== NONE && this.spouse[s] === i) this.spouse[s] = NONE; this.spouse[i] = NONE; }
+    _die(i, cause) { this.death[i] = this.day; this.cause[i] = cause || this.pendingCause || 1; this.pendingCause = 0; this.stats.deaths++; this._setJob(i, 0); const s = this.spouse[i]; if (s !== NONE && this.spouse[s] === i) this.spouse[s] = NONE; this.spouse[i] = NONE; }
     _work(i, a) {
       // 訓練：仕事で使う能力が伸びる（見習いの間は半分）
       const j = this.job[i], rate = a < 16 ? 0.5 : 1, ag = a < 30 ? 1 : a < 50 ? 0.6 : 0.3;
@@ -232,16 +243,19 @@
       if (this.death[i] !== ALIVE) return;
       const a = this.age(i);
       const qm = this.hazardFn ? 1 - Math.exp(-this.hazardFn(a, this.group[i]) / 12) : 1 - Math.pow(1 - Population.qDeath(a), 1 / 12);
+      if (a >= 120) { this._die(i, 1); return; }   // 寿命の上限
       if (this.random() < qm) { if (this.onDeath) this.onDeath(i); this._die(i); return; }
+      if (!this.eth[i] && a >= 12) this._assignEth(i);   // 12歳：育った集団の民族になる（親の民族は副次的な帰属として残る）
+      const adult = this.adultAge(i);
       // 仕事：14歳で見習いとして職業を選ぶ／まれに転職／60歳以降に引退
-      if (a >= 14 && !(this.flags[i] & 8)) {
+      if (a >= adult - 4 && !(this.flags[i] & 8)) {
         if (!(this.flags[i] & 2)) this._fillGen(i);
         if (!(this.flags[i] & 4)) { const j = this.pickJob(i); if (j) { this._setJob(i, j); } this.flags[i] |= 4; }
         else if (a >= 60 && this.random() < 0.03) { this._setJob(i, 0); this.flags[i] |= 8; this.stats.retired++; }
         else if (this.job[i] && a < 50 && this.random() < 0.003) { const j = this.pickJob(i); if (j && j !== this.job[i]) { this._setJob(i, j); this.stats.jobChanges++; } }
         if (this.job[i]) this._work(i, a);
       }
-      if (a < 16) return;
+      if (a < adult) return;
       const g = this.group[i];
       if (this.sex[i] === 1) {   // 男性：結婚候補の列に入る
         if (!(this.flags[i] & 1) && this.spouse[i] === NONE) { this.flags[i] |= 1; this.pool[g].push(i); }
@@ -256,7 +270,7 @@
             const kin = this.mother[i] !== NONE && (this.mother[i] === this.mother[j] || this.father[i] === this.father[j]);
             if (kin || Math.abs(this.birth[i] - this.birth[j]) > 15 * YEAR) continue;
             pl[k] = pl[pl.length - 1]; pl.pop(); this.flags[j] &= ~1;
-            this.spouse[i] = j; this.spouse[j] = i; this.stats.marriages++; break;
+            this.spouse[i] = j; this.spouse[j] = i; this.house[i] = j; this.house[j] = j; this.stats.marriages++; break;   // 新しい世帯（夫のIDが世帯ID）
           }
         }
         return;
@@ -264,7 +278,7 @@
       {   // 既婚女性：出産（年あたりの出生率。fertFn があれば民族の食料の状況を反映）
         const pf = this.fertFn ? this.fertFn(a, g) : (a < 42 ? 0.17 : 0);
         if (pf > 0 && this.random() < pf / 12) {
-          this._add(g, this.random() < .5 ? 0 : 1, this.day, i, this.spouse[i]); this.stats.births++; if (this.onBirth) this.onBirth(g);
+          const c = this._add(g, this.random() < .5 ? 0 : 1, this.day, i, this.spouse[i]); this.house[c] = this.house[i]; this.stats.births++; if (this.onBirth) this.onBirth(g);
         }
       }
     }

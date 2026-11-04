@@ -17,7 +17,7 @@ const PE = {
   RIVER_STEP: 3,                                  // 川の点を何点おきに候補にするか［仮］
   HELPER_SHARE: 0.35,                             // 仕事に就いていない10〜13歳・兼任の人が、採集に回る割合［仮］
   KNOW_DEFAULT: 0.15,                             // その仕事の人がいないときの技能（0〜1）［仮］
-  FERT_ADJ: 1.3,                                  // 年齢別出生率（全女性の平均）を、結婚している女性だけに当てるための補正［仮］
+  FERT_ADJ: 1.5,                                  // 年齢別出生率（全女性の平均）を、結婚している女性だけに当てるための補正［仮］
   FOOD_INIT: [1, 2],                              // 初期の蓄え（必要量の何か月分）［仮］
   // ---- 生活圏（半径＝R_BASE＋R_PER_SQRT×√人口、R_MIN〜R_MAX ブロック）［仮］
   R_BASE: 3, R_PER_SQRT: 0.4, R_MIN: 4, R_MAX: 9,
@@ -276,12 +276,20 @@ function peInstall(people) {
   };
   P.fertFn = (a, g) => { const ai = Math.floor(a); return ai >= 15 && ai < 50 ? PE_ASFR[ai] * hz.fert[g] * PE.FERT_ADJ : 0; };
   P.onBirth = (g) => { people.groups[g - 1].born++; };
+  P.adultAgeFn = (e) => { const x = people.ethnicities[e - 1]; return x && x.adultAge ? x.adultAge : 18; };
+  // 死因（10分類）：1老衰 2非感染性疾患 3感染症 4戦死 5殺害 6事故 7飢餓 8出産関連 9災害 10環境（戦死・殺害・出産関連はまだ起こらない）
   P.onDeath = (i) => {
-    const D = people.groups[P.group[i] - 1].died, tot = last[0] + last[1] + last[2] + last[3];
-    let r = P.random() * tot; if ((r -= last[0]) <= 0) D.natural++; else if ((r -= last[1]) <= 0) D.disease++; else if ((r -= last[2]) <= 0) D.starvation++; else D.cold++;
+    const D = people.groups[P.group[i] - 1].died, tot = last[0] + last[1] + last[2] + last[3], a = P.age(i);
+    let r = P.random() * tot;
+    if ((r -= last[0]) <= 0) { D.natural++; P.pendingCause = a >= 60 ? 1 : P.random() < 0.5 ? 2 : 6; }
+    else if ((r -= last[1]) <= 0) { D.disease++; P.pendingCause = 3; }
+    else if ((r -= last[2]) <= 0) { D.starvation++; P.pendingCause = 7; }
+    else { D.cold++; P.pendingCause = 10; }
   };
 }
 function peEnsureGroups(people) { people.npc.ensureGroups(people.groups.length + 1); return peHazards(people); }
+// 集団の民族を住民の側の表に写す（12歳で民族が決まるときに使う）
+function peSyncEth(people) { const P = people.npc; for (const g of people.groups) P.groupEth[g.id] = g.ethId; }
 
 // ---------------------------------------------------------------- 生成：100民族・100集団を川沿いに置き、住民（NPC）を作る
 // W：{ world, plantFood(c, m, out5), fauna?, FA?, month? }（fauna・FA があれば、狩猟の期待値も職業の必要度に反映）
@@ -332,6 +340,7 @@ function peopleGenerate(seed, W) {
     const s = sites[i];
     const eth = { id: people.nextEthId++, nameKey: '', langId: 0, family: 0, parent: 0, founded: 0, alive: true, color: null };
     eth.nameKey = 'eth:' + eth.id;
+    eth.adultAge = 18 + (peHash('adult' + eth.id + '/' + sd) % 7) - 3;   // 成人の年齢は文化ごとに違う：15〜21歳（基本18歳）［仮］
     eth.color = peHsl((hue0 + i * 0.6180339887) % 1, 0.55 + 0.3 * rng(), 0.45 + 0.15 * rng());
     people.ethnicities.push(eth);
     let r = rng(), cls = PE.SIZE_CLASS[0];
@@ -344,13 +353,24 @@ function peopleGenerate(seed, W) {
   people.rngState = (rng() * 4294967296) | 0;
   // 住民：年齢は安定人口の分布から。性別は男 51.2%
   const total = pops.reduce((a, b) => a + b, 0), npc = people.npc = new Population(sd, people.groups.length + 1, Math.max(1024, total * 3));
-  peInstall(people); peHazards(people);
+  peInstall(people); peHazards(people); peSyncEth(people);
   const pr = peRng(sd ^ peHash('founders'));
   for (const g of people.groups) {
     for (let k = 0; k < pops[g.id - 1]; k++) {
       let r = pr() * ssum, a = 0; while (a < PE_AGES - 1 && (r -= surv[a]) > 0) a++;
       const id = npc.addFounder(g.id, a + pr() * 0.999); npc.sex[id] = pr() < PE.SEX_RATIO ? 1 : 0;
     }
+  }
+  // 初期の子どもには、同じ集団の年上の女性を母親（世帯）として割り当てる。大人は、それぞれ1人の世帯
+  for (const g of people.groups) {
+    const women = [], kids = [];
+    for (let i = 0; i < npc.n; i++) { if (npc.group[i] !== g.id) continue; const a = npc.age(i); if (npc.sex[i] === 0 && a >= 20 && a < 45) women.push(i); if (a < 14) kids.push(i); }
+    for (const i of kids) {
+      const a = npc.age(i), ok = women.filter(w => npc.age(w) - a >= 17 && npc.age(w) - a <= 42);
+      const m = (ok.length ? ok : women)[Math.floor(pr() * (ok.length ? ok.length : women.length))];
+      if (m !== undefined) { npc.mother[i] = m; npc.house[i] = m; }
+    }
+    for (let i = 0; i < npc.n; i++) if (npc.group[i] === g.id && npc.house[i] === NONE) npc.house[i] = i;
   }
   // 環境に合わせて、仕事の必要度を決めてから、それまでの人生（職業・技能）を作る
   peStats(people);
@@ -371,7 +391,7 @@ function peNewGroup(people, ethId, x, y) {
     fed: 1, epi: 0, kills: 0, pop: 0, c6: [0, 0, 0, 0, 0, 0],
   };
   people.groups.push(g);
-  if (people.npc) peEnsureGroups(people);
+  if (people.npc) { peEnsureGroups(people); people.npc.groupEth[id] = ethId; }
   return g;
 }
 function peNeedOf(st, g) { return st.need[g.id] || 0; }
@@ -484,7 +504,7 @@ function peopleMonthly(people, ctx) {
     const pop = g.pop;
     if (pop < PE.EXTINCT_MIN || (pop < 8 && peStatsWomen(people, g) < 1)) {
       g.alive = false;
-      for (let i = 0; i < P.n; i++) if (P.group[i] === g.id && P.death[i] === ALIVE) { P._die(i); g.died.natural++; }
+      for (let i = 0; i < P.n; i++) if (P.group[i] === g.id && P.death[i] === ALIVE) { P._die(i, 9); g.died.natural++; }
       g.pop = 0;
       ev.push({ type: 'extinct', imp: 1, relevant: rel(g.ethId), group: g.id, eth: g.ethId, x: g.x, y: g.y });
       const eth = people.ethnicities.find(e => e.id === g.ethId);
@@ -706,9 +726,9 @@ function peopleSave(people) {
   const pool = [], poolStart = [0]; for (let g = 0; g < P.groups; g++) { for (const v of P.pool[g]) pool.push(v); poolStart.push(pool.length); }
   const meta = { version: people.version, nextGroupId: people.nextGroupId, nextEthId: people.nextEthId, rngState: people.rngState, playerEth: people.playerEth,
     ethnicities: people.ethnicities, groups: people.groups.map(g => Object.assign({}, g, { c6: undefined })), contacts: people.contacts, languages: people.languages,
-    npc: { seed: P.seed, n, day: P.day, rng: P.rng, stats: P.stats, delta: Array.from(P.delta), focus: Array.from(P.focus), groups: P.groups } };
+    npc: { seed: P.seed, n, day: P.day, rng: P.rng, stats: P.stats, delta: Array.from(P.delta), focus: Array.from(P.focus), ethSecondary: Array.from(P.ethSecondary), groups: P.groups } };
   return { meta, birth: cut(P.birth), death: cut(P.death), sex: cut(P.sex), group: cut(P.group), mother: cut(P.mother), father: cut(P.father), spouse: cut(P.spouse), job: cut(P.job), flags: cut(P.flags),
-    skills: cut(P.skills, NSKILL), train: cut(P.train, Npc.NABIL), gdemand: P.gdemand.slice(), gflags: P.gflags.slice(), pool: Int32Array.from(pool), poolStart: Int32Array.from(poolStart),
+    eth: cut(P.eth), house: cut(P.house), cause: cut(P.cause), groupEth: P.groupEth.slice(), skills: cut(P.skills, NSKILL), train: cut(P.train, Npc.NABIL), gdemand: P.gdemand.slice(), gflags: P.gflags.slice(), pool: Int32Array.from(pool), poolStart: Int32Array.from(poolStart),
     haz: { starv: people.haz.starv.slice(), cold: people.haz.cold.slice(), dis: people.haz.dis.slice(), hungerDis: people.haz.hungerDis.slice(), fert: people.haz.fert.slice() } };
 }
 function peopleLoad(sv) {
@@ -718,6 +738,7 @@ function peopleLoad(sv) {
   const put = (name, src, per = 1) => { P[name].set(src.subarray ? src.subarray(0, n * per) : src); };
   for (const k of ['birth', 'death', 'sex', 'group', 'mother', 'father', 'spouse', 'job', 'flags']) put(k, sv[k]);
   put('skills', sv.skills, NSKILL); put('train', sv.train, Npc.NABIL);
+  if (sv.eth) { put('eth', sv.eth); put('house', sv.house); put('cause', sv.cause); P.groupEth.set(sv.groupEth); P.ethSecondary = new Map(m.npc.ethSecondary || []); }
   P.n = n; P.day = m.npc.day; P.rng = m.npc.rng; P.stats = m.npc.stats; P.delta = new Map(m.npc.delta); P.focus = new Map(m.npc.focus);
   P.gdemand.set(sv.gdemand); P.gflags.set(sv.gflags);
   for (let g = 0; g < P.groups; g++) P.pool[g] = Array.from(sv.pool.subarray(sv.poolStart[g], sv.poolStart[g + 1]));
@@ -726,10 +747,15 @@ function peopleLoad(sv) {
     if (P.death[i] === ALIVE && P.job[i]) { P.gcount[P.group[i] * NJOB + P.job[i]]++; P.gwork[P.group[i]]++; }
   }
   const hz = peHazards(people); for (const k in hz) hz[k].set(sv.haz[k].subarray(0, hz[k].length));
-  peInstall(people); peStats(people);
+  peInstall(people); if (!sv.eth) peSyncEth(people); peStats(people);
   return people;
 }
 
-if (typeof module !== 'undefined' && module.exports) module.exports = { PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
-else root.WohPeople = { PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+// 民族ごとの人口（個人の民族IDで数える。12歳未満は育った集団の民族として数える）
+function peopleEthCounts(people) {
+  const P = people.npc, o = {}; for (let i = 0; i < P.n; i++) { if (P.death[i] !== ALIVE) continue; const e = P.eth[i] || P.groupEth[P.group[i]]; o[e] = (o[e] || 0) + 1; } return o;
+}
+
+if (typeof module !== 'undefined' && module.exports) module.exports = { peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+else root.WohPeople = { peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

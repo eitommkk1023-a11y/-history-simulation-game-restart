@@ -5263,16 +5263,22 @@ self.onmessage = function (e) {
       this.pool = [];   // 結婚相手候補の男性（遅延削除）
       this.focus = new Map();   // 重要人物
       this.stats = { births: 0, deaths: 0, marriages: 0, jobChanges: 0, retired: 0 };
+      this.groupEth = new Uint16Array(0); this.ethSecondary = new Map(); this.adultAgeFn = null; this.pendingCause = 0;
       this.hazardFn = null; this.fertFn = null; this.onBirth = null; this.onDeath = null;   // 民族・集団の状況（飢え・寒さ・病気）を人の死亡・出産に反映するための関数
       this.gdemand = new Float32Array(0); this.gflags = new Uint8Array(0); this.gcount = new Uint32Array(0); this.gwork = new Uint32Array(0); this.groups = 0;
       this.ensureGroups(groups);
       this._alloc(cap);
     }
+    // 民族の確定：育った集団の民族。両親の民族が違えば副次的な帰属に残す
+    _assignEth(i) {
+      const e = this.groupEth[this.group[i]]; if (!e) return; this.eth[i] = e;
+      const m = this.mother[i]; if (m !== NONE && this.eth[m] && this.eth[m] !== e) this.ethSecondary.set(i, [this.eth[m]]);
+    }
     // 民族・集団の数を増やす（分裂で集団が増えるとき）
     ensureGroups(n) {
       if (n <= this.groups) return;
       const g0 = this.groups, grow = (a, per) => { const b = new a.constructor(n * per); b.set(a); return b; };
-      this.gdemand = grow(this.gdemand, NJOB); this.gflags = grow(this.gflags, 1); this.gcount = grow(this.gcount, NJOB); this.gwork = grow(this.gwork, 1);
+      this.groupEth = grow(this.groupEth, 1); this.gdemand = grow(this.gdemand, NJOB); this.gflags = grow(this.gflags, 1); this.gcount = grow(this.gcount, NJOB); this.gwork = grow(this.gwork, 1);
       this.groups = n; while (this.pool.length < n) this.pool.push([]);
       for (let g = g0; g < n; g++) this.setGroup(g, {});
     }
@@ -5283,6 +5289,7 @@ self.onmessage = function (e) {
       grow('birth', Int32Array, 1); grow('death', Int32Array, 1, ALIVE); grow('sex', Uint8Array, 1); grow('group', Uint16Array, 1);
       grow('mother', Uint32Array, 1, NONE); grow('father', Uint32Array, 1, NONE); grow('spouse', Uint32Array, 1, NONE);
       grow('job', Uint8Array, 1); grow('flags', Uint8Array, 1);   // flags: bit0 結婚候補の列に入っている／bit1 生まれつきの値を計算済み／bit2 職業を選んだことがある／bit3 引退
+      grow('eth', Uint16Array, 1); grow('house', Uint32Array, 1, NONE); grow('cause', Uint8Array, 1);   // 主たる民族（0＝育ち中で未確定）／世帯ID／死因（0＝生存）
       grow('skills', Uint8Array, NSKILL);        // 技能（0〜255）
       grow('train', Int8Array, NABIL);           // 訓練による能力の変化
       grow('gen', Uint8Array, NABIL * 2);        // 生まれつきの能力・潜在能力の計算結果（働き始める年齢で埋める）
@@ -5319,6 +5326,8 @@ self.onmessage = function (e) {
       return clamp(Math.round((this.base(id, k) + this.train[id * NABIL + k - NP]) * ageFactor(k, this.age(id))));
     }
     addDelta(id, k, amount) { const key = id * 64 + k; const v = Math.max(-128, Math.min(127, (this.delta.get(key) || 0) + amount)); if (v) this.delta.set(key, v); else this.delta.delete(key); }
+    // 成人の年齢（文化＝民族ごとに違う。既定18歳）。見習い（職業を選ぶ）は成人の4年前、結婚は成人から
+    adultAge(i) { const e = this.eth[i] || this.groupEth[this.group[i]]; return this.adultAgeFn ? this.adultAgeFn(e) : 18; }
     age(id) { return ((this.day - this.birth[id]) / YEAR); }
     alive(id) { return this.death[id] === ALIVE; }
     // 職業への向き：項目の重み付き平均（0〜1）
@@ -5382,16 +5391,18 @@ self.onmessage = function (e) {
     // 世界の開始時：初期の人々が「それまでの人生」で身につけた職業・技能・訓練を、年齢から一括で決める（世界の生成中に1回だけ）。
     // 14歳から今までの月数ぶん、毎月の成長式を指数関数で積んだもの。引退済みの高齢者も含む
     initFounders() {
-      const segs = [[14, 16, 0.5, 0.5, 1], [16, 30, 1, 1, 1], [30, 50, 1, 1, 0.6], [50, 60, 0.6, 1, 0.3]];   // [始め,終わり歳, 技能の速さ, 訓練の速さ, 訓練の年齢係数]
       for (let i = 0; i < this.n; i++) {
-        if (this.death[i] !== ALIVE || this.flags[i] & 4) continue;
-        const a = this.age(i); if (a < 14) continue;
+        if (this.death[i] !== ALIVE) continue;
+        const a = this.age(i); if (a >= 12 && !this.eth[i]) this._assignEth(i);
+        if (this.flags[i] & 4) continue;
+        const w0 = this.adultAge(i) - 4; if (a < w0) continue;
+        const segs = [[w0, w0 + 2, 0.5, 0.5, 1], [w0 + 2, 30, 1, 1, 1], [30, 50, 1, 1, 0.6], [50, 60, 0.6, 1, 0.3]];   // [始め,終わり歳, 技能の速さ, 訓練の速さ, 訓練の年齢係数]
         this._fillGen(i); this.flags[i] |= 4;
         const j = this.pickJob(i); if (!j) continue;
         this._setJob(i, j);
         const learn = this.base(i, SI['学習力']) / 255;
         // 今の職業に就いてからの年数：転職は年約2.4%（月0.2%）の確率で起こるので、勤続年数は指数分布
-        const til = Math.min(a, 60, 14 + (a < 50 ? -Math.log(1 - this.random()) / 0.024 : 1e9));
+        const til = Math.min(a, 60, w0 + (a < 50 ? -Math.log(1 - this.random()) / 0.024 : 1e9));
         let u = 255;   // 技能の「伸びしろ」255−s
         for (const [s0, s1, rs] of segs) { if (til <= s0) break; const m = (Math.min(til, s1) - s0) * 12; u *= Math.exp(-rs * (0.5 + learn) * m / 255); }
         this.skills[i * NSKILL + j - 1] = Math.min(255, this._round(255 - u));
@@ -5406,7 +5417,7 @@ self.onmessage = function (e) {
     }
     // 年間の死亡率（昔の社会のたたき台。乳児20%・成人は加齢で急上昇）
     static qDeath(a) { return a < 1 ? 0.20 : a < 5 ? 0.04 : a < 15 ? 0.008 : 0.005 + 0.0003 * Math.exp(0.09 * a); }
-    _die(i) { this.death[i] = this.day; this.stats.deaths++; this._setJob(i, 0); const s = this.spouse[i]; if (s !== NONE && this.spouse[s] === i) this.spouse[s] = NONE; this.spouse[i] = NONE; }
+    _die(i, cause) { this.death[i] = this.day; this.cause[i] = cause || this.pendingCause || 1; this.pendingCause = 0; this.stats.deaths++; this._setJob(i, 0); const s = this.spouse[i]; if (s !== NONE && this.spouse[s] === i) this.spouse[s] = NONE; this.spouse[i] = NONE; }
     _work(i, a) {
       // 訓練：仕事で使う能力が伸びる（見習いの間は半分）
       const j = this.job[i], rate = a < 16 ? 0.5 : 1, ag = a < 30 ? 1 : a < 50 ? 0.6 : 0.3;
@@ -5421,16 +5432,19 @@ self.onmessage = function (e) {
       if (this.death[i] !== ALIVE) return;
       const a = this.age(i);
       const qm = this.hazardFn ? 1 - Math.exp(-this.hazardFn(a, this.group[i]) / 12) : 1 - Math.pow(1 - Population.qDeath(a), 1 / 12);
+      if (a >= 120) { this._die(i, 1); return; }   // 寿命の上限
       if (this.random() < qm) { if (this.onDeath) this.onDeath(i); this._die(i); return; }
+      if (!this.eth[i] && a >= 12) this._assignEth(i);   // 12歳：育った集団の民族になる（親の民族は副次的な帰属として残る）
+      const adult = this.adultAge(i);
       // 仕事：14歳で見習いとして職業を選ぶ／まれに転職／60歳以降に引退
-      if (a >= 14 && !(this.flags[i] & 8)) {
+      if (a >= adult - 4 && !(this.flags[i] & 8)) {
         if (!(this.flags[i] & 2)) this._fillGen(i);
         if (!(this.flags[i] & 4)) { const j = this.pickJob(i); if (j) { this._setJob(i, j); } this.flags[i] |= 4; }
         else if (a >= 60 && this.random() < 0.03) { this._setJob(i, 0); this.flags[i] |= 8; this.stats.retired++; }
         else if (this.job[i] && a < 50 && this.random() < 0.003) { const j = this.pickJob(i); if (j && j !== this.job[i]) { this._setJob(i, j); this.stats.jobChanges++; } }
         if (this.job[i]) this._work(i, a);
       }
-      if (a < 16) return;
+      if (a < adult) return;
       const g = this.group[i];
       if (this.sex[i] === 1) {   // 男性：結婚候補の列に入る
         if (!(this.flags[i] & 1) && this.spouse[i] === NONE) { this.flags[i] |= 1; this.pool[g].push(i); }
@@ -5445,7 +5459,7 @@ self.onmessage = function (e) {
             const kin = this.mother[i] !== NONE && (this.mother[i] === this.mother[j] || this.father[i] === this.father[j]);
             if (kin || Math.abs(this.birth[i] - this.birth[j]) > 15 * YEAR) continue;
             pl[k] = pl[pl.length - 1]; pl.pop(); this.flags[j] &= ~1;
-            this.spouse[i] = j; this.spouse[j] = i; this.stats.marriages++; break;
+            this.spouse[i] = j; this.spouse[j] = i; this.house[i] = j; this.house[j] = j; this.stats.marriages++; break;   // 新しい世帯（夫のIDが世帯ID）
           }
         }
         return;
@@ -5453,7 +5467,7 @@ self.onmessage = function (e) {
       {   // 既婚女性：出産（年あたりの出生率。fertFn があれば民族の食料の状況を反映）
         const pf = this.fertFn ? this.fertFn(a, g) : (a < 42 ? 0.17 : 0);
         if (pf > 0 && this.random() < pf / 12) {
-          this._add(g, this.random() < .5 ? 0 : 1, this.day, i, this.spouse[i]); this.stats.births++; if (this.onBirth) this.onBirth(g);
+          const c = this._add(g, this.random() < .5 ? 0 : 1, this.day, i, this.spouse[i]); this.house[c] = this.house[i]; this.stats.births++; if (this.onBirth) this.onBirth(g);
         }
       }
     }
@@ -5500,7 +5514,7 @@ const PE = {
   RIVER_STEP: 3,                                  // 川の点を何点おきに候補にするか［仮］
   HELPER_SHARE: 0.35,                             // 仕事に就いていない10〜13歳・兼任の人が、採集に回る割合［仮］
   KNOW_DEFAULT: 0.15,                             // その仕事の人がいないときの技能（0〜1）［仮］
-  FERT_ADJ: 1.3,                                  // 年齢別出生率（全女性の平均）を、結婚している女性だけに当てるための補正［仮］
+  FERT_ADJ: 1.5,                                  // 年齢別出生率（全女性の平均）を、結婚している女性だけに当てるための補正［仮］
   FOOD_INIT: [1, 2],                              // 初期の蓄え（必要量の何か月分）［仮］
   // ---- 生活圏（半径＝R_BASE＋R_PER_SQRT×√人口、R_MIN〜R_MAX ブロック）［仮］
   R_BASE: 3, R_PER_SQRT: 0.4, R_MIN: 4, R_MAX: 9,
@@ -5759,12 +5773,20 @@ function peInstall(people) {
   };
   P.fertFn = (a, g) => { const ai = Math.floor(a); return ai >= 15 && ai < 50 ? PE_ASFR[ai] * hz.fert[g] * PE.FERT_ADJ : 0; };
   P.onBirth = (g) => { people.groups[g - 1].born++; };
+  P.adultAgeFn = (e) => { const x = people.ethnicities[e - 1]; return x && x.adultAge ? x.adultAge : 18; };
+  // 死因（10分類）：1老衰 2非感染性疾患 3感染症 4戦死 5殺害 6事故 7飢餓 8出産関連 9災害 10環境（戦死・殺害・出産関連はまだ起こらない）
   P.onDeath = (i) => {
-    const D = people.groups[P.group[i] - 1].died, tot = last[0] + last[1] + last[2] + last[3];
-    let r = P.random() * tot; if ((r -= last[0]) <= 0) D.natural++; else if ((r -= last[1]) <= 0) D.disease++; else if ((r -= last[2]) <= 0) D.starvation++; else D.cold++;
+    const D = people.groups[P.group[i] - 1].died, tot = last[0] + last[1] + last[2] + last[3], a = P.age(i);
+    let r = P.random() * tot;
+    if ((r -= last[0]) <= 0) { D.natural++; P.pendingCause = a >= 60 ? 1 : P.random() < 0.5 ? 2 : 6; }
+    else if ((r -= last[1]) <= 0) { D.disease++; P.pendingCause = 3; }
+    else if ((r -= last[2]) <= 0) { D.starvation++; P.pendingCause = 7; }
+    else { D.cold++; P.pendingCause = 10; }
   };
 }
 function peEnsureGroups(people) { people.npc.ensureGroups(people.groups.length + 1); return peHazards(people); }
+// 集団の民族を住民の側の表に写す（12歳で民族が決まるときに使う）
+function peSyncEth(people) { const P = people.npc; for (const g of people.groups) P.groupEth[g.id] = g.ethId; }
 
 // ---------------------------------------------------------------- 生成：100民族・100集団を川沿いに置き、住民（NPC）を作る
 // W：{ world, plantFood(c, m, out5), fauna?, FA?, month? }（fauna・FA があれば、狩猟の期待値も職業の必要度に反映）
@@ -5815,6 +5837,7 @@ function peopleGenerate(seed, W) {
     const s = sites[i];
     const eth = { id: people.nextEthId++, nameKey: '', langId: 0, family: 0, parent: 0, founded: 0, alive: true, color: null };
     eth.nameKey = 'eth:' + eth.id;
+    eth.adultAge = 18 + (peHash('adult' + eth.id + '/' + sd) % 7) - 3;   // 成人の年齢は文化ごとに違う：15〜21歳（基本18歳）［仮］
     eth.color = peHsl((hue0 + i * 0.6180339887) % 1, 0.55 + 0.3 * rng(), 0.45 + 0.15 * rng());
     people.ethnicities.push(eth);
     let r = rng(), cls = PE.SIZE_CLASS[0];
@@ -5827,13 +5850,24 @@ function peopleGenerate(seed, W) {
   people.rngState = (rng() * 4294967296) | 0;
   // 住民：年齢は安定人口の分布から。性別は男 51.2%
   const total = pops.reduce((a, b) => a + b, 0), npc = people.npc = new Population(sd, people.groups.length + 1, Math.max(1024, total * 3));
-  peInstall(people); peHazards(people);
+  peInstall(people); peHazards(people); peSyncEth(people);
   const pr = peRng(sd ^ peHash('founders'));
   for (const g of people.groups) {
     for (let k = 0; k < pops[g.id - 1]; k++) {
       let r = pr() * ssum, a = 0; while (a < PE_AGES - 1 && (r -= surv[a]) > 0) a++;
       const id = npc.addFounder(g.id, a + pr() * 0.999); npc.sex[id] = pr() < PE.SEX_RATIO ? 1 : 0;
     }
+  }
+  // 初期の子どもには、同じ集団の年上の女性を母親（世帯）として割り当てる。大人は、それぞれ1人の世帯
+  for (const g of people.groups) {
+    const women = [], kids = [];
+    for (let i = 0; i < npc.n; i++) { if (npc.group[i] !== g.id) continue; const a = npc.age(i); if (npc.sex[i] === 0 && a >= 20 && a < 45) women.push(i); if (a < 14) kids.push(i); }
+    for (const i of kids) {
+      const a = npc.age(i), ok = women.filter(w => npc.age(w) - a >= 17 && npc.age(w) - a <= 42);
+      const m = (ok.length ? ok : women)[Math.floor(pr() * (ok.length ? ok.length : women.length))];
+      if (m !== undefined) { npc.mother[i] = m; npc.house[i] = m; }
+    }
+    for (let i = 0; i < npc.n; i++) if (npc.group[i] === g.id && npc.house[i] === NONE) npc.house[i] = i;
   }
   // 環境に合わせて、仕事の必要度を決めてから、それまでの人生（職業・技能）を作る
   peStats(people);
@@ -5854,7 +5888,7 @@ function peNewGroup(people, ethId, x, y) {
     fed: 1, epi: 0, kills: 0, pop: 0, c6: [0, 0, 0, 0, 0, 0],
   };
   people.groups.push(g);
-  if (people.npc) peEnsureGroups(people);
+  if (people.npc) { peEnsureGroups(people); people.npc.groupEth[id] = ethId; }
   return g;
 }
 function peNeedOf(st, g) { return st.need[g.id] || 0; }
@@ -5967,7 +6001,7 @@ function peopleMonthly(people, ctx) {
     const pop = g.pop;
     if (pop < PE.EXTINCT_MIN || (pop < 8 && peStatsWomen(people, g) < 1)) {
       g.alive = false;
-      for (let i = 0; i < P.n; i++) if (P.group[i] === g.id && P.death[i] === ALIVE) { P._die(i); g.died.natural++; }
+      for (let i = 0; i < P.n; i++) if (P.group[i] === g.id && P.death[i] === ALIVE) { P._die(i, 9); g.died.natural++; }
       g.pop = 0;
       ev.push({ type: 'extinct', imp: 1, relevant: rel(g.ethId), group: g.id, eth: g.ethId, x: g.x, y: g.y });
       const eth = people.ethnicities.find(e => e.id === g.ethId);
@@ -6189,9 +6223,9 @@ function peopleSave(people) {
   const pool = [], poolStart = [0]; for (let g = 0; g < P.groups; g++) { for (const v of P.pool[g]) pool.push(v); poolStart.push(pool.length); }
   const meta = { version: people.version, nextGroupId: people.nextGroupId, nextEthId: people.nextEthId, rngState: people.rngState, playerEth: people.playerEth,
     ethnicities: people.ethnicities, groups: people.groups.map(g => Object.assign({}, g, { c6: undefined })), contacts: people.contacts, languages: people.languages,
-    npc: { seed: P.seed, n, day: P.day, rng: P.rng, stats: P.stats, delta: Array.from(P.delta), focus: Array.from(P.focus), groups: P.groups } };
+    npc: { seed: P.seed, n, day: P.day, rng: P.rng, stats: P.stats, delta: Array.from(P.delta), focus: Array.from(P.focus), ethSecondary: Array.from(P.ethSecondary), groups: P.groups } };
   return { meta, birth: cut(P.birth), death: cut(P.death), sex: cut(P.sex), group: cut(P.group), mother: cut(P.mother), father: cut(P.father), spouse: cut(P.spouse), job: cut(P.job), flags: cut(P.flags),
-    skills: cut(P.skills, NSKILL), train: cut(P.train, Npc.NABIL), gdemand: P.gdemand.slice(), gflags: P.gflags.slice(), pool: Int32Array.from(pool), poolStart: Int32Array.from(poolStart),
+    eth: cut(P.eth), house: cut(P.house), cause: cut(P.cause), groupEth: P.groupEth.slice(), skills: cut(P.skills, NSKILL), train: cut(P.train, Npc.NABIL), gdemand: P.gdemand.slice(), gflags: P.gflags.slice(), pool: Int32Array.from(pool), poolStart: Int32Array.from(poolStart),
     haz: { starv: people.haz.starv.slice(), cold: people.haz.cold.slice(), dis: people.haz.dis.slice(), hungerDis: people.haz.hungerDis.slice(), fert: people.haz.fert.slice() } };
 }
 function peopleLoad(sv) {
@@ -6201,6 +6235,7 @@ function peopleLoad(sv) {
   const put = (name, src, per = 1) => { P[name].set(src.subarray ? src.subarray(0, n * per) : src); };
   for (const k of ['birth', 'death', 'sex', 'group', 'mother', 'father', 'spouse', 'job', 'flags']) put(k, sv[k]);
   put('skills', sv.skills, NSKILL); put('train', sv.train, Npc.NABIL);
+  if (sv.eth) { put('eth', sv.eth); put('house', sv.house); put('cause', sv.cause); P.groupEth.set(sv.groupEth); P.ethSecondary = new Map(m.npc.ethSecondary || []); }
   P.n = n; P.day = m.npc.day; P.rng = m.npc.rng; P.stats = m.npc.stats; P.delta = new Map(m.npc.delta); P.focus = new Map(m.npc.focus);
   P.gdemand.set(sv.gdemand); P.gflags.set(sv.gflags);
   for (let g = 0; g < P.groups; g++) P.pool[g] = Array.from(sv.pool.subarray(sv.poolStart[g], sv.poolStart[g + 1]));
@@ -6209,12 +6244,17 @@ function peopleLoad(sv) {
     if (P.death[i] === ALIVE && P.job[i]) { P.gcount[P.group[i] * NJOB + P.job[i]]++; P.gwork[P.group[i]]++; }
   }
   const hz = peHazards(people); for (const k in hz) hz[k].set(sv.haz[k].subarray(0, hz[k].length));
-  peInstall(people); peStats(people);
+  peInstall(people); if (!sv.eth) peSyncEth(people); peStats(people);
   return people;
 }
 
-if (typeof module !== 'undefined' && module.exports) module.exports = { PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
-else root.WohPeople = { PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+// 民族ごとの人口（個人の民族IDで数える。12歳未満は育った集団の民族として数える）
+function peopleEthCounts(people) {
+  const P = people.npc, o = {}; for (let i = 0; i < P.n; i++) { if (P.death[i] !== ALIVE) continue; const e = P.eth[i] || P.groupEth[P.group[i]]; o[e] = (o[e] || 0) + 1; } return o;
+}
+
+if (typeof module !== 'undefined' && module.exports) module.exports = { peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+else root.WohPeople = { peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
 <script>
