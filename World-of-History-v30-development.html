@@ -6522,7 +6522,7 @@ function peopleSave(people) {
   const P = people.npc, n = P.n, cut = (a, per = 1) => a.slice(0, n * per);
   const pool = [], poolStart = [0]; for (let g = 0; g < P.groups; g++) { for (const v of P.pool[g]) pool.push(v); poolStart.push(pool.length); }
   const meta = { version: people.version, nextGroupId: people.nextGroupId, nextEthId: people.nextEthId, rngState: people.rngState, playerEth: people.playerEth,
-    ethnicities: people.ethnicities, groups: people.groups.map(g => Object.assign({}, g, { c6: undefined })), contacts: people.contacts, languages: people.languages, player: people.player,
+    ethnicities: people.ethnicities, groups: people.groups.map(g => Object.assign({}, g, { c6: undefined })), contacts: people.contacts, languages: people.languages, autoNames: people.autoNames || {}, placeLangs: people.placeLangs || {}, nextLangId: people.nextLangId || 0, player: people.player,
     npc: { seed: P.seed, n, day: P.day, rng: P.rng, stats: P.stats, delta: Array.from(P.delta), focus: Array.from(P.focus), ethSecondary: Array.from(P.ethSecondary), groups: P.groups } };
   return { meta, birth: cut(P.birth), death: cut(P.death), sex: cut(P.sex), group: cut(P.group), mother: cut(P.mother), father: cut(P.father), spouse: cut(P.spouse), job: cut(P.job), flags: cut(P.flags),
     eth: cut(P.eth), house: cut(P.house), cause: cut(P.cause), groupEth: P.groupEth.slice(), relId: cut(P.relId, SOC_K), relV: cut(P.relV, SOC_K * 3), pers: cut(P.pers, 4), skills: cut(P.skills, NSKILL), train: cut(P.train, Npc.NABIL), gdemand: P.gdemand.slice(), gflags: P.gflags.slice(), pool: Int32Array.from(pool), poolStart: Int32Array.from(poolStart),
@@ -6530,7 +6530,7 @@ function peopleSave(people) {
 }
 function peopleLoad(sv) {
   const m = sv.meta, people = { version: m.version, nextGroupId: m.nextGroupId, nextEthId: m.nextEthId, rngState: m.rngState, playerEth: m.playerEth, ethnicities: m.ethnicities,
-    groups: m.groups.map(g => Object.assign(g, { c6: [0, 0, 0, 0, 0, 0] })), contacts: m.contacts, languages: m.languages, player: m.player || null, npc: null, haz: null, stat: null };
+    groups: m.groups.map(g => Object.assign(g, { c6: [0, 0, 0, 0, 0, 0] })), contacts: m.contacts, languages: m.languages, autoNames: m.autoNames || {}, placeLangs: m.placeLangs || {}, nextLangId: m.nextLangId || 0, player: m.player || null, npc: null, haz: null, stat: null };
   const n = m.npc.n, P = people.npc = new Population(m.npc.seed, m.npc.groups, Math.max(1024, n * 2));
   const put = (name, src, per = 1) => { P[name].set(src.subarray ? src.subarray(0, n * per) : src); };
   for (const k of ['birth', 'death', 'sex', 'group', 'mother', 'father', 'spouse', 'job', 'flags']) put(k, sv[k]);
@@ -7967,6 +7967,245 @@ function labReady() {
 // ---- 動物（鹿）：個体群の時間経過・狩猟・表示
 // 生成時の個体群（world.fauna）を複製して時間とともに書き換える。元の生成結果は「元に戻す」に使う
 let fauna = null;
+// ================================================================ 民族の言語と名前（people_lang）
+// ------------------------------------------------------------ 民族の言語と名前（段階3）
+// 仮の言語（names.langs）を語族の祖先とし、民族ごとの言語をそこから分化させる。
+// 民族名・集団名・付け直した地名は names 台帳に入れる（改名・履歴は台帳の仕組みのまま）。
+// 民族・集団・付け直した地名の自動の名前は people.autoNames に残す（セーブ後も同じ名前に戻せるように）
+const PEOPLE_LANG_ID0 = 100;          // 民族の言語の id の始まり（names.langs の id 1〜9 と重ならないように）
+const LANG_CHAIN_DIST = 150;          // 同じ語族の近い民族（ブロック）の言語から分かれたことにする距離［仮］
+const LANG_CHAIN_DEPTH = 3;           // 祖先の言語から何段まで分かれるか［仮］
+const ETH_SUFFIX = '族';              // 民族名の後ろ
+const GROUP_SUFFIX = 'の民';          // 集団名の後ろ［仮］
+const RENAME_R = [40, 60, 100, 0];    // 地名を付け直す範囲（地名の優先度ごと、ブロック。0 は付け直さない＝大陸・外洋）［仮］
+const PEOPLE_NAME_KINDS = { ethnicity: 1, group: 1 };
+
+function peopleSeedN(seed) {
+  if (seed !== undefined && seed !== null) return seed >>> 0;
+  return (typeof seedToInt === 'function' && typeof currentSeed !== 'undefined' && currentSeed !== null) ? seedToInt(currentSeed) >>> 0 : 0;
+}
+// 言語を id から探す（100 未満は仮の言語＝語族の祖先）
+function peopleLangById(people, id) {
+  if (id < PEOPLE_LANG_ID0) return names.langs.find(L => L.id === id) || names.langs[0];
+  const a = people.languages || [];
+  return a[id - PEOPLE_LANG_ID0] && a[id - PEOPLE_LANG_ID0].id === id ? a[id - PEOPLE_LANG_ID0] : a.find(L => L.id === id);
+}
+// 民族の位置：生きている集団の平均（いなければ全ての集団）
+function peopleEthPos(people, eth) {
+  let sx = 0, sy = 0, n = 0;
+  for (const pass of [true, false]) {
+    for (const g of people.groups) if (g.ethId === eth.id && (!pass || g.alive)) { sx += g.x; sy += g.y; n++; }
+    if (n) break;
+  }
+  return n ? [sx / n, sy / n] : [0, 0];
+}
+// その位置の祖先の言語：地名の元の言語のうち一番近いもの（names.langCenters があればそれを使う）
+function peopleProtoAt(x, y) {
+  if (names.langCenters) {
+    let b = 0, bd = 1e18;
+    names.langCenters.forEach((c, k) => { const d = (c[0] - x) ** 2 + (c[1] - y) ** 2; if (d < bd) { bd = d; b = k; } });
+    return names.langs[b];
+  }
+  let best = null, bd = 1e18;
+  for (const e of names.list) {
+    if (PEOPLE_NAME_KINDS[e.kind]) continue;
+    const d = (e.x - x) ** 2 + (e.y - y) ** 2;
+    if (d < bd) { bd = d; best = e; }
+  }
+  const id = best ? (best.protoLang !== undefined ? best.protoLang : best.lang) : names.langs[0].id;
+  return names.langs.find(L => L.id === id) || names.langs[0];
+}
+
+// ---- 民族ごとの言語
+// 語族ごとに、民族の中心に近い順に作る。近くに同じ語族の民族の言語があれば、そこから分かれたことにする（方言の連なり）
+function peopleLanguages(people, rngSeed) {
+  const seedN = peopleSeedN(rngSeed);
+  people.languages = [];
+  const fam = new Map();
+  for (const eth of people.ethnicities.slice().sort((a, b) => a.id - b.id)) {
+    const [x, y] = peopleEthPos(people, eth), P = peopleProtoAt(x, y);
+    if (!fam.has(P.id)) fam.set(P.id, []);
+    fam.get(P.id).push({ eth, x, y, P });
+  }
+  // 言語の id は民族の id の順に付ける（語族の処理順に左右されない）
+  const ids = new Map();
+  people.ethnicities.slice().sort((a, b) => a.id - b.id).forEach((e, k) => ids.set(e.id, PEOPLE_LANG_ID0 + k));
+  const made = [];
+  for (const fid of Array.from(fam.keys()).sort((a, b) => a - b)) {
+    const list = fam.get(fid);
+    let cx = 0, cy = 0;
+    for (const o of list) { cx += o.x; cy += o.y; }
+    cx /= list.length; cy /= list.length;
+    list.sort((a, b) => ((a.x - cx) ** 2 + (a.y - cy) ** 2) - ((b.x - cx) ** 2 + (b.y - cy) ** 2) || a.eth.id - b.eth.id);
+    const done = [];
+    for (const o of list) {
+      let par = o.P, depth = 1, bd = LANG_CHAIN_DIST * LANG_CHAIN_DIST;
+      for (const d of done) {
+        if (d.L.depth >= LANG_CHAIN_DEPTH) continue;
+        const dd = (d.x - o.x) ** 2 + (d.y - o.y) ** 2;
+        if (dd < bd) { bd = dd; par = d.L; depth = d.L.depth + 1; }
+      }
+      const L = makeLanguage(ids.get(o.eth.id), nameRng(nameHash('lang:' + o.eth.id) ^ seedN), par);
+      L.family = fid; L.depth = depth;
+      o.eth.langId = L.id; o.eth.family = fid;
+      done.push({ L, x: o.x, y: o.y });
+      made.push(L);
+    }
+  }
+  made.sort((a, b) => a.id - b.id);
+  people.languages = made;
+  people.nextLangId = PEOPLE_LANG_ID0 + made.length;
+  return made;
+}
+
+// ---- 台帳の「使われている名前」を作り直す（重なり・似すぎの判定に使う）
+function namesRebuildUsed(skip) {
+  names.used = new Set(); names.near = new Set();
+  for (const e of names.list) {
+    if (skip && skip.has(e)) continue;
+    nameRegister(e.auto);
+    if (e.user) nameRegister(e.user);
+  }
+}
+
+// ---- 民族名・集団名（台帳に kind 'ethnicity' / 'group' で入れる。地図の地名としては表示しない：hide）
+// 何度呼んでもよい：まだ無い民族・集団だけ名前を作る（分裂で増えた集団など）。ロードの後にも呼ぶ（付け直した地名も元に戻す）
+function peopleNames(people, seed) {
+  const seedN = peopleSeedN(seed);
+  const store = people.autoNames || (people.autoNames = {});
+  const pl = people.placeLangs || (people.placeLangs = {});
+  // 付け直した地名を当てはめる（namesBuild で仮の言語の名前に戻っている時）
+  let changed = false;
+  for (const key in pl) {
+    const e = names.byKey.get(key);
+    if (!e || !store[key] || e.auto === store[key]) continue;
+    if (e.protoLang === undefined) e.protoLang = e.lang;
+    e.auto = store[key]; e.lang = pl[key]; changed = true;
+  }
+  if (changed) namesRebuildUsed();
+  const kindOf = k => (typeof PLACE_KIND !== 'undefined' && PLACE_KIND[k]) || (k === 'ethnicity' ? [ETH_SUFFIX, 0] : [GROUP_SUFFIX, 0]);
+  const put = (key, kind, L, x, y, ref) => {
+    let e = names.byKey.get(key);
+    if (e) { e.x = Math.round(x); e.y = Math.round(y); return e; }
+    let auto = store[key];
+    if (auto) nameRegister(auto);
+    else auto = store[key] = newName(L, nameRng(nameHash(key) ^ seedN));
+    e = { key, kind, x: Math.round(x), y: Math.round(y), prio: 0, auto, user: null, hist: [], suffix: kindOf(kind)[0], lang: L.id, hide: true, ref };
+    const o = names.overrides[key];
+    if (o) { e.user = o.user; e.hist = o.hist || []; if (e.user) nameRegister(e.user); }
+    names.list.push(e); names.byKey.set(key, e);
+    return e;
+  };
+  for (const eth of people.ethnicities.slice().sort((a, b) => a.id - b.id)) {
+    eth.nameKey = eth.nameKey || 'eth:' + eth.id;
+    const [x, y] = peopleEthPos(people, eth);
+    put(eth.nameKey, 'ethnicity', peopleLangById(people, eth.langId), x, y, eth.id);
+  }
+  const ethById = new Map(people.ethnicities.map(e => [e.id, e]));
+  for (const g of people.groups.slice().sort((a, b) => a.id - b.id)) {
+    g.nameKey = g.nameKey || 'grp:' + g.id;
+    const eth = ethById.get(g.ethId);
+    put(g.nameKey, 'group', peopleLangById(people, eth ? eth.langId : names.langs[0].id), g.x, g.y, g.id);
+  }
+  names.sorted = null;
+}
+// 表示名（例：「ナカル族」「トモの民」）
+function peopleEthName(eth) { const e = names.byKey.get(eth.nameKey || 'eth:' + eth.id); return e ? nameOf(e) : ''; }
+function peopleGroupName(g) { const e = names.byKey.get(g.nameKey || 'grp:' + g.id); return e ? nameOf(e) : ''; }
+
+// ---- 民族の住む所の地名を、その民族の言語で付け直す
+// 地名の近く（RENAME_R）に集団がいれば、一番近い集団の民族の言語で新しい名前を作る。
+// プレイヤーが改名した地名・もう付け直した地名・遠い所は変えない。auto と lang だけを変える（user・hist はそのまま）。
+// 名前は地名の key と Seed から作るので毎回同じ。戻り値：付け直した数
+function peopleRenamePlaces(people, seed) {
+  const seedN = peopleSeedN(seed);
+  const store = people.autoNames || (people.autoNames = {});
+  const pl = people.placeLangs || (people.placeLangs = {});
+  const ethById = new Map(people.ethnicities.map(e => [e.id, e]));
+  const gs = people.groups.filter(g => g.alive && ethById.has(g.ethId));
+  if (!gs.length) return 0;
+  const targets = [];
+  for (const e of names.list) {
+    if (PEOPLE_NAME_KINDS[e.kind] || e.user || pl[e.key] !== undefined) continue;
+    const R = RENAME_R[e.prio] || 0;
+    if (!R) continue;
+    let best = null, bd = R * R;
+    for (const g of gs) { const d = (g.x - e.x) ** 2 + (g.y - e.y) ** 2; if (d <= bd) { bd = d; best = g; } }
+    if (best) targets.push([e, ethById.get(best.ethId).langId]);
+  }
+  if (!targets.length) return 0;
+  // 付け直す地名の古い名前を除いて「使われている名前」を作り直し、台帳の順に新しい名前を作る
+  namesRebuildUsed(new Set(targets.map(t => t[0])));
+  for (const [e, lid] of targets) {
+    const L = peopleLangById(people, lid);
+    if (e.protoLang === undefined) e.protoLang = e.lang;
+    e.auto = store[e.key] = newName(L, nameRng(nameHash(e.key) ^ seedN ^ 0x6B1D2E3F));
+    e.lang = pl[e.key] = lid;
+  }
+  names.sorted = null;
+  return targets.length;
+}
+
+// ---- 言語の分裂と融合（段階5で使う。今回は関数だけ）
+// 分裂：L から分かれた新しい言語（id は呼ぶ側が決める）
+function languageSplit(L, rng, id) {
+  const N = makeLanguage(id || 0, rng, L);
+  N.family = L.family !== undefined ? L.family : L.id;
+  N.depth = (L.depth || 0) + 1;
+  return N;
+}
+// 融合：L1 と L2 を混ぜた言語（w＝L2 の割合 0〜1）。主な方を親とし、mix に両方を残す
+function languageMix(L1, L2, w, rng, id) {
+  w = Math.max(0, Math.min(1, w));
+  const main = w < 0.5 ? L1 : L2;
+  const L = JSON.parse(JSON.stringify(main));
+  L.id = id || 0; L.parent = main.id; L.mix = [L1.id, L2.id, w];
+  L.family = main.family !== undefined ? main.family : main.id;
+  L.depth = (main.depth || 0) + 1;
+  // 子音：両方の重みを混ぜ、重い順に（数は両方の間）。少しだけ揺らす
+  const cw = new Map();
+  for (const [c, x] of L1.cons) cw.set(c, (cw.get(c) || 0) + x * (1 - w));
+  for (const [c, x] of L2.cons) cw.set(c, (cw.get(c) || 0) + x * w);
+  const nC = Math.max(4, Math.round(L1.cons.length * (1 - w) + L2.cons.length * w));
+  L.cons = Array.from(cw.entries()).map(([c, x]) => [c, x * (0.85 + rng() * 0.3)])
+    .filter(c => c[1] > 0).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, nC);
+  L.vowels = L1.vowels.map((v, i) => v * (1 - w) + L2.vowels[i] * w);
+  for (const k of ['pV', 'pN', 'pQ', 'pLong', 'syl']) L[k] = L1[k] * (1 - w) + L2[k] * w;
+  // 語尾：それぞれから割合に応じて選ぶ
+  const ends = [];
+  const nE = Math.max(1, Math.round(L1.endings.length * (1 - w) + L2.endings.length * w));
+  for (let k = 0; k < nE * 3 && ends.length < nE; k++) {
+    const src = rng() < w ? L2.endings : L1.endings;
+    if (!src.length) continue;
+    const s = src[Math.floor(rng() * src.length)];
+    if (!ends.includes(s)) ends.push(s);
+  }
+  L.endings = ends.length ? ends : main.endings.slice();
+  return L;
+}
+
+// ---- 人物の名前：民族の言語から、個人IDごとに毎回同じ名前を作る（保存しない。同じ名前の人がいてもよい）
+const peNameCache = new Map();
+function personName(id) {
+  if (!people || id === undefined || id < 0) return '';
+  let n = peNameCache.get(id); if (n) return n;
+  const P = people.npc, e = people.ethnicities[(P.eth[id] || P.groupEth[P.group[id]]) - 1], L = e ? peopleLangById(people, e.langId) : names.langs[0];
+  n = langWord(L, nameRng(nameHash('p:' + id) ^ seedToInt(currentSeed)));
+  if (peNameCache.size > 6000) peNameCache.clear();
+  peNameCache.set(id, n); return n;
+}
+globalThis.__wohPersonName = personName;
+globalThis.__wohEthName = (id) => peEthName(id);
+// 民族の言語・民族名・集団名・地名の付け直し（新しい世界・読み込みのあとに呼ぶ）
+function peopleNamesSetup(restoreLangs) {
+  if (!people) return;
+  const sd = seedToInt(currentSeed);
+  if (!restoreLangs || !people.languages || !people.languages.length) peopleLanguages(people, sd);
+  peNameCache.clear();
+  peopleNames(people, sd);
+  if (!restoreLangs) peopleRenamePlaces(people, sd);   // 地名の付け直しは新しい世界のときだけ（読み込みでは、保存した付け直しを戻す）
+  if (typeof labelsUpdate === 'function') labelsUpdate();
+}
 // ---- 人々（民族・集団・住民：WohPeople / WohNpc）
 let people = null;
 const peoplePlant = (c, m, out) => FA.faunaPlantFood(world.fauna.env, world.climate.cell, c, m, out, 0, 0);
@@ -7977,6 +8216,7 @@ function peopleNew() {
   people = null;
   if (!world || !world.riverPts) return;
   people = WohPeople.peopleGenerate(seedToInt(currentSeed), { world, plantFood: peoplePlant, fauna, FA, month: 0 });
+  peopleNamesSetup(false); peNamedGroups = people.groups.length;
 }
 // 情報パネルの人口の表示（毎月・世界ができたとき・読み込んだとき）
 const PE_PROP_REASON = { noPlayer: '人物がいない', unknown: '提案が分からない', noGroup: '集団がない', minor: 'まだ成人していないので提案できない', cooldown: null, moving: '集団は移動中', noWorld: '世界の準備中', noRiver: '近くに川がない（移住先は川沿い）', sea: '海を越える所へは行けない', near: 'いまの場所に近すぎる', same: 'すでにその方針', alone: '提案を聞く大人がいない' };
@@ -8006,14 +8246,14 @@ function peopleInfoUpdate() {
   const a = document.getElementById('iPeople'), b = document.getElementById('iMine'), c = document.getElementById('iYou'); if (!a || !b) return;
   if (!people) { a.textContent = '-'; b.textContent = '-'; if (c) c.textContent = '-'; return; }
   const y = WohPeople.peopleYou(people), ld = document.getElementById('iLeader');
-  if (ld) { if (!y || y.leader < 0) ld.textContent = '-'; else { const d = WohNpcView.viewDescribe(people, y.leader), e = people.ethnicities[d.eth - 1]; ld.textContent = `${d.isYou ? 'あなた' : `${d.job}・${d.sex}・${d.age}歳`}（${e ? WohPeople.LEADERSHIP[e.leadership] : ''}）`; } }
-  if (c) c.textContent = !y ? '-' : y.over ? '一族が絶えた（ゲームオーバー）' : `${y.sex}・${y.age}歳・第${y.gen}代・${y.rule}・${y.spouse ? '配偶者あり・' : ''}子${y.kids}人${y.minor ? '・未成年（後見つき）' : ''}`;
+  if (ld) { if (!y || y.leader < 0) ld.textContent = '-'; else { const d = WohNpcView.viewDescribe(people, y.leader), e = people.ethnicities[d.eth - 1]; ld.textContent = `${d.isYou ? 'あなた' : `${personName(d.id)}（${d.job}・${d.sex}・${d.age}歳）`}（${e ? WohPeople.LEADERSHIP[e.leadership] : ''}）`; } }
+  if (c) c.textContent = !y ? '-' : y.over ? '一族が絶えた（ゲームオーバー）' : `${personName(y.id)}・${y.sex}・${y.age}歳・第${y.gen}代・${y.rule}・${y.spouse ? '配偶者あり・' : ''}子${y.kids}人${y.minor ? '・未成年（後見つき）' : ''}`;
   const s = WohPeople.peopleSummary(people); a.textContent = `${Math.round(s.total).toLocaleString('ja-JP')}人・${s.groups}集団・${s.ethnicities}民族`;
   let mine = 0, mg = 0; for (const g of people.groups) if (g.alive && g.ethId === people.playerEth) { mine += g.pop; mg++; }
   b.textContent = mg ? `${peEthName(people.playerEth)}（${mg}集団・${Math.round(mine).toLocaleString('ja-JP')}人）` : `${peEthName(people.playerEth)}（絶えた）`;
 }
-function peEthName(id) { return '第' + id + '民族'; }
-function peGrpName(id) { return '集団' + id; }
+function peEthName(id) { const e = people && people.ethnicities[id - 1]; const n = e ? peopleEthName(e) : ''; return n || ('第' + id + '民族'); }
+function peGrpName(id) { const g = people && people.groups[id - 1]; const n = g ? peopleGroupName(g) : ''; return n || ('集団' + id); }
 const PE_EVENT_TEXT = {
   famine: e => `${peEthName(e.eth)}の${peGrpName(e.group)}で食料が足りない月が続いている`,
   epidemic: e => `${peEthName(e.eth)}の${peGrpName(e.group)}で疫病が広がった`,
@@ -8024,14 +8264,16 @@ const PE_EVENT_TEXT = {
   extinct: e => `${peEthName(e.eth)}の${peGrpName(e.group)}が全滅した`,
   ethExtinct: e => `${peEthName(e.eth)}が絶えた`,
   contact: e => `${peEthName(e.eth)}と${peEthName(e.eth2)}が初めて出会った`,
-  leaderChange: e => e.you ? `あなたが${peGrpName(e.group)}の首長になった` : `${peEthName(e.eth)}の${peGrpName(e.group)}で首長が代わった`,
-  playerSucceed: e => `あなたの人物が亡くなった。${WohPeople.SUCCESSION[e.rule]}により、${e.minor ? '未成年の' : ''}跡継ぎが後を継いだ`,
+  leaderChange: e => e.you ? `あなたが${peGrpName(e.group)}の首長になった` : `${peEthName(e.eth)}の${peGrpName(e.group)}で首長が${personName(e.to)}に代わった`,
+  playerSucceed: e => `あなたの人物（${personName(e.from)}）が亡くなった。${WohPeople.SUCCESSION[e.rule]}により、${e.minor ? '未成年の' : ''}${personName(e.to)}が後を継いだ`,
   playerNewLine: e => `あなたの一族が絶えた。別の一族の人物として続ける`,
   playerEnd: e => `あなたの一族が絶えた。ゲームオーバー`,
 };
+let peNamedGroups = 0;
 function peopleMonthTick(month) {
   if (!people || !world) return;
   const ev = WohPeople.peopleMonthly(people, peopleCtx(month));
+  if (people.groups.length !== peNamedGroups) { peNamedGroups = people.groups.length; peopleNames(people, seedToInt(currentSeed)); }   // 分裂でできた集団に名前を付ける
   peopleInfoUpdate();
   if (ev.some(e => e.type === 'playerSucceed' || e.type === 'playerNewLine')) globalThis.__wohAvatar?.toPlayer?.();   // 跡継ぎの野営地へ
   for (const e of ev) { const f = PE_EVENT_TEXT[e.type]; if (f) postEvent({ cat: 'people', imp: e.imp || 0, relevant: !!e.relevant, group: 'people-' + e.type, text: f(e), place: e.x !== undefined ? { x: e.x, y: e.y } : undefined }); }
@@ -8602,6 +8844,7 @@ function nameOf(e) { return (e.user || e.auto) + e.suffix; }
 
 // 地名の種類：表示の後ろに付ける字、表示の優先度（3：いつも 2：中くらいまで 1：近め 0：近づいた時）
 const PLACE_KIND = {
+  ethnicity: ['族', 0], group: ['の民', 0],
   continent: ['大陸', 3], island: ['島', 1], archipelago: ['諸島', 2], ocean: ['洋', 3], sea: ['海', 2], bay: ['湾', 1],
   river: ['川', 1], bigRiver: ['川', 2], lake: ['湖', 1], bigLake: ['湖', 2], saltLakeN: ['塩湖', 1], volcano: ['山', 1], range: ['山脈', 2],
   desert: ['砂漠', 2], forest: ['の森', 2], plain: ['平原', 2],
@@ -9059,6 +9302,7 @@ function applyState(st) {
   history.list = st.history.list || []; history.nextId = st.history.nextId || 1;
   if (st.people && world && world.riverPts) people = WohPeople.peopleLoad(st.people); else peopleNew();   // 古い記録には人々が無いので、読み込んだ日から新しく始める
   if (people) people.npc.day = clock.day;
+  if (people) { people.autoNames = people.autoNames || {}; people.placeLangs = people.placeLangs || {}; peopleNamesSetup(true); }
   peopleInfoUpdate();
   names.overrides = st.names || {};
   for (const e of names.list) { const o = names.overrides[e.key]; e.user = o ? o.user : null; e.hist = o ? o.hist || [] : []; }
@@ -10738,7 +10982,7 @@ function npcCardUpdate(pe,V){
   if(!npcCard)return;if(npcSel===null){npcCard.style.display='none';return;}
   const P=pe.npc;if(P.death[npcSel]!==0x7fffffff){npcCard.querySelector('#npcCardBody').textContent='（この人は亡くなった）';npcCard.style.display='block';return;}
   const d=V.viewDescribe(pe,npcSel);
-  npcCard.querySelector('#npcCardBody').innerHTML=`<b>${d.job}・${d.sex}・${d.age}歳</b>${d.isYou?'（あなた）':''}${d.leader?'　<span style="color:#ffd34e">首長</span>':d.council?'　<span style="color:#ffd34e">合議の一員</span>':''}<br>関係：${d.relation||'-'}${d.married?'（結婚している）':''}<br>${d.isYou?'':'あなたから見て：'+d.bond+'<br>'}主な技能：${d.skills.join('、')||'まだない'}<br>民族：第${d.eth}民族`;
+  npcCard.querySelector('#npcCardBody').innerHTML=`<b>${globalThis.__wohPersonName?.(d.id)||''}</b>（${d.job}・${d.sex}・${d.age}歳）${d.isYou?'（あなた）':''}${d.leader?'　<span style="color:#ffd34e">首長</span>':d.council?'　<span style="color:#ffd34e">合議の一員</span>':''}<br>関係：${d.relation||'-'}${d.married?'（結婚している）':''}<br>${d.isYou?'':'あなたから見て：'+d.bond+'<br>'}主な技能：${d.skills.join('、')||'まだない'}<br>民族：${globalThis.__wohEthName?.(d.eth)||('第'+d.eth+'民族')}`;
   npcCard.style.display='block';
 }
 function npcScan(pe,V){
