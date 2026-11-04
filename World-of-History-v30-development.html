@@ -251,6 +251,7 @@
   <div class="row"><span class="k">鹿</span><span class="v" id="iDeer">-</span></div>
   <div class="row"><span class="k">人口</span><span class="v" id="iPeople">-</span></div>
   <div class="row"><span class="k">自分の民族</span><span class="v" id="iMine">-</span></div>
+  <div class="row"><span class="k">あなた</span><span class="v" id="iYou">-</span></div>
   <div class="row"><span class="k">河川</span><span class="v" id="iRiver">-</span></div>
   <div class="row"><span class="k">湖</span><span class="v" id="iLake">-</span></div>
   <div class="row"><span class="k">陸地率</span><span class="v" id="iLand">-</span></div>
@@ -5734,6 +5735,90 @@ function peNearestRiver(S, x, y, maxD) {
 }
 
 
+// ---------------------------------------------------------------- プレイヤーの人物と、文化ごとの継承
+// 継承の決まり（民族ごと）：0長子相続 1男系長子 2末子相続 3母系相続 4兄弟相続 5能力による選出 6指名。割合［仮］
+const SUCCESSION = ['長子相続', '男系長子', '末子相続', '母系相続', '兄弟相続', '能力による選出', '指名'];
+const SUCC_W = [0.3, 0.2, 0.1, 0.15, 0.05, 0.15, 0.05];
+// 血縁：子・孫・きょうだい・きょうだいの子（生きている人だけ。亡くなった子・きょうだいを通した孫・甥姪も含む）
+function peKin(P, id) {
+  const m = P.mother[id], f = P.father[id], sibAll = new Set(), kidsAll = new Set();
+  for (let i = 0; i < P.n; i++) {
+    if (i === id) continue;
+    if ((m !== NONE && P.mother[i] === m) || (f !== NONE && P.father[i] === f)) sibAll.add(i);
+    if (P.mother[i] === id || P.father[i] === id) kidsAll.add(i);
+  }
+  const alive = (i) => P.death[i] === ALIVE, sib = [], kids = [], nephews = [], grand = [];
+  for (const i of sibAll) if (alive(i)) sib.push(i);
+  for (const i of kidsAll) if (alive(i)) kids.push(i);
+  for (let i = 0; i < P.n; i++) {
+    if (!alive(i)) continue;
+    const mo = P.mother[i], fa = P.father[i];
+    if ((mo !== NONE && sibAll.has(mo)) || (fa !== NONE && sibAll.has(fa))) nephews.push(i);
+    if ((mo !== NONE && kidsAll.has(mo)) || (fa !== NONE && kidsAll.has(fa))) grand.push(i);
+  }
+  return { sib, kids, nephews, grand, sibAll };
+}
+function peFindHeir(people, id) {
+  const P = people.npc, eth = people.ethnicities[(P.eth[id] || P.groupEth[P.group[id]]) - 1], rule = eth && eth.succession !== undefined ? eth.succession : 0;
+  const K = peKin(P, id), elder = (a, b) => P.birth[a] - P.birth[b], younger = (a, b) => P.birth[b] - P.birth[a];
+  const male = (i) => P.sex[i] === 1, female = (i) => P.sex[i] === 0, sorted = (arr, cmp) => arr.slice().sort(cmp);
+  const isAdult = (i) => P.age(i) >= P.adultAge(i);
+  const score = (i) => (P.stat(i, Npc.SI['判断力']) + P.stat(i, Npc.SI['洞察力']) + P.stat(i, Npc.SI['計画力']) + P.stat(i, Npc.SI['誠実性']) + P.stat(i, Npc.SI['社交性'])) / 5;
+  const byScore = (a, b) => score(b) - score(a);
+  const viaSister = (arr) => arr.filter(i => P.mother[i] !== NONE && K.sibAll.has(P.mother[i]) && P.sex[P.mother[i]] === 0);   // 姉妹の子（母系）
+  const viaBrother = (arr) => arr.filter(i => P.father[i] !== NONE && K.sibAll.has(P.father[i]) && P.sex[P.father[i]] === 1);   // 兄弟の子（父系）
+  const sonsLine = (arr) => arr.filter(i => P.father[i] === id || (P.father[i] !== NONE && male(P.father[i])));
+  let order = [], adultsOnly = false;
+  if (rule === 0) order = [sorted(K.kids, elder), sorted(K.grand, elder), sorted(K.sib, elder), sorted(K.nephews, elder)];
+  else if (rule === 1) order = [sorted(K.kids.filter(male), elder), sorted(K.grand.filter(i => male(i) && sonsLine([i]).length), elder), sorted(K.sib.filter(male), elder), sorted(viaBrother(K.nephews).filter(male), elder)];
+  else if (rule === 2) order = [sorted(K.kids, younger), sorted(K.grand, younger), sorted(K.sib, younger), sorted(K.nephews, younger)];
+  else if (rule === 3) order = female(id) ? [sorted(K.kids.filter(female), elder), sorted(viaSister(K.nephews).filter(female), elder), sorted(K.sib.filter(female), elder)] : [sorted(viaSister(K.nephews), elder), sorted(K.sib.filter(female), elder)];
+  else if (rule === 4) order = [sorted(K.sib, elder), sorted(K.kids, elder), sorted(K.nephews, elder)];
+  else if (rule === 5) { adultsOnly = true; const grp = []; for (let i = 0; i < P.n; i++) if (P.death[i] === ALIVE && P.group[i] === P.group[id] && i !== id && isAdult(i)) grp.push(i); order = [sorted(K.kids.concat(K.grand, K.sib, K.nephews).filter(isAdult), byScore), sorted(grp, byScore)]; }
+  else { adultsOnly = true; const d = people.player && people.player.designated; order = [d !== null && d !== undefined && P.death[d] === ALIVE ? [d] : [], sorted(K.kids.concat(K.grand, K.sib, K.nephews).filter(isAdult), byScore)]; }
+  // 決まりで見つからなければ、血縁をたどる（子→孫→きょうだい→きょうだいの子）。選出・指名は成人を優先する
+  order.push(sorted(K.kids, elder), sorted(K.grand, elder), sorted(K.sib, elder), sorted(K.nephews, elder));
+  const seen = new Set(), flat = []; for (const L of order) for (const i of L) if (!seen.has(i)) { seen.add(i); flat.push(i); }
+  const pick = adultsOnly ? (flat.find(isAdult) !== undefined ? flat.find(isAdult) : flat.find(i => P.age(i) >= 1)) : flat.find(i => P.age(i) >= 1);
+  return pick !== undefined ? { id: pick, rule, minor: !isAdult(pick) } : null;
+}
+function peopleCreatePlayer(people, sd) {
+  const P = people.npc, rng = peRng(sd ^ peHash('player')), cand = [];
+  for (let i = 0; i < P.n; i++) { if (P.death[i] !== ALIVE) continue; const a = P.age(i), e = P.eth[i] || P.groupEth[P.group[i]]; if (e === people.playerEth && a >= 20 && a < 35) cand.push(i); }
+  if (!cand.length) for (let i = 0; i < P.n; i++) if (P.death[i] === ALIVE && P.age(i) >= P.adultAge(i)) cand.push(i);
+  const id = cand.length ? cand[Math.floor(rng() * cand.length)] : -1;
+  people.player = { id, dynasty: id >= 0 ? [id] : [], gen: 1, lineage: 1, onExtinct: 'continue', designated: null, over: false, minorUntil: 0 };
+  return people.player;
+}
+// 毎月：プレイヤーの人物が亡くなっていたら、その文化の決まりで跡継ぎへ。いなければ、開始時の選択（続ける／ゲームオーバー）に従う
+function peopleSuccession(people, ev) {
+  const pl = people.player, P = people.npc; if (!pl || pl.over || pl.id < 0 || P.death[pl.id] === ALIVE) return;
+  const dead = pl.id, deadEth = P.eth[dead] || P.groupEth[P.group[dead]], h = peFindHeir(people, dead), at = { x: 0, y: 0 };
+  const gx = people.groups[P.group[dead] - 1]; if (gx) { at.x = gx.x; at.y = gx.y; }
+  if (h) {
+    pl.id = h.id; pl.gen++; pl.dynasty.push(h.id); pl.designated = null; pl.minorUntil = h.minor ? P.day + Math.ceil((P.adultAge(h.id) - P.age(h.id)) * 360) : 0;
+    ev.push({ type: 'playerSucceed', imp: 2, relevant: true, eth: deadEth, x: at.x, y: at.y, rule: h.rule, minor: h.minor, from: dead, to: h.id });
+    return;
+  }
+  if (pl.onExtinct === 'gameover') { pl.over = true; ev.push({ type: 'playerEnd', imp: 3, relevant: true, eth: deadEth, x: at.x, y: at.y, from: dead }); return; }
+  // 続ける：同じ集団の別の成人が、新しい一族の人物になる
+  // 同じ集団の成人 → 同じ民族の成人 → 世界の誰か、の順に探す（一番若い成人）
+  let best = -1;
+  for (const scope of [(i) => P.group[i] === P.group[dead], (i) => (P.eth[i] || P.groupEth[P.group[i]]) === deadEth, () => true]) {
+    for (let i = 0; i < P.n; i++) if (P.death[i] === ALIVE && scope(i) && P.age(i) >= P.adultAge(i) && (best < 0 || P.birth[i] > P.birth[best])) best = i;
+    if (best >= 0) break;
+  }
+  if (best < 0) { pl.over = true; ev.push({ type: 'playerEnd', imp: 3, relevant: true, eth: deadEth, x: at.x, y: at.y, from: dead }); return; }
+  pl.id = best; pl.lineage++; pl.gen = 1; pl.dynasty = [best]; pl.minorUntil = 0;
+  ev.push({ type: 'playerNewLine', imp: 2, relevant: true, eth: deadEth, x: at.x, y: at.y, from: dead, to: best });
+}
+// プレイヤーの人物の表示用の情報
+function peopleYou(people) {
+  const pl = people.player, P = people.npc; if (!pl || pl.id < 0) return null;
+  const id = pl.id, K = peKin(P, id), e = people.ethnicities[(P.eth[id] || P.groupEth[P.group[id]]) - 1];
+  return { id, age: Math.floor(P.age(id)), sex: P.sex[id] === 1 ? '男' : '女', eth: e ? e.id : 0, rule: e ? SUCCESSION[e.succession] : '', gen: pl.gen, lineage: pl.lineage, kids: K.kids.length, spouse: P.spouse[id] !== NONE, over: pl.over, minor: pl.minorUntil > P.day };
+}
+
 // ---------------------------------------------------------------- 集計：生きている人を1回走査して、集団ごとの数を出す
 function peStats(people) {
   const P = people.npc, ng = people.groups.length + 1, n = P.n;
@@ -5837,6 +5922,7 @@ function peopleGenerate(seed, W) {
     const s = sites[i];
     const eth = { id: people.nextEthId++, nameKey: '', langId: 0, family: 0, parent: 0, founded: 0, alive: true, color: null };
     eth.nameKey = 'eth:' + eth.id;
+    { const w = (peHash('succ' + eth.id + '/' + sd) % 1000) / 1000; let acc = 0, k = 0; for (; k < SUCC_W.length - 1; k++) { acc += SUCC_W[k]; if (w < acc) break; } eth.succession = k; }   // 継承の決まりは文化ごと［仮］
     eth.adultAge = 18 + (peHash('adult' + eth.id + '/' + sd) % 7) - 3;   // 成人の年齢は文化ごとに違う：15〜21歳（基本18歳）［仮］
     eth.color = peHsl((hue0 + i * 0.6180339887) % 1, 0.55 + 0.3 * rng(), 0.45 + 0.15 * rng());
     people.ethnicities.push(eth);
@@ -5858,16 +5944,28 @@ function peopleGenerate(seed, W) {
       const id = npc.addFounder(g.id, a + pr() * 0.999); npc.sex[id] = pr() < PE.SEX_RATIO ? 1 : 0;
     }
   }
-  // 初期の子どもには、同じ集団の年上の女性を母親（世帯）として割り当てる。大人は、それぞれ1人の世帯
+  // 初期の家族：成人の約75%を夫婦にし、35歳未満の人には、年の合う夫婦を親（と世帯）として割り当てる（きょうだいができる）。残りは1人の世帯
   for (const g of people.groups) {
-    const women = [], kids = [];
-    for (let i = 0; i < npc.n; i++) { if (npc.group[i] !== g.id) continue; const a = npc.age(i); if (npc.sex[i] === 0 && a >= 20 && a < 45) women.push(i); if (a < 14) kids.push(i); }
-    for (const i of kids) {
-      const a = npc.age(i), ok = women.filter(w => npc.age(w) - a >= 17 && npc.age(w) - a <= 42);
-      const m = (ok.length ? ok : women)[Math.floor(pr() * (ok.length ? ok.length : women.length))];
-      if (m !== undefined) { npc.mother[i] = m; npc.house[i] = m; }
+    const members = []; for (let i = 0; i < npc.n; i++) if (npc.group[i] === g.id) members.push(i);
+    const wom = members.filter(i => npc.sex[i] === 0 && npc.age(i) >= 18 && npc.age(i) < 50), men = members.filter(i => npc.sex[i] === 1 && npc.age(i) >= 18 && npc.age(i) < 55);
+    for (let k = wom.length - 1; k > 0; k--) { const j = Math.floor(pr() * (k + 1)); const t = wom[k]; wom[k] = wom[j]; wom[j] = t; }
+    const free = new Set(men), couples = [];
+    for (const w of wom) {
+      if (pr() > 0.75) continue;
+      const cands = []; for (const m of free) if (Math.abs(npc.age(m) - npc.age(w)) <= 8) cands.push(m);
+      if (!cands.length) continue;
+      const m = cands[Math.floor(pr() * cands.length)]; free.delete(m);
+      npc.spouse[w] = m; npc.spouse[m] = w; npc.house[w] = m; npc.house[m] = m; couples.push([w, m]);
     }
-    for (let i = 0; i < npc.n; i++) if (npc.group[i] === g.id && npc.house[i] === NONE) npc.house[i] = i;
+    const nk = new Map();
+    for (const i of members) {
+      const a = npc.age(i); if (a >= 35) continue;
+      const ok = couples.filter(([w, m]) => w !== i && m !== i && npc.spouse[i] !== w && npc.age(w) - a >= 17 && npc.age(w) - a <= 42 && (nk.get(w) || 0) < 8);
+      if (!ok.length) continue;
+      const [w, m] = ok[Math.floor(pr() * ok.length)]; npc.mother[i] = w; npc.father[i] = m; nk.set(w, (nk.get(w) || 0) + 1);
+      if (npc.spouse[i] === NONE) npc.house[i] = m;
+    }
+    for (const i of members) if (npc.house[i] === NONE) npc.house[i] = i;
   }
   // 環境に合わせて、仕事の必要度を決めてから、それまでの人生（職業・技能）を作る
   peStats(people);
@@ -5877,6 +5975,7 @@ function peopleGenerate(seed, W) {
   for (const g of people.groups) { const pl = peGroupPlan(people, g, ctx, S, sc, g.pop * 0.5, 0.3, 0.3, 0.3); peSetDemand(people, g, pl); g.food = peNeedOf(people.stat, g) * (PE.FOOD_INIT[0] + (PE.FOOD_INIT[1] - PE.FOOD_INIT[0]) * rng()); }
   npc.initFounders();
   peStats(people);
+  peopleCreatePlayer(people, sd);
   return people;
 }
 function peNewGroup(people, ethId, x, y) {
@@ -5990,6 +6089,7 @@ function peopleMonthly(people, ctx) {
   for (const g of alive) peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel);
   for (let d = 0; d < 30; d++) P.stepDay();   // 住民を30日進める（人ごとに月に1回判定。日付はずれている）
   peStats(people);
+  peopleSuccession(people, ev);   // プレイヤーの人物が亡くなっていれば、その文化の決まりで継承
   // 分裂
   for (const g of alive) {
     if (!g.alive || g.moveTo) continue;
@@ -6222,7 +6322,7 @@ function peopleSave(people) {
   const P = people.npc, n = P.n, cut = (a, per = 1) => a.slice(0, n * per);
   const pool = [], poolStart = [0]; for (let g = 0; g < P.groups; g++) { for (const v of P.pool[g]) pool.push(v); poolStart.push(pool.length); }
   const meta = { version: people.version, nextGroupId: people.nextGroupId, nextEthId: people.nextEthId, rngState: people.rngState, playerEth: people.playerEth,
-    ethnicities: people.ethnicities, groups: people.groups.map(g => Object.assign({}, g, { c6: undefined })), contacts: people.contacts, languages: people.languages,
+    ethnicities: people.ethnicities, groups: people.groups.map(g => Object.assign({}, g, { c6: undefined })), contacts: people.contacts, languages: people.languages, player: people.player,
     npc: { seed: P.seed, n, day: P.day, rng: P.rng, stats: P.stats, delta: Array.from(P.delta), focus: Array.from(P.focus), ethSecondary: Array.from(P.ethSecondary), groups: P.groups } };
   return { meta, birth: cut(P.birth), death: cut(P.death), sex: cut(P.sex), group: cut(P.group), mother: cut(P.mother), father: cut(P.father), spouse: cut(P.spouse), job: cut(P.job), flags: cut(P.flags),
     eth: cut(P.eth), house: cut(P.house), cause: cut(P.cause), groupEth: P.groupEth.slice(), skills: cut(P.skills, NSKILL), train: cut(P.train, Npc.NABIL), gdemand: P.gdemand.slice(), gflags: P.gflags.slice(), pool: Int32Array.from(pool), poolStart: Int32Array.from(poolStart),
@@ -6230,7 +6330,7 @@ function peopleSave(people) {
 }
 function peopleLoad(sv) {
   const m = sv.meta, people = { version: m.version, nextGroupId: m.nextGroupId, nextEthId: m.nextEthId, rngState: m.rngState, playerEth: m.playerEth, ethnicities: m.ethnicities,
-    groups: m.groups.map(g => Object.assign(g, { c6: [0, 0, 0, 0, 0, 0] })), contacts: m.contacts, languages: m.languages, npc: null, haz: null, stat: null };
+    groups: m.groups.map(g => Object.assign(g, { c6: [0, 0, 0, 0, 0, 0] })), contacts: m.contacts, languages: m.languages, player: m.player || null, npc: null, haz: null, stat: null };
   const n = m.npc.n, P = people.npc = new Population(m.npc.seed, m.npc.groups, Math.max(1024, n * 2));
   const put = (name, src, per = 1) => { P[name].set(src.subarray ? src.subarray(0, n * per) : src); };
   for (const k of ['birth', 'death', 'sex', 'group', 'mother', 'father', 'spouse', 'job', 'flags']) put(k, sv[k]);
@@ -6253,8 +6353,8 @@ function peopleEthCounts(people) {
   const P = people.npc, o = {}; for (let i = 0; i < P.n; i++) { if (P.death[i] !== ALIVE) continue; const e = P.eth[i] || P.groupEth[P.group[i]]; o[e] = (o[e] || 0) + 1; } return o;
 }
 
-if (typeof module !== 'undefined' && module.exports) module.exports = { peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
-else root.WohPeople = { peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+if (typeof module !== 'undefined' && module.exports) module.exports = { peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+else root.WohPeople = { peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
 <script>
@@ -7592,8 +7692,10 @@ function peopleNew() {
 }
 // 情報パネルの人口の表示（毎月・世界ができたとき・読み込んだとき）
 function peopleInfoUpdate() {
-  const a = document.getElementById('iPeople'), b = document.getElementById('iMine'); if (!a || !b) return;
-  if (!people) { a.textContent = '-'; b.textContent = '-'; return; }
+  const a = document.getElementById('iPeople'), b = document.getElementById('iMine'), c = document.getElementById('iYou'); if (!a || !b) return;
+  if (!people) { a.textContent = '-'; b.textContent = '-'; if (c) c.textContent = '-'; return; }
+  const y = WohPeople.peopleYou(people);
+  if (c) c.textContent = !y ? '-' : y.over ? '一族が絶えた（ゲームオーバー）' : `${y.sex}・${y.age}歳・第${y.gen}代・${y.rule}・${y.spouse ? '配偶者あり・' : ''}子${y.kids}人${y.minor ? '・未成年（後見つき）' : ''}`;
   const s = WohPeople.peopleSummary(people); a.textContent = `${Math.round(s.total).toLocaleString('ja-JP')}人・${s.groups}集団・${s.ethnicities}民族`;
   let mine = 0, mg = 0; for (const g of people.groups) if (g.alive && g.ethId === people.playerEth) { mine += g.pop; mg++; }
   b.textContent = mg ? `${peEthName(people.playerEth)}（${mg}集団・${Math.round(mine).toLocaleString('ja-JP')}人）` : `${peEthName(people.playerEth)}（絶えた）`;
@@ -7610,6 +7712,9 @@ const PE_EVENT_TEXT = {
   extinct: e => `${peEthName(e.eth)}の${peGrpName(e.group)}が全滅した`,
   ethExtinct: e => `${peEthName(e.eth)}が絶えた`,
   contact: e => `${peEthName(e.eth)}と${peEthName(e.eth2)}が初めて出会った`,
+  playerSucceed: e => `あなたの人物が亡くなった。${WohPeople.SUCCESSION[e.rule]}により、${e.minor ? '未成年の' : ''}跡継ぎが後を継いだ`,
+  playerNewLine: e => `あなたの一族が絶えた。別の一族の人物として続ける`,
+  playerEnd: e => `あなたの一族が絶えた。ゲームオーバー`,
 };
 function peopleMonthTick(month) {
   if (!people || !world) return;
