@@ -1,0 +1,15 @@
+import test from 'node:test';import assert from 'node:assert/strict';import * as engine from '../src/rocks/evolution.mjs';import {rockFixture} from './rock-fixtures.mjs';
+test('geological evolution is reproducible, deforms actual elevations and conserves separate material budgets',()=>{
+ const input=rockFixture('contact',16),copy=structuredClone(input),a=engine.evolveRockTerrain(input,{years:80000,steps:24}),b=engine.evolveRockTerrain(input,{years:80000,steps:24});assert.deepEqual(a.elevation,b.elevation);assert.deepEqual(input,copy);assert.ok(a.elevation.some((z,i)=>Math.abs(z-input.elevation[i])>1e-5));assert.ok(Math.abs(a.metrics.massRelativeError)<1e-10);assert.ok(Math.abs(a.metrics.waterRelativeError)<1e-10);assert.ok(a.remainingThicknessM.every(v=>Number.isFinite(v)&&v>=0));assert.ok(a.elevation.every(Number.isFinite));
+});
+test('resistance-only intervention has a causal effect on mechanical bed erosion',()=>{
+ const input=rockFixture('contact',20),o={years:10000,steps:64},a=engine.evolveRockTerrain(input,o),high=engine.evolveRockTerrain(input,{...o,intervention:{resistanceMultiplier:1.5,targetRockId:0}}),low=engine.evolveRockTerrain(input,{...o,intervention:{resistanceMultiplier:1/1.5,targetRockId:0}});assert.ok(high.metrics.mechanicalBedKgByRock[0]<a.metrics.mechanicalBedKgByRock[0]);assert.ok(low.metrics.mechanicalBedKgByRock[0]>a.metrics.mechanicalBedKgByRock[0]);
+});
+test('permeability and solubility independently enter the groundwater and chemical calculations',()=>{
+ const input=rockFixture('limestone',16),o={years:80000,steps:24},a=engine.evolveRockTerrain(input,o),p=engine.evolveRockTerrain(input,{...o,intervention:{permeabilityMultiplier:2}}),d=engine.evolveRockTerrain(input,{...o,intervention:{solubilityMultiplier:2,targetRockId:12}});assert.ok(p.metrics.infiltrationM3>a.metrics.infiltrationM3);assert.ok(p.metrics.surfaceRunoffM3<a.metrics.surfaceRunoffM3);assert.ok(d.metrics.dissolvedKg>a.metrics.dissolvedKg);assert.ok(Math.abs(d.metrics.massRelativeError)<1e-10);
+});
+test('a depleted upper layer exposes a lower rock and closed depressions route water without cycles',()=>{
+ const input=rockFixture('contact',12);for(let i=0;i<input.layerThicknessM.length;i+=3)input.layerThicknessM[i]=.0001;const a=engine.evolveRockTerrain(input,{years:10000,steps:8});assert.ok(a.topLayer.some(k=>k>0));assert.ok(a.exposedRockId.some(id=>id===9));const n=9,z=new Float64Array(n*n).fill(20),land=new Uint8Array(n*n).fill(1);z[40]=1;const route=engine.rockFlowRouting(z,land,n,n,40);assert.equal(route.order.length,n*n);assert.ok(route.receiver[40]>=0);assert.ok(Math.abs(a.metrics.massRelativeError)<1e-10);
+});
+
+test('explicit open border cells remain outlets instead of being rerouted inward',()=>{const n=5,z=new Float64Array(n*n).fill(10),land=new Uint8Array(n*n).fill(1);z[2]=100;assert.equal(engine.rockFlowRouting(z,land,n,n,40).receiver[2],-2);});
