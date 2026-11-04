@@ -68,16 +68,27 @@
 
   class Population {
     constructor(seed, groups, cap = 1024) {
-      this.seed = seed >>> 0; this.groups = groups; this.n = 0; this.cap = 0; this.day = 0;
+      this.seed = seed >>> 0; this.n = 0; this.cap = 0; this.day = 0;
       this.rng = (this.seed ^ 0xa5a5a5a5) >>> 0 || 1;
       this.delta = new Map();          // 性格の変化など（まれ）。key = id*64+項目 → 変化量
-      this.pool = Array.from({ length: groups }, () => []);   // 結婚相手候補の男性（遅延削除）
+      this.pool = [];   // 結婚相手候補の男性（遅延削除）
       this.focus = new Map();   // 重要人物
       this.stats = { births: 0, deaths: 0, marriages: 0, jobChanges: 0, retired: 0 };
-      this.gdemand = new Float32Array(groups * NJOB); this.gflags = new Uint8Array(groups); this.gcount = new Uint32Array(groups * NJOB); this.gwork = new Uint32Array(groups);
-      for (let g = 0; g < groups; g++) this.setGroup(g, {});
+      this.hazardFn = null; this.fertFn = null; this.onBirth = null; this.onDeath = null;   // 民族・集団の状況（飢え・寒さ・病気）を人の死亡・出産に反映するための関数
+      this.gdemand = new Float32Array(0); this.gflags = new Uint8Array(0); this.gcount = new Uint32Array(0); this.gwork = new Uint32Array(0); this.groups = 0;
+      this.ensureGroups(groups);
       this._alloc(cap);
     }
+    // 民族・集団の数を増やす（分裂で集団が増えるとき）
+    ensureGroups(n) {
+      if (n <= this.groups) return;
+      const g0 = this.groups, grow = (a, per) => { const b = new a.constructor(n * per); b.set(a); return b; };
+      this.gdemand = grow(this.gdemand, NJOB); this.gflags = grow(this.gflags, 1); this.gcount = grow(this.gcount, NJOB); this.gwork = grow(this.gwork, 1);
+      this.groups = n; while (this.pool.length < n) this.pool.push([]);
+      for (let g = g0; g < n; g++) this.setGroup(g, {});
+    }
+    // 別の集団へ移る（職業の人数の集計と、結婚候補の列を直す）
+    moveToGroup(i, g2) { const j = this.job[i]; if (j) this._setJob(i, 0); this.group[i] = g2; this.flags[i] &= ~1; if (j) this._setJob(i, j); }
     _alloc(cap) {
       const grow = (name, T, per, fill) => { const a = new T(cap * per); if (fill !== undefined) a.fill(fill); if (this[name]) a.set(this[name].subarray(0, this.n * per)); this[name] = a; };
       grow('birth', Int32Array, 1); grow('death', Int32Array, 1, ALIVE); grow('sex', Uint8Array, 1); grow('group', Uint16Array, 1);
@@ -138,7 +149,7 @@
       for (let j = 1; j < NJOB; j++) {
         if (!this._avail(j, fl) || d[j] <= 0) continue;
         const t = d[j] / tot, share = cnt[j] / work;
-        let v = Math.min(4, Math.max(0.05, t / (share + 0.02))) * Math.pow(0.15 + this.aptitude(i, j), 3) * Math.exp(4 * this.jobAppeal(w, j)) * (0.7 + 0.6 * this.random());
+        let v = Math.min(25, Math.max(0.02, Math.pow(t / (share + 0.02), 2))) * Math.pow(0.15 + this.aptitude(i, j), 3) * Math.exp(4 * this.jobAppeal(w, j)) * (0.7 + 0.6 * this.random());
         if (j === fj) v *= 1.6; if (j === cur) v *= 1.5;
         sc[j] = v; sum += v;
       }
@@ -220,8 +231,8 @@
     _visit(i) {
       if (this.death[i] !== ALIVE) return;
       const a = this.age(i);
-      const q = Population.qDeath(a), qm = 1 - Math.pow(1 - q, 1 / 12);
-      if (this.random() < qm) { this._die(i); return; }
+      const qm = this.hazardFn ? 1 - Math.exp(-this.hazardFn(a, this.group[i]) / 12) : 1 - Math.pow(1 - Population.qDeath(a), 1 / 12);
+      if (this.random() < qm) { if (this.onDeath) this.onDeath(i); this._die(i); return; }
       // 仕事：14歳で見習いとして職業を選ぶ／まれに転職／60歳以降に引退
       if (a >= 14 && !(this.flags[i] & 8)) {
         if (!(this.flags[i] & 2)) this._fillGen(i);
@@ -241,7 +252,7 @@
           const pl = this.pool[g];
           for (let t = 0; t < 4 && pl.length; t++) {
             const k = Math.floor(this.random() * pl.length), j = pl[k];
-            if (this.death[j] !== ALIVE || this.spouse[j] !== NONE) { pl[k] = pl[pl.length - 1]; pl.pop(); this.flags[j] &= ~1; continue; }
+            if (this.death[j] !== ALIVE || this.spouse[j] !== NONE || this.group[j] !== g) { pl[k] = pl[pl.length - 1]; pl.pop(); this.flags[j] &= ~1; continue; }
             const kin = this.mother[i] !== NONE && (this.mother[i] === this.mother[j] || this.father[i] === this.father[j]);
             if (kin || Math.abs(this.birth[i] - this.birth[j]) > 15 * YEAR) continue;
             pl[k] = pl[pl.length - 1]; pl.pop(); this.flags[j] &= ~1;
@@ -250,9 +261,10 @@
         }
         return;
       }
-      if (a < 42) {   // 既婚女性：出産（年に約17%）
-        if (this.random() < 1 - Math.pow(1 - 0.17, 1 / 12)) {
-          this._add(g, this.random() < .5 ? 0 : 1, this.day, i, this.spouse[i]); this.stats.births++;
+      {   // 既婚女性：出産（年あたりの出生率。fertFn があれば民族の食料の状況を反映）
+        const pf = this.fertFn ? this.fertFn(a, g) : (a < 42 ? 0.17 : 0);
+        if (pf > 0 && this.random() < pf / 12) {
+          this._add(g, this.random() < .5 ? 0 : 1, this.day, i, this.spouse[i]); this.stats.births++; if (this.onBirth) this.onBirth(g);
         }
       }
     }
