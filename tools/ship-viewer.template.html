@@ -8,9 +8,9 @@
 html,body{margin:0;height:100%;background:var(--bg);color:var(--tx);font:13px/1.35 -apple-system,"Hiragino Sans",sans-serif;overflow:hidden;-webkit-user-select:none;user-select:none}
 #app{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px max(8px,env(safe-area-inset-right)) 8px max(8px,env(safe-area-inset-left));height:100%}
 @media (orientation:portrait){#app{grid-template-columns:1fr;grid-template-rows:1fr 1fr;overflow:auto}html,body{overflow:auto}}
-.pn{background:var(--pn);border:1px solid var(--ln);border-radius:10px;padding:8px;display:flex;flex-direction:column;min-height:0;min-width:0}
+.pn{overflow-y:auto;background:var(--pn);border:1px solid var(--ln);border-radius:10px;padding:8px;display:flex;flex-direction:column;min-height:0;min-width:0}
 h2{margin:0 0 4px;font-size:13px;color:var(--ac);font-weight:600}
-canvas{width:100%;flex:1 1 0;min-height:90px;background:#0c1116;border-radius:6px;display:block}
+canvas{width:100%;flex:1 0 110px;min-height:110px;background:#0c1116;border-radius:6px;display:block}
 .row{display:flex;align-items:center;gap:6px;margin-top:1px}
 .row label{flex:0 0 7.5em;color:var(--mu);font-size:12px}
 .row input[type=range]{flex:1;min-width:0;height:20px}
@@ -36,6 +36,8 @@ button.on{background:var(--ac);color:#04202e;border-color:var(--ac)}
   <div class="row"><label>風の来る方位</label><input id="wd" type="range" min="0" max="359" step="1" value="0"><output id="wdO"></output></div>
   <div class="row"><label>目標方位</label><input id="hd" type="range" min="0" max="359" step="1" value="60"><output id="hdO"></output></div>
   <div class="btns"><button id="bSq">横帆</button><button id="bFa" class="on">縦帆</button><button id="bRun" class="on">動かす</button><button id="bRst">最初から</button><button id="bX2">倍速 ×1</button></div>
+  <div class="row"><label>櫂の出力（ガレー）</label><input id="oe" type="range" min="-100" max="100" step="5" value="80"><output id="oeO"></output></div>
+  <div class="btns"><button id="bShip">船：ガレオン</button><button id="bAnc">錨を下ろす</button><button id="bShoal">浅瀬：なし</button></div>
   <div class="btns"><button id="bMan">自動操舵</button><button id="bL" disabled>◀ 左舵</button><button id="bR" disabled>右舵 ▶</button><span style="color:var(--mu);font-size:12px;align-self:center">手動：ボタン長押し／←→キー</span></div>
   <div class="stats" id="st2"></div>
  </section>
@@ -101,26 +103,38 @@ function drawStability() {
 
 // ---------- navigation panel ----------
 let manual = false, held = 0, vessel = null, sailType = 'foreAndAft', running = true, speedX = 1, trail = [];
+let kind = 'galleon', shoal = false, notes = [];
+const galleyShip = Ship.createShip({ id: 'galley', hull: Ship.galleyHull(), massItems: Ship.galleyMassItems() });
+const galleyAnalysis = Ship.analyzeHydrostatics(galleyShip);
 function resetVessel() {
-  vessel = Ship.createVessel({ ship, analysis, rudder: { x: 0.5, areaM2: 6 }, sails: [{ id: 's', type: sailType, areaM2: 500, x: 21, zCe: 12 }] });
-  vessel.state.psi = +$('hd').value * DEG; vessel.state.u = 2; trail = [];
+  if (kind === 'galley') vessel = Ship.createVessel({ ship: galleyShip, analysis: galleyAnalysis, rudder: { x: 0.5, areaM2: 1.5 },
+    oars: [{ id: 'P', side: 'port', rowers: 50, x: 18 }, { id: 'S', side: 'starboard', rowers: 50, x: 18 }] });
+  else vessel = Ship.createVessel({ ship, analysis, rudder: { x: 0.5, areaM2: 6 }, sails: [{ id: 's', type: sailType, areaM2: 500, x: 21, zCe: 12 }] });
+  vessel.state.psi = +$('hd').value * DEG; vessel.state.u = 2; trail = []; notes = [];
+  $('bAnc').textContent = '錨を下ろす';
 }
-function env() { const from = +$('wd').value * DEG, sp = +$('ws').value; return { wind: { x: -Math.sin(from) * sp, y: -Math.cos(from) * sp } }; }
+const SHOAL_Y = 400, depthFn = (x, y) => (shoal && y > SHOAL_Y ? Math.max(0, 20 - (y - SHOAL_Y) * 0.05) : 20);
+const EVT = { grounded: '座礁した', refloated: '離礁した', anchor_dropped: '錨を下ろした', anchor_raised: '錨を上げた', anchor_dragging: '錨が走っている', anchor_parted: '錨索が切れた' };
+function env() { const from = +$('wd').value * DEG, sp = +$('ws').value; return { wind: { x: -Math.sin(from) * sp, y: -Math.cos(from) * sp }, depth: depthFn, seabed: 'sand' }; }
 let last = performance.now(), acc = 0, frame = 0;
 function drawNav() {
   const { g, w, h, k } = fit($('cNav')); g.clearRect(0, 0, w, h);
   const s = vessel.snapshot(), scale = 3.2 * k; // px per metre
   const cx = w / 2, cy = h / 2, P = (x, y) => [cx + (x - s.x) * scale, cy - (y - s.y) * scale];
+  if (shoal) { const y0 = P(0, SHOAL_Y)[1]; if (y0 > 0) { g.fillStyle = 'rgba(190,160,90,.22)'; g.fillRect(0, 0, w, Math.min(h, y0)); g.fillStyle = 'rgba(190,160,90,.6)'; g.fillRect(0, y0, w, 2 * k); } }
   g.strokeStyle = '#1b2a36'; g.lineWidth = k; const grid = 100;
   for (let gx = Math.floor((s.x - w / 2 / scale) / grid) * grid; gx < s.x + w / 2 / scale; gx += grid) { const a = P(gx, 0)[0]; g.beginPath(); g.moveTo(a, 0); g.lineTo(a, h); g.stroke(); }
   for (let gy = Math.floor((s.y - h / 2 / scale) / grid) * grid; gy < s.y + h / 2 / scale; gy += grid) { const a = P(0, gy)[1]; g.beginPath(); g.moveTo(0, a); g.lineTo(w, a); g.stroke(); }
   g.strokeStyle = 'rgba(76,194,255,.6)'; g.lineWidth = 2 * k; g.beginPath(); trail.forEach((p, i) => { const q = P(p[0], p[1]); i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]); }); g.stroke();
-  // ship (40 m long, 11 m beam)
-  g.save(); g.translate(cx, cy); g.rotate(vessel.state.psi); const L = 40 * scale, B = 10.8 * scale;
-  g.beginPath(); g.moveTo(0, -L / 2 - 4 * scale); g.quadraticCurveTo(B / 2 + 2 * scale, -L * 0.15, B / 2, L / 2 - 2 * scale); g.lineTo(-B / 2, L / 2 - 2 * scale); g.quadraticCurveTo(-B / 2 - 2 * scale, -L * 0.15, 0, -L / 2 - 4 * scale);
+  const A = vessel.state.anchor;
+  if (A) { const a = P(A.X, A.Y); g.strokeStyle = '#c9c9c9'; g.lineWidth = k; g.beginPath(); g.moveTo(cx, cy); g.lineTo(a[0], a[1]); g.stroke(); g.fillStyle = A.dragging ? '#ff6b6b' : '#e6edf3'; g.beginPath(); g.arc(a[0], a[1], 5 * k, 0, 7); g.fill(); }
+  // ship
+  g.save(); g.translate(cx, cy); g.rotate(vessel.state.psi); const L = vessel.params.waterlineLengthM * scale, B = vessel.params.beamM * scale;
+  g.beginPath(); g.moveTo(0, -L / 2 - 0.1 * L * 0.2); g.quadraticCurveTo(B / 2 + 2 * scale, -L * 0.15, B / 2, L / 2 - 2 * scale); g.lineTo(-B / 2, L / 2 - 2 * scale); g.quadraticCurveTo(-B / 2 - 2 * scale, -L * 0.15, 0, -L / 2 - 0.1 * L * 0.2);
   g.fillStyle = '#b8935c'; g.fill(); g.strokeStyle = '#e9cf9f'; g.lineWidth = 1.5 * k; g.stroke();
-  const sl = vessel.sails[0], th = sl.trimDeg * DEG, len = Math.sqrt(sl.areaM2) * 0.9 * scale * sl.deployed; // chord drawn at sail trim
-  g.strokeStyle = '#f4f4f4'; g.lineWidth = 3 * k; g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.sin(th) * len, Math.cos(th) * len); g.stroke();
+  const sl = vessel.sails[0];
+  if (sl) { const th = sl.trimDeg * DEG, len = Math.sqrt(sl.areaM2) * 0.9 * scale * sl.deployed; g.strokeStyle = '#f4f4f4'; g.lineWidth = 3 * k; g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.sin(th) * len, Math.cos(th) * len); g.stroke(); }
+  else { g.strokeStyle = '#e9cf9f'; g.lineWidth = k; for (let i = -8; i <= 8; i++) { const yy = i * L / 20; g.beginPath(); g.moveTo(-B / 2, yy); g.lineTo(-B / 2 - 0.6 * B, yy + 0.3 * B); g.moveTo(B / 2, yy); g.lineTo(B / 2 + 0.6 * B, yy + 0.3 * B); g.stroke(); } }
   g.restore();
   // wind arrow (direction the wind blows toward) at top-left
   const wf = +$('wd').value * DEG, ax = 40 * k, ay = 44 * k, wl = 26 * k;
@@ -132,21 +146,26 @@ function drawNav() {
   const f = vessel.forces(env());
   $('st2').innerHTML = `<span>速度</span><b>${fix(s.speedOverGround * 1.9438, 1)} kt</b><span>船首方位</span><b>${fix(s.headingDeg, 0)}°</b>` +
     `<span>傾斜</span><b class="${s.overpowered ? 'bad' : ''}">${fix(s.heelDeg, 1)}°${s.overpowered ? ' 強すぎ' : ''}</b><span>舵角</span><b>${fix(s.rudderDeg, 1)}°</b>` +
-    `<span>横流れ</span><b>${fix(f.leewayDeg, 1)}°</b><span>帆の角度</span><b>${fix(sl.trimDeg, 0)}°</b><span>経過</span><b>${fix(s.time, 0)} s</b><span></span><b></b>`;
+    `<span>横流れ</span><b>${fix(f.leewayDeg, 1)}°</b><span>${sl ? '帆の角度' : '櫂の体力'}</span><b>${sl ? fix(sl.trimDeg, 0) + '°' : fix(s.stamina * 100, 0) + '%'}</b><span>経過</span><b>${fix(s.time, 0)} s</b><span>水深余裕</span><b class="${f.clearanceM < 0 ? 'bad' : ''}">${fix(f.clearanceM, 1)} m</b>` +
+    `<span>状態</span><b class="${s.aground || s.anchorDragging ? 'bad' : ''}" style="grid-column:span 3">${s.aground ? '座礁中 ' : ''}${s.anchored ? (s.anchorDragging ? '走錨中' : '錨泊中') : ''}${notes.slice(-1).map((n) => ' ／ ' + n).join('')}</b>`;
 }
 function tick(now) {
   const dt = Math.min((now - last) / 1000, 0.1); last = now;
-  if (running) { acc += dt * speedX; let n = 0; while (acc >= 0.1 && n++ < 40) { acc -= 0.1; if (frame++ % 10 === 0) vessel.autoTrim(env()); if (manual) vessel.setRudder(held * 25); else vessel.steerTowards(+$('hd').value); vessel.step(0.1, env()); if (frame % 5 === 0) { trail.push([vessel.state.X, vessel.state.Y]); if (trail.length > 1500) trail.shift(); } } }
+  if (running) { acc += dt * speedX; let n = 0; while (acc >= 0.1 && n++ < 40) { acc -= 0.1; if (frame++ % 10 === 0) vessel.autoTrim(env()); if (kind === 'galley') vessel.setAllOarEffort(+$('oe').value / 100); if (manual) vessel.setRudder(held * 25); else vessel.steerTowards(+$('hd').value); vessel.step(0.1, env()); for (const ev of vessel.takeEvents()) { if (EVT[ev.type]) notes.push(EVT[ev.type] + ` (${ev.time.toFixed(0)}s)`); } if (frame % 5 === 0) { trail.push([vessel.state.X, vessel.state.Y]); if (trail.length > 1500) trail.shift(); } } }
   drawNav(); requestAnimationFrame(tick);
 }
 // ---------- wiring ----------
-function out() { $('wsO').textContent = $('ws').value + ' m/s'; $('wdO').textContent = $('wd').value + '°'; $('hdO').textContent = $('hd').value + '°'; }
+function out() { $('oeO').textContent = $('oe').value + '%'; $('wsO').textContent = $('ws').value + ' m/s'; $('wdO').textContent = $('wd').value + '°'; $('hdO').textContent = $('hd').value + '°'; }
 ['gun', 'heel'].forEach((id) => $(id).addEventListener('input', () => { if (id === 'gun') { buildShip(); resetVessel(); } drawStability(); }));
-['ws', 'wd', 'hd'].forEach((id) => $(id).addEventListener('input', out));
+['ws', 'wd', 'hd', 'oe'].forEach((id) => $(id).addEventListener('input', out));
 const setType = (t) => { sailType = t; $('bSq').classList.toggle('on', t === 'square'); $('bFa').classList.toggle('on', t === 'foreAndAft'); resetVessel(); };
 $('bSq').onclick = () => setType('square'); $('bFa').onclick = () => setType('foreAndAft');
 $('bRun').onclick = () => { running = !running; $('bRun').classList.toggle('on', running); $('bRun').textContent = running ? '動かす' : '止めた'; };
 $('bRst').onclick = resetVessel;
+$('bShip').onclick = () => { kind = kind === 'galleon' ? 'galley' : 'galleon'; $('bShip').textContent = '船：' + (kind === 'galley' ? 'ガレー' : 'ガレオン'); $('bSq').disabled = $('bFa').disabled = kind === 'galley'; $('oe').disabled = kind !== 'galley'; resetVessel(); };
+$('oe').disabled = true;
+$('bShoal').onclick = () => { shoal = !shoal; $('bShoal').classList.toggle('on', shoal); $('bShoal').textContent = '浅瀬：' + (shoal ? 'あり（北400m〜）' : 'なし'); };
+$('bAnc').onclick = () => { if (vessel.state.anchor) { vessel.raiseAnchor(); $('bAnc').textContent = '錨を下ろす'; } else { const r = vessel.dropAnchor(env(), { anchorKg: 400, rodeM: 60 }); if (r.status === 'ok') $('bAnc').textContent = '錨を上げる'; else notes.push('投錨できない: ' + r.status); } for (const ev of vessel.takeEvents()) if (EVT[ev.type]) notes.push(EVT[ev.type]); };
 $('bX2').onclick = () => { speedX = speedX === 1 ? 4 : speedX === 4 ? 10 : 1; $('bX2').textContent = '倍速 ×' + speedX; };
 const setManual = (m) => { manual = m; held = 0; $('bMan').classList.toggle('on', m); $('bMan').textContent = m ? '手動操舵' : '自動操舵'; $('bL').disabled = $('bR').disabled = !m; $('hd').disabled = m; };
 $('bMan').onclick = () => setManual(!manual);
