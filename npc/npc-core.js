@@ -42,6 +42,9 @@
   ];
   JOBS.forEach((j) => { for (const key of ['train', 'apt']) if (j[key]) j[key] = j[key].map(([n, w]) => { if (!(n in SI)) throw new Error('項目名が不明: ' + n); return [SI[n], w]; }); });
   const J_FARM = 9, J_HERD = 10, J_TRADE = 11;
+  // 仕事以外の活動で伸びる能力（プレイヤーが選べる「学ぶ」「体を鍛える」）
+  const ACT_TRAIN = { study: [['学習力', 1], ['洞察力', .6], ['記憶力', .6], ['計画力', .4]], body: [['筋力', 1], ['持久力', 1], ['敏捷性', .7], ['瞬発力', .7]] };
+  for (const k in ACT_TRAIN) ACT_TRAIN[k] = ACT_TRAIN[k].map(([n, w]) => [SI[n], w]);
 
   // ---- 欲求（資料の第6章）：生まれつきの強さは性格から計算（保存しない）。仕事が満たす度合い（JOB_APPEAL）は仮の値
   const NEEDS = ['生存・安全', '家族', '財産', '権力・地位', '信仰・思想', '知識', '自由'];
@@ -75,10 +78,25 @@
       this.focus = new Map();   // 重要人物
       this.stats = { births: 0, deaths: 0, marriages: 0, jobChanges: 0, retired: 0 };
       this.groupEth = new Uint16Array(0); this.ethSecondary = new Map(); this.adultAgeFn = null; this.pendingCause = 0;
+      this.actId = -1; this.actKind = 'auto'; this.actJob = 0;   // プレイヤーの人物の今の活動（auto／work／gather／hunt／fish／study／body／family）。actJob＝活動が食料の仕事のときの職業番号
       this.hazardFn = null; this.fertFn = null; this.onBirth = null; this.onDeath = null;   // 民族・集団の状況（飢え・寒さ・病気）を人の死亡・出産に反映するための関数
       this.gdemand = new Float32Array(0); this.gflags = new Uint8Array(0); this.gcount = new Uint32Array(0); this.gwork = new Uint32Array(0); this.groups = 0;
       this.ensureGroups(groups);
       this._alloc(cap);
+    }
+    // 結婚相手を探す（プレイヤーの人物が「家族」の活動を選んだとき）：同じ集団の、親族でない、異性の独身の成人。見つかれば結婚する
+    _seekPartner(i, a) {
+      const g = this.group[i], cand = [];
+      for (let j = 0; j < this.n; j++) {
+        if (j === i || this.death[j] !== ALIVE || this.group[j] !== g || this.sex[j] === this.sex[i] || this.spouse[j] !== NONE) continue;
+        if (this.age(j) < this.adultAge(j) || Math.abs(this.birth[i] - this.birth[j]) > 15 * YEAR) continue;
+        if ((this.mother[i] !== NONE && this.mother[i] === this.mother[j]) || (this.father[i] !== NONE && this.father[i] === this.father[j]) || this.mother[i] === j || this.father[i] === j || this.mother[j] === i || this.father[j] === i) continue;
+        cand.push(j);
+      }
+      if (!cand.length) return false;
+      const j = cand[Math.floor(this.random() * cand.length)], m = this.sex[i] === 1 ? i : j, w = this.sex[i] === 1 ? j : i;
+      this.spouse[m] = w; this.spouse[w] = m; this.house[m] = m; this.house[w] = m; this.stats.marriages++;
+      return true;
     }
     // 民族の確定：育った集団の民族。両親の民族が違えば副次的な帰属に残す
     _assignEth(i) {
@@ -230,19 +248,26 @@
     static qDeath(a) { return a < 1 ? 0.20 : a < 5 ? 0.04 : a < 15 ? 0.008 : 0.005 + 0.0003 * Math.exp(0.09 * a); }
     _die(i, cause) { this.death[i] = this.day; this.cause[i] = cause || this.pendingCause || 1; this.pendingCause = 0; this.stats.deaths++; this._setJob(i, 0); const s = this.spouse[i]; if (s !== NONE && this.spouse[s] === i) this.spouse[s] = NONE; this.spouse[i] = NONE; }
     _work(i, a) {
-      // 訓練：仕事で使う能力が伸びる（見習いの間は半分）
-      const j = this.job[i], rate = a < 16 ? 0.5 : 1, ag = a < 30 ? 1 : a < 50 ? 0.6 : 0.3;
-      for (const [k, w] of JOBS[j].train) {
+      // 訓練：仕事で使う能力が伸びる（見習いの間は半分）。プレイヤーの人物は、選んだ活動で伸びる
+      let train, skill = -1;
+      if (i === this.actId && this.actKind !== 'auto' && this.actKind !== 'work') {
+        if (this.actJob) { train = JOBS[this.actJob].train; skill = this.actJob - 1; }
+        else if (ACT_TRAIN[this.actKind]) train = ACT_TRAIN[this.actKind];
+        else return;   // 家族との時間：訓練しない
+      } else { const j = this.job[i]; train = JOBS[j].train; skill = j - 1; }
+      const focus = i === this.actId && ACT_TRAIN[this.actKind] ? 6 : 1;   // 学ぶ・体を鍛えるに専念している間は、仕事の合間の訓練の6倍［仮］
+      const rate = (a < this.adultAge(i) - 2 ? 0.5 : 1) * focus, ag = a < 30 ? 1 : a < 50 ? 0.6 : 0.3;
+      for (const [k, w] of train) {
         const ab = k - NP, cur = this.stat(i, k), pot = this.potential(i, ab);
         const x = this._round(growthExpected(cur, pot, 0.1 * w * rate * ag)), idx = i * NABIL + ab;
         if (x) this.train[idx] = Math.min(127, this.train[idx] + x);
       }
-      this.practice(i, j - 1, 1, rate);
+      if (skill >= 0) this.practice(i, skill, 1, rate);
     }
     _visit(i) {
       if (this.death[i] !== ALIVE) return;
       const a = this.age(i);
-      const qm = this.hazardFn ? 1 - Math.exp(-this.hazardFn(a, this.group[i]) / 12) : 1 - Math.pow(1 - Population.qDeath(a), 1 / 12);
+      const qm = this.hazardFn ? 1 - Math.exp(-this.hazardFn(a, this.group[i], i) / 12) : 1 - Math.pow(1 - Population.qDeath(a), 1 / 12);
       if (a >= 120) { this._die(i, 1); return; }   // 寿命の上限
       if (this.random() < qm) { if (this.onDeath) this.onDeath(i); this._die(i); return; }
       if (!this.eth[i] && a >= 12) this._assignEth(i);   // 12歳：育った集団の民族になる（親の民族は副次的な帰属として残る）
@@ -253,10 +278,11 @@
         if (!(this.flags[i] & 4)) { const j = this.pickJob(i); if (j) { this._setJob(i, j); } this.flags[i] |= 4; }
         else if (a >= 60 && this.random() < 0.03) { this._setJob(i, 0); this.flags[i] |= 8; this.stats.retired++; }
         else if (this.job[i] && a < 50 && this.random() < 0.003) { const j = this.pickJob(i); if (j && j !== this.job[i]) { this._setJob(i, j); this.stats.jobChanges++; } }
-        if (this.job[i]) this._work(i, a);
+        if (this.job[i] || (i === this.actId && this.actKind !== 'auto' && this.actKind !== 'work')) this._work(i, a);
       }
       if (a < adult) return;
       const g = this.group[i];
+      if (i === this.actId && this.actKind === 'family' && this.spouse[i] === NONE && this.random() < 0.3 && this._seekPartner(i, a)) return;   // 家族の時間：結婚相手を探す
       if (this.sex[i] === 1) {   // 男性：結婚候補の列に入る
         if (!(this.flags[i] & 1) && this.spouse[i] === NONE) { this.flags[i] |= 1; this.pool[g].push(i); }
         return;
@@ -276,7 +302,7 @@
         return;
       }
       {   // 既婚女性：出産（年あたりの出生率。fertFn があれば民族の食料の状況を反映）
-        const pf = this.fertFn ? this.fertFn(a, g) : (a < 42 ? 0.17 : 0);
+        const pf = this.fertFn ? this.fertFn(a, g, i) : (a < 42 ? 0.17 : 0);
         if (pf > 0 && this.random() < pf / 12) {
           const c = this._add(g, this.random() < .5 ? 0 : 1, this.day, i, this.spouse[i]); this.house[c] = this.house[i]; this.stats.births++; if (this.onBirth) this.onBirth(g);
         }
@@ -301,6 +327,6 @@
       return { personality: Int32Array.from(pairs), train: Int32Array.from(tr), skills: Int32Array.from(sk) };
     }
   }
-  const api = { NEEDS, JOB_APPEAL, Population, STAT_NAMES, PERSONALITY, COGNITIVE, PHYSICAL, NSTAT, NP, NABIL, NJOB, NSKILL, JOBS, SI, ageFactor, growthExpected, mix, bell, YEAR, MONTH };
+  const api = { ACT_TRAIN, NEEDS, JOB_APPEAL, Population, STAT_NAMES, PERSONALITY, COGNITIVE, PHYSICAL, NSTAT, NP, NABIL, NJOB, NSKILL, JOBS, SI, ageFactor, growthExpected, mix, bell, YEAR, MONTH };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohNpc = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
