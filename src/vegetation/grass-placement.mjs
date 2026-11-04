@@ -1,5 +1,5 @@
 /** One configurable type today; additional types can reuse placement and rendering. */
-export const SHORT_GRASS=Object.freeze({id:'short-grass-v1',minHeightM:.2,maxHeightM:.35,spacingM:.7,radiusM:32,fadeStartM:16,fadeEndM:24,maxInstances:7000,maxSlopeDegrees:30});
+export const SHORT_GRASS=Object.freeze({id:'upright-grass-v2',minHeightM:.15,maxHeightM:.45,spacingM:.45,radiusM:26,fadeStartM:12,fadeEndM:20,maxInstances:10000,maxSlopeDegrees:30});
 const grassBiomes=Object.freeze({4:.4,5:.85,6:.6,7:.5,9:.45,10:.55,11:.35,13:.6});
 export function grassDensityForBiome(biome){return grassBiomes[biome]??0;}
 function grassSeed(seed){let h=2166136261;for(const c of String(seed))h=Math.imul(h^c.charCodeAt(0),16777619);return h>>>0;}

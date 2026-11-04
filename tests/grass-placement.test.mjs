@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import * as
 const terrain={widthM:1000,heightM:1000,sampleBase:(x,y)=>({land:true,water:0,biome:5,baseElevationM:20,slopeDegrees:0})};
 const ground=(x,y)=>({elevationM:20+x*.01+y*.02,slopeDegrees:2,waterDepthM:0,waterSurfaceM:null});
 test('below-knee grass is deterministic, bounded and extensible by type',()=>{
- const a=grass.generateGrassPatch(terrain,ground,500,500,'alpha'),b=grass.generateGrassPatch(terrain,ground,500,500,'alpha'),c=grass.generateGrassPatch(terrain,ground,500,500,'beta');assert.deepEqual(a,b);assert.notDeepEqual(a,c);assert.ok(a.length>1000&&a.length<=7000);for(const p of a){assert.ok(p.heightM>=.2&&p.heightM<=.35);assert.ok(Math.hypot(p.xM-500,p.yM-500)<=32);assert.ok(Math.abs(p.elevationM-ground(p.xM,p.yM).elevationM)<1e-9);}
+ const a=grass.generateGrassPatch(terrain,ground,500,500,'alpha'),b=grass.generateGrassPatch(terrain,ground,500,500,'alpha'),c=grass.generateGrassPatch(terrain,ground,500,500,'beta');assert.deepEqual(a,b);assert.notDeepEqual(a,c);assert.ok(a.length>7500&&a.length<=10000);for(const p of a){assert.ok(p.heightM>=.15&&p.heightM<=.45);assert.ok(Math.hypot(p.xM-500,p.yM-500)<=26);assert.ok(Math.abs(p.elevationM-ground(p.xM,p.yM).elevationM)<1e-9);}
  const short={...grass.SHORT_GRASS,minHeightM:.1,maxHeightM:.15};assert.ok(grass.generateGrassPatch(terrain,ground,500,500,'alpha',short).every(p=>p.heightM>=.1&&p.heightM<=.15));
 });
 test('grass does not appear in water, desert, snow, salt or steep terrain',()=>{
@@ -14,4 +14,9 @@ test('grass does not appear in water, desert, snow, salt or steep terrain',()=>{
 test('overlapping patches retain the same plants and clip at world boundaries',()=>{
  const a=grass.generateGrassPatch(terrain,ground,500,500,'alpha'),b=grass.generateGrassPatch(terrain,ground,508,500,'alpha'),map=new Map(a.map(p=>[p.key,p]));let shared=0;for(const p of b)if(map.has(p.key)){assert.deepEqual(p,map.get(p.key));shared++;}assert.ok(shared>1000);
  const edge=grass.generateGrassPatch(terrain,ground,0,0,'a');assert.ok(edge.every(p=>p.xM>=0&&p.yM>=0&&p.xM<=1000&&p.yM<=1000));
+});
+
+test('untrimmed grass has a visibly broad mix of short and tall tufts',()=>{
+ const plants=grass.generateGrassPatch(terrain,ground,500,500,'alpha'),heights=plants.map(p=>p.heightM),mean=heights.reduce((a,b)=>a+b,0)/heights.length;
+ const sd=Math.sqrt(heights.reduce((a,b)=>a+(b-mean)**2,0)/heights.length);assert.ok(sd>.07);assert.ok(heights.filter(h=>h<.21).length>heights.length*.1);assert.ok(heights.filter(h=>h>.39).length>heights.length*.1);
 });
