@@ -249,7 +249,7 @@ function findDryPoint(terrain,world){
     }
     if(!dry)continue;
     const p=terrain.sampleBase(point.xM,point.yM);
-    if(p.baseElevationM>10 && p.baseElevationM<1800 && p.slopeDegrees<15){best=point;bestDistance=distance;}
+    if(p.baseElevationM>10*terrain.elevationScale && p.baseElevationM<1800*terrain.elevationScale && p.slopeDegrees<15){best=point;bestDistance=distance;}
   }
   if(best)return best;
   throw new Error('検証用の乾いた地点が見つかりません。別のSeedを試してください。');

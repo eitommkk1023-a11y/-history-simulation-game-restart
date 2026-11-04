@@ -14,6 +14,8 @@ export function createWorldTerrain(world, options = {}) {
   if (!world || typeof world !== 'object') throw new TypeError('Expected a generated world');
   const width = options.width ?? world.stats?.width ?? 3000;
   const height = options.height ?? world.stats?.height ?? 3000;
+  const elevationScale = options.elevationScale ?? 1;
+  if (!(finite('elevationScale',elevationScale)>0)) throw new RangeError('elevationScale must be positive');
   const metersPerCell = options.metersPerCell ?? (world.geology?.kmPerBlock ?? 3.33)*1000;
   if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 2 || height < 2 ||
       !Number.isSafeInteger(width*height)) throw new RangeError('Expected grid dimensions >= 2');
@@ -70,10 +72,10 @@ export function createWorldTerrain(world, options = {}) {
     // The last node belongs to the last interval: preserve the edge slope.
     const x0=Math.min(width-2,Math.floor(p.x)),y0=Math.min(height-2,Math.floor(p.y));
     const u=p.x-x0,v=p.y-y0;
-    const a=finite('elevation',world.elev[y0*width+x0]);
-    const b=finite('elevation',world.elev[y0*width+x0+1]);
-    const c=finite('elevation',world.elev[(y0+1)*width+x0]);
-    const d=finite('elevation',world.elev[(y0+1)*width+x0+1]);
+    const a=finite('elevation',world.elev[y0*width+x0])*elevationScale;
+    const b=finite('elevation',world.elev[y0*width+x0+1])*elevationScale;
+    const c=finite('elevation',world.elev[(y0+1)*width+x0])*elevationScale;
+    const d=finite('elevation',world.elev[(y0+1)*width+x0+1])*elevationScale;
     const baseElevationM=mix(mix(a,b,u),mix(c,d,u),v);
     const dx=mix(b-a,d-c,v)/metersPerCell,dy=mix(c-a,d-b,u)/metersPerCell;
     const length=Math.hypot(dx,1,dy);
@@ -81,11 +83,11 @@ export function createWorldTerrain(world, options = {}) {
     const land=world.type[index]!==0,water=world.water[index];
     const lake=world.lakeId?.[index] ?? 0;
     const level=water===2 && lake>0 ? world.lakeLevels?.[lake] : undefined;
-    const waterSurfaceElevationM=!land ? 0 : Number.isFinite(level) ? level : null;
+    const waterSurfaceElevationM=!land ? 0 : Number.isFinite(level) ? level*elevationScale : null;
     return {xM,yM,baseElevationM,normal:{x:-dx/length,y:1/length,z:-dy/length},
       slopeDegrees:Math.atan(Math.hypot(dx,dy))*180/Math.PI,
       source:{x,y,index},land,water,biome:world.biome[index],waterSurfaceElevationM};
   }
-  return Object.freeze({coordinateVersion:'woh-grid-nodes-v1',width,height,metersPerCell,widthM,heightM,
+  return Object.freeze({coordinateVersion:'woh-grid-nodes-v1',width,height,metersPerCell,elevationScale,widthM,heightM,
     gridToMeters,metersToGrid,metersToOverview,overviewToMeters,toLocal,fromLocal,sampleBase});
 }
