@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>船舶システム 確認画面</title>
+<style>
+:root{--bg:#10161c;--pn:#1a232c;--ln:#2e3b47;--tx:#e6edf3;--mu:#8da0b0;--ac:#4cc2ff;--ok:#5fd38d;--wn:#ffb454;--bd:#ff6b6b}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--tx);font:13px/1.35 -apple-system,"Hiragino Sans",sans-serif;overflow:hidden;-webkit-user-select:none;user-select:none}
+#app{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px max(8px,env(safe-area-inset-right)) 8px max(8px,env(safe-area-inset-left));height:100%}
+@media (orientation:portrait){#app{grid-template-columns:1fr;grid-template-rows:1fr 1fr;overflow:auto}html,body{overflow:auto}}
+.pn{background:var(--pn);border:1px solid var(--ln);border-radius:10px;padding:8px;display:flex;flex-direction:column;min-height:0;min-width:0}
+h2{margin:0 0 4px;font-size:13px;color:var(--ac);font-weight:600}
+canvas{width:100%;flex:1 1 0;min-height:90px;background:#0c1116;border-radius:6px;display:block}
+.row{display:flex;align-items:center;gap:6px;margin-top:1px}
+.row label{flex:0 0 7.5em;color:var(--mu);font-size:12px}
+.row input[type=range]{flex:1;min-width:0;height:20px}
+.row output{flex:0 0 4.6em;text-align:right;font-variant-numeric:tabular-nums}
+.stats{display:grid;grid-template-columns:repeat(4,auto);gap:2px 10px;margin-top:4px;font-size:12px}
+.stats span{color:var(--mu)}.stats b{font-weight:600;font-variant-numeric:tabular-nums}
+button{background:#25323d;color:var(--tx);border:1px solid var(--ln);border-radius:8px;padding:3px 9px;font-size:13px;min-height:30px}
+button.on{background:var(--ac);color:#04202e;border-color:var(--ac)}
+.btns{display:flex;gap:6px;margin-top:3px;flex-wrap:wrap}
+.warn{color:var(--wn)}.bad{color:var(--bd)}.good{color:var(--ok)}
+</style></head><body>
+<div id="app">
+ <section class="pn"><h2>安定性（静水中・仮のガレオン風）</h2>
+  <canvas id="cSec"></canvas><canvas id="cGz" style="flex:.8 1 0"></canvas>
+  <div class="row"><label>大砲の高さ</label><input id="gun" type="range" min="3" max="12" step="0.25" value="6"><output id="gunO"></output></div>
+  <div class="row"><label>見る傾斜角</label><input id="heel" type="range" min="-90" max="90" step="1" value="0"><output id="heelO"></output></div>
+  <div class="stats" id="st1"></div>
+ </section>
+ <section class="pn"><h2>航行（上から見た図）</h2>
+  <canvas id="cNav"></canvas>
+  <div class="row"><label>風速（m/s）</label><input id="ws" type="range" min="0" max="25" step="0.5" value="10"><output id="wsO"></output></div>
+  <div class="row"><label>風の来る方位</label><input id="wd" type="range" min="0" max="359" step="1" value="0"><output id="wdO"></output></div>
+  <div class="row"><label>目標方位</label><input id="hd" type="range" min="0" max="359" step="1" value="60"><output id="hdO"></output></div>
+  <div class="btns"><button id="bSq">横帆</button><button id="bFa" class="on">縦帆</button><button id="bRun" class="on">動かす</button><button id="bRst">最初から</button><button id="bX2">倍速 ×1</button></div>
+  <div class="stats" id="st2"></div>
+ </section>
+</div>
+<script>
+const M_hull_geometry = (() => {
+/**
+ * World of History ship system: physics hull geometry (independent prototype).
+ * Ship-fixed frame, SI units:
+ *   x = longitudinal (m, positive forward), y = transverse (m, positive starboard),
+ *   z = vertical (m, positive up, 0 = baseline / lowest keel reference).
+ * The hull is defined by transverse stations (half-breadth b at height z).
+ * Between control points interpolation is linear, so intentional chines are kept.
+ * This geometry is for buoyancy/physics only and is separate from any render mesh.
+ * Asymmetric hulls, multihulls and outriggers are NOT supported yet.
+ */
+const EPS = 1e-9;
+const lerp = (a, b, w) => a + (b - a) * w;
+
+function assertFinite(v, name) {
+  if (!Number.isFinite(v)) throw new TypeError(`${name} must be a finite number`);
+}
+
+function validateStations(stations) {
+  if (!Array.isArray(stations) || stations.length < 2) throw new TypeError('hull.stations needs at least 2 stations');
+  stations.forEach((st, i) => {
+    assertFinite(st?.x, `stations[${i}].x`);
+    if (i && st.x <= stations[i - 1].x) throw new RangeError('stations must be sorted by strictly increasing x');
+    if (!Array.isArray(st.points) || st.points.length < 2) throw new TypeError(`stations[${i}] needs at least 2 points`);
+    st.points.forEach((p, j) => {
+      assertFinite(p?.z, `stations[${i}].points[${j}].z`);
+      assertFinite(p?.b, `stations[${i}].points[${j}].b`);
+      if (p.b < 0) throw new RangeError('half-breadth b must be >= 0');
+      if (j && p.z <= st.points[j - 1].z) throw new RangeError('station points must have strictly increasing z');
+    });
+  });
+}
+
+/** Half-breadth of a profile at height z: 0 below its keel, top breadth above its top. */
+function breadthAtZ(points, z) {
+  if (z < points[0].z - EPS) return 0;
+  const top = points[points.length - 1];
+  if (z >= top.z) return top.b;
+  for (let i = 1; i < points.length; i++) {
+    if (z <= points[i].z) {
+      const a = points[i - 1], c = points[i];
+      return lerp(a.b, c.b, (z - a.z) / (c.z - a.z));
+    }
+  }
+  return top.b;
+}
+
+/** Closed section polygon [[y, z], ...] (starboard upward, then port downward). */
+function sectionPolygon(profile) {
+  const poly = [];
+  if (profile[0].b > EPS) poly.push([0, profile[0].z]);
+  for (const p of profile) poly.push([p.b, p.z]);
+  for (let i = profile.length - 1; i >= 0; i--) poly.push([-profile[i].b, profile[i].z]);
+  return poly;
+}
+
+function createHull({ stations } = {}) {
+  validateStations(stations);
+  const st = stations.map((s) => Object.freeze({ x: s.x, points: Object.freeze(s.points.map((p) => Object.freeze({ z: p.z, b: p.b }))) }));
+  const xMin = st[0].x, xMax = st[st.length - 1].x;
+  const sliceCache = new Map();
+
+  function sectionAt(x) {
+    if (!(x >= xMin && x <= xMax)) return null;
+    let i = 0;
+    while (i < st.length - 2 && x > st[i + 1].x) i++;
+    const A = st[i].points, B = st[i + 1].points, w = (x - st[i].x) / (st[i + 1].x - st[i].x);
+    const zKeel = lerp(A[0].z, B[0].z, w), zTop = lerp(A[A.length - 1].z, B[B.length - 1].z, w);
+    const zs = new Set([zKeel, zTop]);
+    for (const p of [...A, ...B]) if (p.z > zKeel && p.z < zTop) zs.add(p.z);
+    return [...zs].sort((a, b) => a - b).map((z) => ({ z, b: lerp(breadthAtZ(A, z), breadthAtZ(B, z), w) }));
+  }
+
+  /** Midpoint slices along x, cached per count. */
+  function slices(count = 80) {
+    if (!Number.isInteger(count) || count < 2) throw new RangeError('slice count must be an integer >= 2');
+    if (!sliceCache.has(count)) {
+      const dx = (xMax - xMin) / count, out = [];
+      for (let k = 0; k < count; k++) {
+        const x = xMin + (k + 0.5) * dx, profile = sectionAt(x);
+        out.push(Object.freeze({ x, dx, profile, poly: sectionPolygon(profile) }));
+      }
+      sliceCache.set(count, Object.freeze(out));
+    }
+    return sliceCache.get(count);
+  }
+
+  return Object.freeze({ stations: Object.freeze(st), xMin, xMax, sectionAt, slices });
+}
+
+return { breadthAtZ, sectionPolygon, createHull };
+})();
+const M_mass = (() => {
+/**
+ * Mass and centre of gravity: M = Σ m_i, G = Σ(m_i r_i) / Σ m_i.
+ * Each item is a reference to a real object (structure group, cargo lot, person,
+ * equipment, ballast). Duplicate ids are rejected to avoid double counting.
+ * Items may carry refs (e.g. inventoryRef, personId) to existing ledgers.
+ */
+function computeMassProperties(items) {
+  if (!Array.isArray(items) || items.length === 0) throw new TypeError('massItems must be a non-empty array');
+  const ids = new Set();
+  let m = 0, mx = 0, my = 0, mz = 0;
+  for (const it of items) {
+    if (typeof it?.id !== 'string' || !it.id) throw new TypeError('each mass item needs a string id');
+    if (ids.has(it.id)) throw new RangeError(`duplicate mass item id: ${it.id}`);
+    ids.add(it.id);
+    for (const k of ['massKg', 'x', 'y', 'z']) {
+      if (!Number.isFinite(it[k])) throw new TypeError(`mass item ${it.id}: ${k} must be finite`);
+    }
+    if (it.massKg < 0) throw new RangeError(`mass item ${it.id}: massKg must be >= 0`);
+    m += it.massKg; mx += it.massKg * it.x; my += it.massKg * it.y; mz += it.massKg * it.z;
+  }
+  if (m <= 0) throw new RangeError('total mass must be > 0');
+  return Object.freeze({ massKg: m, cg: Object.freeze({ x: mx / m, y: my / m, z: mz / m }) });
+}
+
+return { computeMassProperties };
+})();
+const M_hydrostatics = (() => {
+/**
+ * Static hydrostatics for the ship prototype (Ver.7 basic design).
+ * F_B = ρ g ∇ ; equilibrium = weight/buoyancy balance with free trim.
+ * GZ(φ) is computed from the actual submerged shape at each heel angle (not from GM).
+ * GM is reported only as an auxiliary small-angle indicator.
+ * Assumptions (prototype, NOT approved rules):
+ *  - The hull is treated as watertight up to the top of each section (deck/gunwale).
+ *    Openings are only checked for submergence (downflooding angle); flooding,
+ *    free-surface effects and internal water are not modelled yet.
+ *  - Calm water, static equilibrium. No waves, wind or dynamics.
+ */
+const { breadthAtZ } = M_hull_geometry;
+const { computeMassProperties } = M_mass;
+const WATER_DENSITY = Object.freeze({ seawater: 1025, freshwater: 1000 }); // kg/m^3
+const DEG = Math.PI / 180;
+
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+
+/** Earth-up unit vector in the ship frame. heel>0: starboard down, trim>0: bow down. */
+function waterNormal(heel, trim) {
+  return [-Math.sin(trim), -Math.sin(heel) * Math.cos(trim), Math.cos(heel) * Math.cos(trim)];
+}
+
+/** Keep the part of polygon where ay*y + az*z <= k (Sutherland–Hodgman, one half-plane). */
+function clip(poly, ay, az, k) {
+  const out = [];
+  for (let i = 0; i < poly.length; i++) {
+    const P = poly[i], Q = poly[(i + 1) % poly.length];
+    const dp = ay * P[0] + az * P[1] - k, dq = ay * Q[0] + az * Q[1] - k;
+    if (dp <= 0) out.push(P);
+    if ((dp < 0 && dq > 0) || (dp > 0 && dq < 0)) {
+      const t = dp / (dp - dq);
+      out.push([P[0] + t * (Q[0] - P[0]), P[1] + t * (Q[1] - P[1])]);
+    }
+  }
+  return out;
+}
+
+function areaCentroid(poly) {
+  let a = 0, cy = 0, cz = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const [y0, z0] = poly[i], [y1, z1] = poly[(i + 1) % poly.length];
+    const c = y0 * z1 - y1 * z0;
+    a += c; cy += (y0 + y1) * c; cz += (z0 + z1) * c;
+  }
+  a *= 0.5;
+  if (Math.abs(a) < 1e-12) return null;
+  return { area: Math.abs(a), y: cy / (6 * a), z: cz / (6 * a) };
+}
+
+/** Submerged volume and centre of buoyancy below the plane n·p = c. */
+function submergedVolume(slices, n, c) {
+  let v = 0, mx = 0, my = 0, mz = 0;
+  for (const s of slices) {
+    const part = clip(s.poly, n[1], n[2], c - n[0] * s.x);
+    if (part.length < 3) continue;
+    const ac = areaCentroid(part);
+    if (!ac) continue;
+    const dv = ac.area * s.dx;
+    v += dv; mx += s.x * dv; my += ac.y * dv; mz += ac.z * dv;
+  }
+  return v > 0 ? { volume: v, centroid: [mx / v, my / v, mz / v] } : { volume: 0, centroid: null };
+}
+
+/** Illinois (modified regula falsi). Returns null if [lo, hi] does not bracket a root. */
+function findRoot(f, lo, hi, { ftol = 1e-12, xtol = 1e-10, maxIter = 100 } = {}) {
+  let flo = f(lo), fhi = f(hi);
+  if (flo === 0) return lo;
+  if (fhi === 0) return hi;
+  if (Math.sign(flo) === Math.sign(fhi)) return null;
+  let side = 0, x = lo;
+  for (let i = 0; i < maxIter; i++) {
+    x = (lo * fhi - hi * flo) / (fhi - flo);
+    const fx = f(x);
+    if (Math.abs(fx) <= ftol || hi - lo <= xtol) return x;
+    if (Math.sign(fx) === Math.sign(fhi)) { hi = x; fhi = fx; if (side === 1) flo /= 2; side = 1; }
+    else { lo = x; flo = fx; if (side === -1) fhi /= 2; side = -1; }
+  }
+  return x;
+}
+
+function floatAt(slices, volume, n) {
+  let lo = Infinity, hi = -Infinity;
+  for (const s of slices) for (const [y, z] of s.poly) {
+    const d = n[0] * s.x + n[1] * y + n[2] * z;
+    if (d < lo) lo = d;
+    if (d > hi) hi = d;
+  }
+  const c = findRoot((cc) => submergedVolume(slices, n, cc).volume - volume, lo, hi, { ftol: volume * 1e-12 });
+  if (c === null) return null;
+  return { c, ...submergedVolume(slices, n, c) };
+}
+
+/** Righting arm (roll) and trimming arm (pitch) from B−G and the up vector n. */
+function arms(B, G, n) {
+  const m = cross([B[0] - G[0], B[1] - G[1], B[2] - G[2]], n);
+  const eL = [1 - n[0] * n[0], -n[0] * n[1], -n[0] * n[2]];
+  const len = Math.hypot(...eL);
+  const eLn = eL.map((v) => v / len);
+  return { roll: dot(m, eLn), pitch: dot(m, cross(n, eLn)) };
+}
+
+/** Free-trim equilibrium at a fixed heel angle (radians). G is [x,y,z] or a function of the water normal (moving internal water). */
+function equilibriumAtHeel(slices, volume, G, heel, trimLimit = 20 * DEG) {
+  const evalTrim = (trim) => {
+    const n = waterNormal(heel, trim), f = floatAt(slices, volume, n);
+    return f ? { trim, n, ...f, ...arms(f.centroid, typeof G === 'function' ? G(n) : G, n) } : null;
+  };
+  let failed = false;
+  const trim = findRoot((t) => {
+    const r = evalTrim(t);
+    if (!r) { failed = true; return NaN; }
+    return r.pitch;
+  }, -trimLimit, trimLimit, { ftol: 1e-10, xtol: 1e-10, maxIter: 80 });
+  if (failed || trim === null || !Number.isFinite(trim)) return { status: 'trim_out_of_range', heel };
+  const r = evalTrim(trim);
+  return { status: 'ok', heel, trim, normal: r.n, c: r.c, volume: r.volume, buoyancyCentre: r.centroid, gz: r.roll };
+}
+
+const DEFAULT_ANGLES = Object.freeze(Array.from({ length: 19 }, (_, i) => i * 5));
+
+/**
+ * Analyse a ship: mass properties, upright floating condition, GZ curve,
+ * downflooding angles of openings, and static heel from an off-centre CG.
+ */
+function analyzeHydrostatics(ship, { waterDensity = WATER_DENSITY.seawater, sliceCount = 80, heelAnglesDeg = DEFAULT_ANGLES, trimLimitDeg = 20 } = {}) {
+  if (!Number.isFinite(waterDensity) || waterDensity <= 0) throw new RangeError('waterDensity must be > 0');
+  const { hull, openings = [] } = ship;
+  const mass = computeMassProperties(ship.massItems);
+  const G = [mass.cg.x, mass.cg.y, mass.cg.z];
+  const requiredVolume = mass.massKg / waterDensity;
+  const slices = hull.slices(sliceCount);
+  const hullVolume = submergedVolume(slices, [0, 0, 1], Infinity).volume;
+  if (requiredVolume >= hullVolume) {
+    return { status: 'insufficient_buoyancy', mass, requiredVolume, hullVolume };
+  }
+  const lim = trimLimitDeg * DEG;
+  const up = equilibriumAtHeel(slices, requiredVolume, G, 0, lim);
+  if (up.status !== 'ok') return { status: up.status, mass, requiredVolume, hullVolume };
+
+  const wlZ = (x) => (up.c - up.normal[0] * x) / up.normal[2];
+  let inertiaT = 0, waterplaneArea = 0;
+  for (const s of slices) {
+    const b = breadthAtZ(s.profile, wlZ(s.x));
+    inertiaT += (2 / 3) * b ** 3 * s.dx;
+    waterplaneArea += 2 * b * s.dx;
+  }
+  const KB = up.buoyancyCentre[2], BM = inertiaT / requiredVolume;
+  const upright = {
+    displacementKg: mass.massKg,
+    volume: requiredVolume,
+    draftAft: wlZ(hull.xMin), draftMid: wlZ((hull.xMin + hull.xMax) / 2), draftFore: wlZ(hull.xMax),
+    trimDeg: up.trim / DEG,
+    LCB: up.buoyancyCentre[0], KB, BM, KM: KB + BM, KG: G[2], GM: KB + BM - G[2],
+    waterplaneArea,
+  };
+
+  const curve = heelAnglesDeg.map((deg) => {
+    const e = equilibriumAtHeel(slices, requiredVolume, G, deg * DEG, lim);
+    return e.status === 'ok'
+      ? { heelDeg: deg, status: 'ok', gz: e.gz, trimDeg: e.trim / DEG, normal: e.normal, c: e.c }
+      : { heelDeg: deg, status: e.status, gz: null };
+  });
+
+  const ok = curve.filter((p) => p.status === 'ok');
+  let maxGz = null, angleOfMaxGzDeg = null, vanishingAngleDeg = null;
+  for (const p of ok) if (maxGz === null || p.gz > maxGz) { maxGz = p.gz; angleOfMaxGzDeg = p.heelDeg; }
+  for (let i = 1; i < ok.length; i++) {
+    const a = ok[i - 1], b = ok[i];
+    if (a.heelDeg >= angleOfMaxGzDeg && a.gz > 0 && b.gz <= 0) {
+      vanishingAngleDeg = a.heelDeg + (b.heelDeg - a.heelDeg) * a.gz / (a.gz - b.gz);
+      break;
+    }
+  }
+
+  const downflooding = openings.map((o) => {
+    const p = [o.x, o.y, o.z];
+    let prev = null, angle = null;
+    for (const q of ok) {
+      const s = dot(q.normal, p) - q.c; // < 0 means below the waterplane
+      if (s < 0) {
+        angle = prev ? prev.deg + (q.heelDeg - prev.deg) * prev.s / (prev.s - s) : q.heelDeg;
+        break;
+      }
+      prev = { deg: q.heelDeg, s };
+    }
+    return { id: o.id, downfloodingAngleDeg: angle };
+  });
+
+  let staticHeelDeg = 0;
+  if (Math.abs(G[1]) > 1e-12) {
+    const h = findRoot((phi) => {
+      const e = equilibriumAtHeel(slices, requiredVolume, G, phi, lim);
+      return e.status === 'ok' ? e.gz : NaN;
+    }, -60 * DEG, 60 * DEG, { ftol: 1e-9, xtol: 1e-9, maxIter: 80 });
+    staticHeelDeg = h === null || !Number.isFinite(h) ? null : h / DEG;
+  }
+
+  return {
+    status: 'ok', mass, requiredVolume, hullVolume, reserveBuoyancyVolume: hullVolume - requiredVolume,
+    upright, staticHeelDeg,
+    gzCurve: curve.map(({ normal, c, ...rest }) => rest),
+    summary: { maxGz, angleOfMaxGzDeg, vanishingAngleDeg },
+    downflooding,
+  };
+}
+
+return { WATER_DENSITY, waterNormal, submergedVolume, findRoot, floatAt, equilibriumAtHeel, analyzeHydrostatics };
+})();
+const M_hull_params = (() => {
+/**
+ * Derives manoeuvring parameters (waterline length, wetted surface, lateral area...)
+ * from the physics hull and an upright hydrostatics result. Read-only helper.
+ */
+const { breadthAtZ } = M_hull_geometry;
+function deriveHullParams(ship, analysis, { sliceCount = 80 } = {}) {
+  if (analysis?.status !== 'ok') throw new RangeError('hydrostatics analysis must have status ok');
+  const { hull } = ship, u = analysis.upright, slices = hull.slices(sliceCount);
+  const wl = (x) => u.draftAft + (u.draftFore - u.draftAft) * (x - hull.xMin) / (hull.xMax - hull.xMin);
+  let lat = 0, latMoment = 0, wetted = 0, beam = 0, xMinW = Infinity, xMaxW = -Infinity;
+  for (const s of slices) {
+    const zw = wl(s.x), zk = s.profile[0].z;
+    if (zw <= zk) continue;
+    const depth = zw - zk;
+    lat += depth * s.dx; latMoment += depth * s.dx * s.x;
+    const b = breadthAtZ(s.profile, zw);
+    beam = Math.max(beam, 2 * b);
+    if (b > 1e-6) { xMinW = Math.min(xMinW, s.x - s.dx / 2); xMaxW = Math.max(xMaxW, s.x + s.dx / 2); }
+    let per = 2 * s.profile[0].b, prev = s.profile[0];
+    for (let i = 1; i < s.profile.length && prev.z < zw; i++) {
+      const p = s.profile[i], z1 = Math.min(p.z, zw), b1 = breadthAtZ(s.profile, z1);
+      per += 2 * Math.hypot(b1 - prev.b, z1 - prev.z);
+      prev = { z: z1, b: b1 };
+    }
+    wetted += per * s.dx;
+  }
+  return Object.freeze({
+    massKg: analysis.mass.massKg, cgX: analysis.mass.cg.x,
+    waterlineLengthM: xMaxW - xMinW, beamM: beam, draftM: u.draftMid, waterlineZ: u.draftMid,
+    wettedAreaM2: wetted, lateralAreaM2: lat, clrX: latMoment / lat,
+  });
+}
+
+return { deriveHullParams };
+})();
+const M_dynamics = (() => {
+/**
+ * 2D (surge, sway, yaw) vessel dynamics prototype (Ver.8/9/11 basic design).
+ * World frame: X east, Y north (m). Heading psi: clockwise from north (rad).
+ * Body frame: x forward, y STARBOARD (same as the hull frame), r = dpsi/dt (+ = turning to starboard).
+ *  forward = (sin psi, cos psi), starboard = (cos psi, -sin psi)
+ * mx(du/dt) = X + my v r ;  my(dv/dt) = Y - mx u r ;  Iz dr/dt = N.
+ * Forces: hull friction (ITTC-1957 line) + form + simple wave-making, keel lift and cross-flow
+ * drag, yaw damping, rudder, sails (apparent wind), hull windage. Sail heel from the GZ curve.
+ * ALL COEFFICIENTS ARE EXPERIMENTAL placeholders, NOT approved rules or calibrated data.
+ * Not modelled yet: roll/pitch/heave dynamics, waves, oars, mooring, shallow-water effects.
+ */
+const { deriveHullParams } = M_hull_params;
+const { analyzeHydrostatics, WATER_DENSITY } = M_hydrostatics;
+const DEG = Math.PI / 180, G_ACC = 9.80665, NU_SEA = 1.2e-6;
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const sail_defaults = Object.freeze({ cnMax: 1.5, cnSlope: 4, cd0: 0.05 });
+
+/** Sail presets: minTrimDeg = how close to the centreline the sail chord can be set (square sails are limited by shrouds/yard bracing); trim can go up to 90 deg (square to the wind). */
+const SAIL_TYPES = Object.freeze({
+  square: Object.freeze({ ...sail_defaults, cnMax: 1.4, minTrimDeg: 32 }),
+  foreAndAft: Object.freeze({ ...sail_defaults, cnMax: 1.6, cnSlope: 4.5, minTrimDeg: 8 }),
+});
+
+/** Heel angle (deg, signed) at which the righting moment equals the heeling moment (N m). */
+function heelFromMoment(analysis, momentNm) {
+  const m = analysis.mass.massKg * G_ACC, sgn = Math.sign(momentNm), need = Math.abs(momentNm);
+  const pts = [{ heelDeg: 0, gz: 0 }, ...analysis.gzCurve.filter((p) => p.status === 'ok' && p.heelDeg > 0)];
+  let prev = pts[0], peak = pts[0];
+  for (const p of pts.slice(1)) {
+    if (p.gz > peak.gz) peak = p;
+    if (m * p.gz >= need) {
+      const a = m * prev.gz, b = m * p.gz;
+      return { heelDeg: sgn * (prev.heelDeg + (p.heelDeg - prev.heelDeg) * (need - a) / (b - a || 1)), overpowered: false };
+    }
+    if (p.gz < prev.gz && p.heelDeg > peak.heelDeg) break;
+    prev = p;
+  }
+  return { heelDeg: sgn * peak.heelDeg, overpowered: need > 0 && need > m * peak.gz };
+}
+
+function createVessel({ ship, analysis, hullParams, sails = [], rudder, waterDensity = WATER_DENSITY.seawater, airDensity = 1.225,
+  windageAreaM2 = 0, form = 0.2, keelLiftSlope = 2, crossFlowCd = 1.0, initial = {} } = {}) {
+  const an = analysis ?? analyzeHydrostatics(ship, { waterDensity });
+  const hp = hullParams ?? deriveHullParams(ship, an);
+  const m = hp.massKg, L = hp.waterlineLengthM, T = hp.draftM;
+  const mx = 1.1 * m, my = 1.7 * m, Iz = 1.3 * m * (0.25 * L) ** 2;
+  const clrRel = hp.clrX - hp.cgX;
+  const rud = rudder ? { maxDeg: 35, rateDegS: 4, areaM2: 1, x: -L / 2, ...rudder, xRel: (rudder.x ?? 0) } : null;
+  const sailList = sails.map((s) => {
+    if (!s?.id) throw new TypeError('sail needs an id');
+    const type = SAIL_TYPES[s.type ?? 'foreAndAft'];
+    if (!type) throw new RangeError(`unknown sail type ${s.type}`);
+    return { ...type, ...s, deployed: s.deployed ?? 1, trimDeg: s.trimDeg ?? (SAIL_TYPES[s.type ?? 'foreAndAft'].minTrimDeg), xRel: s.x - hp.cgX };
+  });
+  if (new Set(sailList.map((s) => s.id)).size !== sailList.length) throw new TypeError('duplicate sail id');
+  const s0 = { x: 0, y: 0, headingDeg: 0, u: 0, v: 0, r: 0, ...initial };
+  const st = { time: 0, X: s0.x, Y: s0.y, psi: s0.headingDeg * DEG, u: s0.u, v: s0.v, r: s0.r, rudderDeg: 0, rudderTargetDeg: 0, heelDeg: 0, overpowered: false };
+  if (rud) rud.xRel = rud.x - hp.cgX;
+
+  const fwd = () => [Math.sin(st.psi), Math.cos(st.psi)];
+  const stb = () => [Math.cos(st.psi), -Math.sin(st.psi)];
+  const windVec = (env) => {
+    const w = typeof env?.wind === 'function' ? env.wind(st.X, st.Y, st.time) : env?.wind ?? { x: 0, y: 0 };
+    return w;
+  };
+  const currentBody = (env) => {
+    const c = typeof env?.current === 'function' ? env.current(st.X, st.Y, st.time) : env?.current ?? { x: 0, y: 0 };
+    const f = fwd(), s = stb();
+    return { u: c.x * f[0] + c.y * f[1], v: c.x * s[0] + c.y * s[1] };
+  };
+
+  /** Sail force (body frame) for a given trim, using the apparent wind. Returns [Fx, Fy] in N. */
+  function sailForce(sail, trimDeg, aw, heelDeg) {
+    const speed = Math.hypot(aw.x, aw.y);
+    if (speed < 1e-6 || sail.deployed <= 0) return [0, 0];
+    const th = trimDeg * DEG, c = [-Math.cos(th), Math.sin(th)];
+    const n = [c[1], -c[0]], d = [aw.x / speed, aw.y / speed];
+    const sN = d[0] * n[0] + d[1] * n[1];
+    const qA = 0.5 * airDensity * speed * speed * sail.areaM2 * sail.deployed * Math.cos(heelDeg * DEG) ** 2;
+    const cn = sail.cnMax * Math.tanh(sail.cnSlope * sN / sail.cnMax);
+    return [qA * (cn * n[0] + sail.cd0 * d[0]), qA * (cn * n[1] + sail.cd0 * d[1])];
+  }
+
+  function apparentWind(env) {
+    const w = windVec(env), f = fwd(), s = stb();
+    const wx = w.x * f[0] + w.y * f[1], wy = w.x * s[0] + w.y * s[1];
+    const c = currentBody(env);
+    // Ship velocity over ground is (u + current, v + current); air relative to ship = wind - ship ground velocity.
+    return { x: wx - (st.u + c.u), y: wy - (st.v + c.v) };
+  }
+
+  function forces(env = {}) {
+    const c = currentBody(env), uw = st.u - c.u, vw = st.v - c.v; // water-relative
+    const U = Math.hypot(uw, vw), q = 0.5 * waterDensity;
+    let X = 0, Y = 0, N = 0;
+    const out = {};
+    // Hull: friction + form + wave-making along the flow direction, using total water speed.
+    if (U > 1e-9) {
+      const Re = Math.max(U * L / NU_SEA, 1e5), Cf = 0.075 / (Math.log10(Re) - 2) ** 2;
+      const Fr = U / Math.sqrt(G_ACC * L), Cw = Math.min(0.0005 + 0.003 * (Fr / 0.35) ** 4, 0.05);
+      const Rhull = q * U * U * hp.wettedAreaM2 * (Cf * (1 + form) + Cw);
+      X -= Rhull * uw / U; Y -= Rhull * vw / U;
+      out.hullResistanceN = Rhull;
+    }
+    // Keel lift (small leeway) and cross-flow drag on lateral area; both act at the centre of lateral resistance.
+    const Fkeel = -q * hp.lateralAreaM2 * keelLiftSlope * Math.abs(uw) * vw - q * crossFlowCd * hp.lateralAreaM2 * vw * Math.abs(vw);
+    Y += Fkeel; N += Fkeel * clrRel;
+    // Yaw damping (strip theory, cross-flow): N = -0.5 rho Cd T L^4/32 r|r|
+    N -= q * crossFlowCd * T * (L ** 4) / 32 * st.r * Math.abs(st.r);
+    out.leewayDeg = Math.abs(uw) > 1e-6 ? Math.atan2(vw, Math.abs(uw)) / DEG : 0;
+    // Rudder
+    if (rud) {
+      const vr = vw + st.r * rud.xRel, Vr2 = uw * uw + vr * vr;
+      const alpha = st.rudderDeg * DEG + Math.atan2(vr, Math.abs(uw) + 1e-9) * Math.sign(uw || 1);
+      const CN = Math.sin(2 * clamp(alpha, -35 * DEG, 35 * DEG));
+      const Yr = -q * rud.areaM2 * Vr2 * CN;
+      Y += Yr; N += Yr * rud.xRel;
+      out.rudderForceN = Yr;
+    }
+    // Sails
+    const aw = apparentWind(env);
+    let Fsx = 0, Fsy = 0, Mheel = 0;
+    for (const s of sailList) {
+      const [fx, fy] = sailForce(s, s.trimDeg, aw, st.heelDeg);
+      Fsx += fx; Fsy += fy; N += fy * s.xRel; Mheel += fy * (s.zCe - hp.waterlineZ + T / 2);
+    }
+    X += Fsx; Y += Fsy;
+    out.sailForceN = [Fsx, Fsy]; out.heelingMomentNm = Mheel; out.apparentWind = aw;
+    // Hull windage (drag along apparent wind)
+    if (windageAreaM2 > 0) {
+      const sp = Math.hypot(aw.x, aw.y);
+      X += 0.5 * airDensity * 0.8 * windageAreaM2 * sp * aw.x; Y += 0.5 * airDensity * 0.8 * windageAreaM2 * sp * aw.y;
+    }
+    return { X, Y, N, ...out };
+  }
+
+  /** Choose, for each sail, the trim (within its brace limit) that maximises forward drive. */
+  function autoTrim(env = {}) {
+    const aw = apparentWind(env);
+    for (const s of sailList) {
+      let best = s.trimDeg, bestFx = -Infinity;
+      for (let a = s.minTrimDeg; a <= 90; a += 2.5) for (const sg of [1, -1]) {
+        const fx = sailForce(s, sg * a, aw, st.heelDeg)[0];
+        if (fx > bestFx) { bestFx = fx; best = sg * a; }
+      }
+      s.trimDeg = best;
+    }
+  }
+
+  function deriv(v, env) {
+    const save = [st.u, st.v, st.r, st.psi];
+    [st.u, st.v, st.r] = v;
+    const F = forces(env);
+    const d = [(F.X + my * st.v * st.r) / mx, (F.Y - mx * st.u * st.r) / my, F.N / Iz];
+    [st.u, st.v, st.r, st.psi] = save;
+    return { d, F };
+  }
+
+  function step(dt = 0.1, env = {}) {
+    // Rudder follows its target at a limited rate.
+    if (rud) {
+      const tgt = clamp(st.rudderTargetDeg, -rud.maxDeg, rud.maxDeg), dr = rud.rateDegS * dt;
+      st.rudderDeg += clamp(tgt - st.rudderDeg, -dr, dr);
+    }
+    // Heel from the previous step's heeling moment (one-step lag), via the hydrostatic GZ curve.
+    const f0 = forces(env);
+    const h = heelFromMoment(an, f0.heelingMomentNm);
+    st.heelDeg = h.heelDeg; st.overpowered = h.overpowered;
+    // Heun (RK2)
+    const v0 = [st.u, st.v, st.r], { d: k1 } = deriv(v0, env);
+    const v1 = v0.map((x, i) => x + dt * k1[i]), { d: k2 } = deriv(v1, env);
+    st.u += dt * 0.5 * (k1[0] + k2[0]); st.v += dt * 0.5 * (k1[1] + k2[1]); st.r += dt * 0.5 * (k1[2] + k2[2]);
+    const f = fwd(), s = stb();
+    st.X += dt * (st.u * f[0] + st.v * s[0]); st.Y += dt * (st.u * f[1] + st.v * s[1]);
+    st.psi += dt * st.r; st.time += dt;
+  }
+
+  /** Simple PD helm: sets the rudder target to hold a compass heading (deg). Placeholder for a captain AI. */
+  function steerTowards(headingDeg, { kp = 1.2, kd = 12 } = {}) {
+    let err = ((headingDeg - st.psi / DEG + 540) % 360) - 180;
+    st.rudderTargetDeg = clamp(kp * err - kd * (st.r / DEG), -35, 35);
+  }
+
+  function run(duration, dt = 0.1, env = {}, { trim = false, heading = null } = {}) {
+    for (let i = 0, n = Math.round(duration / dt); i < n; i++) {
+      if (trim && i % 10 === 0) autoTrim(env);
+      if (heading !== null) steerTowards(heading);
+      step(dt, env);
+    }
+  }
+
+  const sailById = (id) => { const s = sailList.find((x) => x.id === id); if (!s) throw new RangeError(`unknown sail ${id}`); return s; };
+  return {
+    params: Object.freeze({ ...hp, mx, my, Iz }), state: st, sails: sailList,
+    forces, step, run, autoTrim, apparentWind, steerTowards,
+    setRudder(deg) { st.rudderTargetDeg = deg; },
+    setSailTrim(id, deg) { const s = sailById(id); s.trimDeg = (deg < 0 ? -1 : 1) * clamp(Math.abs(deg), s.minTrimDeg, 90); },
+    setSailDeployed(id, frac) { sailById(id).deployed = clamp(frac, 0, 1); },
+    snapshot() {
+      const f = fwd(), s = stb(), sx = st.u * f[0] + st.v * s[0], sy = st.u * f[1] + st.v * s[1];
+      return { time: st.time, x: st.X, y: st.Y, headingDeg: ((st.psi / DEG) % 360 + 360) % 360, u: st.u, v: st.v, yawRateDegS: st.r / DEG, speedOverGround: Math.hypot(sx, sy), velocity: { x: sx, y: sy }, heelDeg: st.heelDeg, overpowered: st.overpowered, rudderDeg: st.rudderDeg };
+    },
+  };
+}
+
+return { SAIL_TYPES, heelFromMoment, createVessel };
+})();
+const M_flooding = (() => {
+/**
+ * Flooding prototype (Ver.17 basic design, quasi-static).
+ * Internal water is counted ONLY as weight (mass + centroid). Buoyancy comes from the
+ * outer hull envelope alone, so lost buoyancy and water weight are never counted twice.
+ * Compartments are boxes in the ship frame; water surface is level in the earth frame
+ * (free-surface effect arises from the water centroid moving with heel/trim).
+ * Flow through each opening: Q = Cd * A_eff * sqrt(2 g dh)  (orifice, explicit Euler).
+ * Assumptions (experimental, NOT approved rules): no air compression/venting, no
+ * overflow through the top of a compartment, no wave/dynamic effects, rigid hull,
+ * the ship re-balances instantly (quasi-static) after each step.
+ */
+const { submergedVolume, floatAt, equilibriumAtHeel, findRoot, WATER_DENSITY } = M_hydrostatics;
+const { computeMassProperties } = M_mass;
+const DEG = Math.PI / 180, G_ACC = 9.80665;
+const SLICES_PER_COMP = 12;
+
+function boxSlices(b) {
+  const poly = [[b.y0, b.z0], [b.y1, b.z0], [b.y1, b.z1], [b.y0, b.z1]];
+  const dx = (b.x1 - b.x0) / SLICES_PER_COMP;
+  return Array.from({ length: SLICES_PER_COMP }, (_, k) => ({ x: b.x0 + (k + 0.5) * dx, dx, poly }));
+}
+
+function createFloodingModel(ship, { compartments, links, waterDensity = WATER_DENSITY.seawater, sliceCount = 80 } = {}) {
+  if (!Array.isArray(compartments) || !compartments.length) throw new TypeError('compartments required');
+  const comps = new Map();
+  for (const c of compartments) {
+    if (typeof c?.id !== 'string' || !c.id || c.id === 'sea' || comps.has(c.id)) throw new TypeError('compartment ids must be unique non-empty strings other than "sea"');
+    const b = c.box;
+    for (const k of ['x0', 'x1', 'y0', 'y1', 'z0', 'z1']) if (!Number.isFinite(b?.[k])) throw new TypeError(`compartment ${c.id}: box.${k} must be finite`);
+    if (b.x1 <= b.x0 || b.y1 <= b.y0 || b.z1 <= b.z0) throw new RangeError(`compartment ${c.id}: empty box`);
+    comps.set(c.id, { id: c.id, box: b, slices: boxSlices(b), capacity: (b.x1 - b.x0) * (b.y1 - b.y0) * (b.z1 - b.z0) });
+  }
+  const linkList = [];
+  for (const l of links ?? []) {
+    if (typeof l?.id !== 'string' || !l.id) throw new TypeError('link needs an id');
+    for (const side of [l.from, l.to]) if (side !== 'sea' && !comps.has(side)) throw new RangeError(`link ${l.id}: unknown side ${side}`);
+    if (l.from === l.to) throw new RangeError(`link ${l.id}: both sides identical`);
+    for (const k of ['x', 'y', 'z', 'areaM2']) if (!Number.isFinite(l[k])) throw new TypeError(`link ${l.id}: ${k} must be finite`);
+    if (l.areaM2 < 0) throw new RangeError(`link ${l.id}: areaM2 must be >= 0`);
+    linkList.push({ cd: 0.6, open: true, heightM: Math.sqrt(l.areaM2) || 1e-6, ...l });
+  }
+  if (new Set(linkList.map((l) => l.id)).size !== linkList.length) throw new TypeError('duplicate link id');
+
+  const hull = ship.hull, slices = hull.slices(sliceCount);
+  const hullVolume = submergedVolume(slices, [0, 0, 1], Infinity).volume;
+  const baseMass = computeMassProperties(ship.massItems);
+
+  const state = { time: 0, status: 'afloat', water: Object.fromEntries([...comps.keys()].map((k) => [k, 0])), open: Object.fromEntries(linkList.map((l) => [l.id, l.open])) };
+  let lastHeel = 0;
+
+  /** Water properties of each compartment for water normal n. */
+  function levels(n) {
+    const out = {};
+    for (const c of comps.values()) {
+      const v = state.water[c.id];
+      if (v <= 0) { out[c.id] = { volume: 0, level: -Infinity, centroid: null }; continue; }
+      if (v >= c.capacity * (1 - 1e-12)) {
+        const f = submergedVolume(c.slices, n, Infinity);
+        out[c.id] = { volume: v, level: Infinity, centroid: f.centroid }; continue;
+      }
+      const f = floatAt(c.slices, v, n);
+      out[c.id] = { volume: v, level: f ? f.c : -Infinity, centroid: f ? f.centroid : null };
+    }
+    return out;
+  }
+
+  function totals(n) {
+    const lv = levels(n);
+    let m = baseMass.massKg, mx = baseMass.massKg * baseMass.cg.x, my = baseMass.massKg * baseMass.cg.y, mz = baseMass.massKg * baseMass.cg.z;
+    for (const c of comps.values()) {
+      const w = lv[c.id]; if (!w.centroid) continue;
+      const wm = w.volume * waterDensity;
+      m += wm; mx += wm * w.centroid[0]; my += wm * w.centroid[1]; mz += wm * w.centroid[2];
+    }
+    return { massKg: m, cg: [mx / m, my / m, mz / m], levels: lv };
+  }
+
+  /** Quasi-static equilibrium for the current water distribution. */
+  function equilibrium() {
+    const waterMass = Object.values(state.water).reduce((a, b) => a + b, 0) * waterDensity;
+    const massKg = baseMass.massKg + waterMass, volume = massKg / waterDensity;
+    if (volume >= hullVolume) return { status: 'foundered', massKg };
+    const Gfn = (n) => totals(n).cg;
+    const gzAt = (deg) => { const e = equilibriumAtHeel(slices, volume, Gfn, deg * DEG, 20 * DEG); return e.status === 'ok' ? e : null; };
+    const gz = (deg) => { const e = gzAt(deg); return e ? e.gz : NaN; };
+    let root = null;
+    // Warm start near the previous heel, then fall back to a full scan.
+    for (const w of [1.5, 4]) {
+      const a = lastHeel - w, b = lastHeel + w, fa = gz(a), fb = gz(b);
+      if (fa < 0 && fb > 0) { root = findRoot(gz, a, b, { ftol: 1e-10, xtol: 1e-8, maxIter: 60 }); break; }
+    }
+    if (root === null) {
+      let prev = null;
+      const cands = [];
+      for (let d = -90; d <= 90; d += 3) {
+        const f = gz(d);
+        if (prev && prev.f < 0 && f > 0) cands.push([prev.d, d]);
+        prev = Number.isFinite(f) ? { d, f } : null;
+      }
+      cands.sort((p, q) => Math.min(Math.abs(p[0]), Math.abs(p[1])) - Math.min(Math.abs(q[0]), Math.abs(q[1])));
+      if (cands.length) root = findRoot(gz, cands[0][0], cands[0][1], { ftol: 1e-10, xtol: 1e-8, maxIter: 60 });
+    }
+    if (root === null || !Number.isFinite(root)) return { status: 'capsized', massKg };
+    const e = gzAt(root);
+    if (!e) return { status: 'capsized', massKg };
+    lastHeel = root;
+    const t = totals(e.normal);
+    return {
+      status: 'ok', massKg, heelDeg: root, trimDeg: e.trim / DEG, normal: e.normal, seaLevel: e.c, cg: t.cg, levels: t.levels,
+      draftMid: (e.c - e.normal[0] * (hull.xMin + hull.xMax) / 2) / e.normal[2],
+      reserveBuoyancyVolume: hullVolume - volume,
+    };
+  }
+
+  function flowRates(eq) {
+    const n = eq.normal, rates = [];
+    for (const l of linkList) {
+      if (!state.open[l.id] || l.areaM2 === 0) { rates.push({ id: l.id, q: 0 }); continue; }
+      const level = (s) => (s === 'sea' ? eq.seaLevel : eq.levels[s].level);
+      const La = level(l.from), Lb = level(l.to);
+      const hi = La >= Lb ? l.from : l.to, lo = hi === l.from ? l.to : l.from, Lhi = Math.max(La, Lb), Llo = Math.min(La, Lb);
+      const e = n[0] * l.x + n[1] * l.y + n[2] * l.z, eb = e - l.heightM / 2;
+      if (!(Lhi > eb)) { rates.push({ id: l.id, q: 0 }); continue; }
+      const wet = Math.min((Lhi - eb) / l.heightM, 1);
+      const dh = Lhi - Math.max(Llo, eb + Math.min(Lhi - eb, l.heightM) / 2);
+      const q = dh > 0 ? l.cd * l.areaM2 * wet * Math.sqrt(2 * G_ACC * dh) : 0;
+      rates.push({ id: l.id, q, from: hi, to: lo });
+    }
+    return rates;
+  }
+
+  /** Advance by dt seconds (one explicit step). Water volume is conserved (every outflow is an inflow elsewhere). */
+  function step(dt = 0.5) {
+    if (state.status !== 'afloat') return { status: state.status };
+    const eq = equilibrium();
+    if (eq.status !== 'ok') { state.status = eq.status === 'foundered' ? 'sunk' : eq.status; return { status: state.status }; }
+    let seaIn = 0;
+    for (const r of flowRates(eq)) {
+      if (!(r.q > 0)) continue;
+      let dv = r.q * dt;
+      if (r.from !== 'sea') dv = Math.min(dv, state.water[r.from]);
+      if (r.to !== 'sea') dv = Math.min(dv, comps.get(r.to).capacity - state.water[r.to]);
+      if (dv <= 0) continue;
+      if (r.from !== 'sea') state.water[r.from] -= dv; else seaIn += dv;
+      if (r.to !== 'sea') state.water[r.to] += dv; else seaIn -= dv;
+    }
+    state.time += dt;
+    return { status: 'afloat', netSeaInflowM3: seaIn };
+  }
+
+  function run(duration, dt = 0.5) {
+    const steps = Math.round(duration / dt);
+    for (let i = 0; i < steps && state.status === 'afloat'; i++) step(dt);
+    return { status: state.status, time: state.time };
+  }
+
+  return {
+    state, hullVolume, compartments: [...comps.values()].map(({ id, capacity }) => ({ id, capacity })),
+    equilibrium, step, run,
+    setWater(id, volumeM3) {
+      const c = comps.get(id);
+      if (!c) throw new RangeError(`unknown compartment ${id}`);
+      if (!(volumeM3 >= 0 && volumeM3 <= c.capacity)) throw new RangeError('water volume out of range');
+      state.water[id] = volumeM3;
+    },
+    setLinkOpen(id, open) { if (!(id in state.open)) throw new RangeError(`unknown link ${id}`); state.open[id] = !!open; },
+    totalWaterM3: () => Object.values(state.water).reduce((a, b) => a + b, 0),
+  };
+}
+
+return { createFloodingModel };
+})();
+const M_ship_model = (() => {
+/**
+ * Minimal ship record for the independent prototype.
+ * Only physics-relevant data is held here. Owners, crew, cargo ledgers etc. are
+ * referenced by id (refs) and remain the responsibility of existing systems.
+ */
+const { createHull } = M_hull_geometry;
+const { computeMassProperties } = M_mass;
+function createShip({ id, name = '', hull, massItems, openings = [] } = {}) {
+  if (typeof id !== 'string' || !id) throw new TypeError('ship id must be a non-empty string');
+  const h = hull && typeof hull.sectionAt === 'function' ? hull : createHull(hull);
+  computeMassProperties(massItems); // validates
+  const seen = new Set();
+  for (const o of openings) {
+    if (typeof o?.id !== 'string' || !o.id || seen.has(o.id)) throw new TypeError('each opening needs a unique string id');
+    seen.add(o.id);
+    for (const k of ['x', 'y', 'z']) if (!Number.isFinite(o[k])) throw new TypeError(`opening ${o.id}: ${k} must be finite`);
+  }
+  return Object.freeze({
+    id, name, hull: h,
+    massItems: Object.freeze(massItems.map((m) => Object.freeze({ ...m }))),
+    openings: Object.freeze(openings.map((o) => Object.freeze({ ...o }))),
+  });
+}
+
+/** Returns a new ship with mass items replaced (loading, consumption, moving cargo). */
+function withMassItems(ship, massItems) {
+  return createShip({ ...ship, massItems });
+}
+
+return { createShip, withMassItems };
+})();
+const M_samples = (() => {
+/**
+ * EXPERIMENTAL test ships. Dimensions and masses are rough placeholders for
+ * testing the solver; they are NOT historical specifications of any real ship.
+ */
+function boxBarge({ length = 20, breadth = 6, depth = 4 } = {}) {
+  const pts = [{ z: 0, b: breadth / 2 }, { z: depth, b: breadth / 2 }];
+  return { stations: [{ x: 0, points: pts }, { x: length, points: pts }] };
+}
+
+/** Galleon-like hull, ~40 m between ends, ~11 m beam, with tumblehome. Placeholder values. */
+function galleonLikeHull() {
+  return {
+    stations: [
+      { x: 0, points: [{ z: 2.5, b: 0.4 }, { z: 4, b: 2.6 }, { z: 6, b: 3.6 }, { z: 8, b: 3.8 }] },
+      { x: 4, points: [{ z: 0.6, b: 0.3 }, { z: 2, b: 2.4 }, { z: 4, b: 4.2 }, { z: 6, b: 4.6 }, { z: 7.8, b: 4.4 }] },
+      { x: 10, points: [{ z: 0, b: 0.4 }, { z: 1, b: 3.0 }, { z: 2.5, b: 4.8 }, { z: 4.5, b: 5.4 }, { z: 6, b: 5.3 }, { z: 7.4, b: 4.9 }] },
+      { x: 20, points: [{ z: 0, b: 0.5 }, { z: 1, b: 3.8 }, { z: 2.5, b: 5.2 }, { z: 4.5, b: 5.5 }, { z: 6, b: 5.4 }, { z: 7.2, b: 5.0 }] },
+      { x: 28, points: [{ z: 0, b: 0.4 }, { z: 1, b: 3.0 }, { z: 2.5, b: 4.6 }, { z: 4.5, b: 5.2 }, { z: 6, b: 5.1 }, { z: 7.2, b: 4.8 }] },
+      { x: 35, points: [{ z: 0.4, b: 0.2 }, { z: 2, b: 2.2 }, { z: 4, b: 3.6 }, { z: 6, b: 4.0 }, { z: 7.4, b: 3.8 }] },
+      { x: 40, points: [{ z: 1.5, b: 0.1 }, { z: 4, b: 0.6 }, { z: 6, b: 1.0 }, { z: 7.8, b: 1.2 }] },
+    ],
+  };
+}
+
+function galleonLikeMassItems({ gunZ = 6.0 } = {}) {
+  return [
+    { id: 'hull-structure', massKg: 420000, x: 19.5, y: 0, z: 4.0 },
+    { id: 'ballast', massKg: 140000, x: 20, y: 0, z: 0.9 },
+    { id: 'cargo-hold', massKg: 180000, x: 21, y: 0, z: 2.4 },
+    { id: 'guns', massKg: 40000, x: 20, y: 0, z: gunZ },
+    { id: 'masts-rigging', massKg: 45000, x: 21, y: 0, z: 15 },
+    { id: 'crew-stores', massKg: 60000, x: 18, y: 0, z: 4.8 },
+  ];
+}
+
+return { boxBarge, galleonLikeHull, galleonLikeMassItems };
+})();
+const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_params, M_dynamics, M_flooding, M_ship_model, M_samples);
+
+(() => {
+'use strict';
+const $ = (id) => document.getElementById(id), DEG = Math.PI / 180;
+const fix = (v, d = 2) => (v === null || v === undefined || !Number.isFinite(v) ? '—' : v.toFixed(d));
+function fit(c) { const r = c.getBoundingClientRect(), k = devicePixelRatio || 1; const w = Math.max(2, Math.round(r.width * k)), h = Math.max(2, Math.round(r.height * k)); if (c.width !== w || c.height !== h) { c.width = w; c.height = h; } return { g: c.getContext('2d'), w, h, k }; }
+
+// ---------- stability panel ----------
+let analysis = null, ship = null;
+function buildShip() {
+  const gunZ = +$('gun').value;
+  ship = Ship.createShip({ id: 'viewer', hull: Ship.galleonLikeHull(), massItems: Ship.galleonLikeMassItems({ gunZ }),
+    openings: [{ id: '砲門', x: 20, y: 5.3, z: 5.2 }] });
+  analysis = Ship.analyzeHydrostatics(ship);
+}
+function drawStability() {
+  $('gunO').textContent = (+$('gun').value).toFixed(2) + ' m'; $('heelO').textContent = $('heel').value + '°';
+  const heel = +$('heel').value * DEG;
+  // section at midship
+  { const { g, w, h, k } = fit($('cSec')); g.clearRect(0, 0, w, h);
+    const xm = (ship.hull.xMin + ship.hull.xMax) / 2, sec = Ship.sectionPolygon(ship.hull.sectionAt(xm));
+    const slices = ship.hull.slices(80), vol = analysis.requiredVolume, G = [analysis.mass.cg.x, analysis.mass.cg.y, analysis.mass.cg.z];
+    const e = Ship.equilibriumAtHeel(slices, vol, G, heel, 25 * DEG);
+    const sc = Math.min(w / 22, h / 15), cx = w / 2, cy = h * 0.72;
+    if (e.status !== 'ok') { g.fillStyle = '#ff6b6b'; g.font = `${14 * k}px sans-serif`; g.fillText('釣り合いなし', 12, 24 * k); return; }
+    const n = e.normal;
+    const hz = (y, z) => Math.cos(heel) * y + Math.sin(heel) * z, up = (y, z) => n[1] * y + n[2] * z + n[0] * xm;
+    const P = (y, z) => [cx + hz(y, z) * sc, cy - up(y, z) * sc];
+    const wl = e.c; // up-coordinate of the water surface at this x is wl (n.p = c)
+    g.fillStyle = '#103a5a'; g.fillRect(0, cy - wl * sc, w, h);
+    g.beginPath(); sec.forEach((p, i) => { const q = P(p[0], p[1]); i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]); }); g.closePath();
+    g.fillStyle = 'rgba(200,160,100,.55)'; g.fill(); g.lineWidth = 2 * k; g.strokeStyle = '#d9b27c'; g.stroke();
+    g.strokeStyle = '#4cc2ff'; g.lineWidth = k; g.beginPath(); g.moveTo(0, cy - wl * sc); g.lineTo(w, cy - wl * sc); g.stroke();
+    const dot = (y, z, col, label) => { const q = P(y, z); g.fillStyle = col; g.beginPath(); g.arc(q[0], q[1], 4 * k, 0, 7); g.fill(); g.font = `${11 * k}px sans-serif`; g.fillText(label, q[0] + 6 * k, q[1] - 4 * k); };
+    dot(0, G[2], '#ff6b6b', 'G 重心');
+    dot(e.buoyancyCentre[1], e.buoyancyCentre[2], '#5fd38d', 'B 浮心');
+    const op = ship.openings[0]; dot(op.y, op.z, '#ffb454', '砲門'); dot(-op.y, op.z, '#ffb454', '');
+    g.fillStyle = '#8da0b0'; g.font = `${11 * k}px sans-serif`; g.fillText('船体中央の断面（右が右舷）', 8 * k, 14 * k);
+  }
+  // GZ curve
+  { const { g, w, h, k } = fit($('cGz')); g.clearRect(0, 0, w, h);
+    const pts = analysis.gzCurve.filter((p) => p.status === 'ok'), pad = 26 * k, W = w - pad - 8 * k, H = h - 22 * k;
+    const gmax = Math.max(1.2, ...pts.map((p) => p.gz)), X = (d) => pad + d / 90 * W, Y = (v) => 6 * k + H * (1 - (v + 0.1 * gmax) / (1.2 * gmax));
+    g.strokeStyle = '#2e3b47'; g.lineWidth = k; g.fillStyle = '#8da0b0'; g.font = `${10 * k}px sans-serif`;
+    for (let d = 0; d <= 90; d += 15) { g.beginPath(); g.moveTo(X(d), 4 * k); g.lineTo(X(d), h - 16 * k); g.stroke(); g.fillText(d + '°', X(d) - 8 * k, h - 4 * k); }
+    g.beginPath(); g.moveTo(pad, Y(0)); g.lineTo(w - 6 * k, Y(0)); g.stroke(); g.fillText('GZ(m)', 2 * k, 12 * k);
+    g.strokeStyle = '#4cc2ff'; g.lineWidth = 2 * k; g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(X(p.heelDeg), Y(p.gz)) : g.moveTo(X(p.heelDeg), Y(p.gz))); g.stroke();
+    for (const o of analysis.downflooding) if (o.downfloodingAngleDeg !== null) { g.strokeStyle = '#ffb454'; g.setLineDash([4 * k, 3 * k]); g.beginPath(); g.moveTo(X(o.downfloodingAngleDeg), 4 * k); g.lineTo(X(o.downfloodingAngleDeg), h - 16 * k); g.stroke(); g.setLineDash([]); g.fillStyle = '#ffb454'; g.fillText(o.id + '浸水', X(o.downfloodingAngleDeg) + 3 * k, 14 * k); }
+    const ah = Math.abs(+$('heel').value), cur = pts.find((p) => p.heelDeg === ah);
+    if (cur) { g.fillStyle = '#fff'; g.beginPath(); g.arc(X(ah), Y(cur.gz), 4 * k, 0, 7); g.fill(); }
+  }
+  const u = analysis.upright, s = analysis.summary, d = analysis.downflooding[0];
+  $('st1').innerHTML = `<span>排水量</span><b>${fix(analysis.mass.massKg / 1000, 0)} t</b><span>喫水</span><b>${fix(u.draftMid)} m</b>` +
+    `<span>GM</span><b class="${u.GM > 0.5 ? 'good' : 'warn'}">${fix(u.GM)} m</b><span>最大GZ</span><b>${fix(s.maxGz)} m @${fix(s.angleOfMaxGzDeg, 0)}°</b>` +
+    `<span>トリム</span><b>${fix(u.trimDeg)}°</b><span>砲門が沈む角</span><b class="${d.downfloodingAngleDeg !== null && d.downfloodingAngleDeg < 20 ? 'bad' : ''}">${fix(d.downfloodingAngleDeg, 1)}°</b>` +
+    `<span>復原力が消える角</span><b>${s.vanishingAngleDeg === null ? '90°超' : fix(s.vanishingAngleDeg, 0) + '°'}</b><span></span><b></b>`;
+}
+
+// ---------- navigation panel ----------
+let vessel = null, sailType = 'foreAndAft', running = true, speedX = 1, trail = [];
+function resetVessel() {
+  vessel = Ship.createVessel({ ship, analysis, rudder: { x: 0.5, areaM2: 6 }, sails: [{ id: 's', type: sailType, areaM2: 500, x: 21, zCe: 12 }] });
+  vessel.state.psi = +$('hd').value * DEG; vessel.state.u = 2; trail = [];
+}
+function env() { const from = +$('wd').value * DEG, sp = +$('ws').value; return { wind: { x: -Math.sin(from) * sp, y: -Math.cos(from) * sp } }; }
+let last = performance.now(), acc = 0, frame = 0;
+function drawNav() {
+  const { g, w, h, k } = fit($('cNav')); g.clearRect(0, 0, w, h);
+  const s = vessel.snapshot(), scale = 3.2 * k; // px per metre
+  const cx = w / 2, cy = h / 2, P = (x, y) => [cx + (x - s.x) * scale, cy - (y - s.y) * scale];
+  g.strokeStyle = '#1b2a36'; g.lineWidth = k; const grid = 100;
+  for (let gx = Math.floor((s.x - w / 2 / scale) / grid) * grid; gx < s.x + w / 2 / scale; gx += grid) { const a = P(gx, 0)[0]; g.beginPath(); g.moveTo(a, 0); g.lineTo(a, h); g.stroke(); }
+  for (let gy = Math.floor((s.y - h / 2 / scale) / grid) * grid; gy < s.y + h / 2 / scale; gy += grid) { const a = P(0, gy)[1]; g.beginPath(); g.moveTo(0, a); g.lineTo(w, a); g.stroke(); }
+  g.strokeStyle = 'rgba(76,194,255,.6)'; g.lineWidth = 2 * k; g.beginPath(); trail.forEach((p, i) => { const q = P(p[0], p[1]); i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]); }); g.stroke();
+  // ship (40 m long, 11 m beam)
+  g.save(); g.translate(cx, cy); g.rotate(vessel.state.psi); const L = 40 * scale, B = 10.8 * scale;
+  g.beginPath(); g.moveTo(0, -L / 2 - 4 * scale); g.quadraticCurveTo(B / 2 + 2 * scale, -L * 0.15, B / 2, L / 2 - 2 * scale); g.lineTo(-B / 2, L / 2 - 2 * scale); g.quadraticCurveTo(-B / 2 - 2 * scale, -L * 0.15, 0, -L / 2 - 4 * scale);
+  g.fillStyle = '#b8935c'; g.fill(); g.strokeStyle = '#e9cf9f'; g.lineWidth = 1.5 * k; g.stroke();
+  const sl = vessel.sails[0], th = sl.trimDeg * DEG, len = Math.sqrt(sl.areaM2) * 0.9 * scale * sl.deployed; // chord drawn at sail trim
+  g.strokeStyle = '#f4f4f4'; g.lineWidth = 3 * k; g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.sin(th) * len, Math.cos(th) * len); g.stroke();
+  g.restore();
+  // wind arrow (direction the wind blows toward) at top-left
+  const wf = +$('wd').value * DEG, ax = 40 * k, ay = 44 * k, wl = 26 * k;
+  g.save(); g.translate(ax, ay); g.rotate(wf + Math.PI); g.strokeStyle = '#ffb454'; g.fillStyle = '#ffb454'; g.lineWidth = 3 * k;
+  g.beginPath(); g.moveTo(0, wl); g.lineTo(0, -wl); g.stroke(); g.beginPath(); g.moveTo(0, -wl - 8 * k); g.lineTo(-6 * k, -wl + 2 * k); g.lineTo(6 * k, -wl + 2 * k); g.fill(); g.restore();
+  g.fillStyle = '#ffb454'; g.font = `${11 * k}px sans-serif`; g.fillText('風', ax - 5 * k, ay + 42 * k);
+  g.fillStyle = '#8da0b0'; g.fillText('上＝北　（水色の線＝航跡、方眼＝100 m）', 8 * k, h - 8 * k);
+  g.save(); g.translate(w - 30 * k, 40 * k); g.fillStyle = '#e6edf3'; g.fillText('N', -4 * k, -22 * k); g.strokeStyle = '#e6edf3'; g.beginPath(); g.moveTo(0, 16 * k); g.lineTo(0, -16 * k); g.stroke(); g.restore();
+  const f = vessel.forces(env());
+  $('st2').innerHTML = `<span>速度</span><b>${fix(s.speedOverGround * 1.9438, 1)} kt</b><span>船首方位</span><b>${fix(s.headingDeg, 0)}°</b>` +
+    `<span>傾斜</span><b class="${s.overpowered ? 'bad' : ''}">${fix(s.heelDeg, 1)}°${s.overpowered ? ' 強すぎ' : ''}</b><span>舵角</span><b>${fix(s.rudderDeg, 1)}°</b>` +
+    `<span>横流れ</span><b>${fix(f.leewayDeg, 1)}°</b><span>帆の角度</span><b>${fix(sl.trimDeg, 0)}°</b><span>経過</span><b>${fix(s.time, 0)} s</b><span></span><b></b>`;
+}
+function tick(now) {
+  const dt = Math.min((now - last) / 1000, 0.1); last = now;
+  if (running) { acc += dt * speedX; let n = 0; while (acc >= 0.1 && n++ < 40) { acc -= 0.1; if (frame++ % 10 === 0) vessel.autoTrim(env()); vessel.steerTowards(+$('hd').value); vessel.step(0.1, env()); if (frame % 5 === 0) { trail.push([vessel.state.X, vessel.state.Y]); if (trail.length > 1500) trail.shift(); } } }
+  drawNav(); requestAnimationFrame(tick);
+}
+// ---------- wiring ----------
+function out() { $('wsO').textContent = $('ws').value + ' m/s'; $('wdO').textContent = $('wd').value + '°'; $('hdO').textContent = $('hd').value + '°'; }
+['gun', 'heel'].forEach((id) => $(id).addEventListener('input', () => { if (id === 'gun') { buildShip(); resetVessel(); } drawStability(); }));
+['ws', 'wd', 'hd'].forEach((id) => $(id).addEventListener('input', out));
+const setType = (t) => { sailType = t; $('bSq').classList.toggle('on', t === 'square'); $('bFa').classList.toggle('on', t === 'foreAndAft'); resetVessel(); };
+$('bSq').onclick = () => setType('square'); $('bFa').onclick = () => setType('foreAndAft');
+$('bRun').onclick = () => { running = !running; $('bRun').classList.toggle('on', running); $('bRun').textContent = running ? '動かす' : '止めた'; };
+$('bRst').onclick = resetVessel;
+$('bX2').onclick = () => { speedX = speedX === 1 ? 4 : speedX === 4 ? 10 : 1; $('bX2').textContent = '倍速 ×' + speedX; };
+addEventListener('resize', drawStability);
+buildShip(); resetVessel(); out(); drawStability();
+window.__viewer = { Ship, get vessel() { return vessel; }, get analysis() { return analysis; } };
+requestAnimationFrame(tick);
+})();
+</script></body></html>
