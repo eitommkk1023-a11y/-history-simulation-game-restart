@@ -65,7 +65,7 @@ export function submergedVolume(slices, n, c) {
 }
 
 /** Illinois (modified regula falsi). Returns null if [lo, hi] does not bracket a root. */
-function findRoot(f, lo, hi, { ftol = 1e-12, xtol = 1e-10, maxIter = 100 } = {}) {
+export function findRoot(f, lo, hi, { ftol = 1e-12, xtol = 1e-10, maxIter = 100 } = {}) {
   let flo = f(lo), fhi = f(hi);
   if (flo === 0) return lo;
   if (fhi === 0) return hi;
@@ -81,7 +81,7 @@ function findRoot(f, lo, hi, { ftol = 1e-12, xtol = 1e-10, maxIter = 100 } = {})
   return x;
 }
 
-function floatAt(slices, volume, n) {
+export function floatAt(slices, volume, n) {
   let lo = Infinity, hi = -Infinity;
   for (const s of slices) for (const [y, z] of s.poly) {
     const d = n[0] * s.x + n[1] * y + n[2] * z;
@@ -102,11 +102,11 @@ function arms(B, G, n) {
   return { roll: dot(m, eLn), pitch: dot(m, cross(n, eLn)) };
 }
 
-/** Free-trim equilibrium at a fixed heel angle (radians). */
+/** Free-trim equilibrium at a fixed heel angle (radians). G is [x,y,z] or a function of the water normal (moving internal water). */
 export function equilibriumAtHeel(slices, volume, G, heel, trimLimit = 20 * DEG) {
   const evalTrim = (trim) => {
     const n = waterNormal(heel, trim), f = floatAt(slices, volume, n);
-    return f ? { trim, n, ...f, ...arms(f.centroid, G, n) } : null;
+    return f ? { trim, n, ...f, ...arms(f.centroid, typeof G === 'function' ? G(n) : G, n) } : null;
   };
   let failed = false;
   const trim = findRoot((t) => {
