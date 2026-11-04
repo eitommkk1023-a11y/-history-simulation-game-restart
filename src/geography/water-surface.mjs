@@ -30,5 +30,20 @@ export function createWaterSurface(terrain,world){
    if(x1>x0&&y1>y0)out.push({x0,x1,y0,y1,surfaceM:level,kind:water.kind});
   }return out;
  }
- return {sample,patches};
+ function distantPatches(x,y){
+  const out=[],cell=256,radius=8192,inner=2048,s=terrain.metersPerCell;
+  function known(px,py){const gx=Math.min(terrain.width-1,Math.round(px/s)),gy=Math.min(terrain.height-1,Math.round(py/s)),i=gy*terrain.width+gx,id=world.lakeId?.[i];
+   return world.type[i]===0?{kind:'sea',surfaceM:0}:world.water[i]===2&&id>0&&Number.isFinite(world.lakeLevels?.[id])?{kind:'lake',surfaceM:toMeters(world.lakeLevels[id]),id}:null;
+  }
+  for(let ty=Math.max(0,Math.floor((y-radius)/cell));ty<=Math.floor(Math.min(terrain.heightM,y+radius)/cell);ty++)for(let tx=Math.max(0,Math.floor((x-radius)/cell));tx<=Math.floor(Math.min(terrain.widthM,x+radius)/cell);tx++){
+   const x0=tx*cell,y0=ty*cell,x1=Math.min(terrain.widthM,x0+cell),y1=Math.min(terrain.heightM,y0+cell);
+   if(x1<=x0||y1<=y0||(x0>=x-inner&&x1<=x+inner&&y0>=y-inner&&y1<=y+inner))continue;
+   const samples=[[x0,y0],[x1,y0],[x0,y1],[x1,y1],[(x0+x1)/2,(y0+y1)/2]].map(([px,py])=>known(px,py));
+   const sea=samples.some(p=>p?.kind==='sea'),lake=samples[0];
+   if(sea)out.push({x0,x1,y0,y1,surfaceM:0,kind:'sea'});
+   else if(lake?.kind==='lake'&&samples.every(p=>p?.kind==='lake'&&p.id===lake.id))out.push({x0,x1,y0,y1,surfaceM:lake.surfaceM,kind:'lake'});
+  }
+  return out;
+ }
+ return {sample,patches,distantPatches};
 }

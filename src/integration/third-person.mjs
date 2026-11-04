@@ -19,10 +19,10 @@ const bridge=globalThis.__wohNative;
 const renderer=bridge.renderer;
 
 
-const scene=new THREE.Scene();scene.background=new THREE.Color(0xa8c8dc);scene.fog=new THREE.Fog(0xa8c8dc,1300,2100);
+const scene=new THREE.Scene();scene.background=new THREE.Color(0xa8c8dc);scene.fog=new THREE.Fog(0xa8c8dc,4500,7800);
 scene.add(new THREE.HemisphereLight(0xd8efff,0x4b5930,.9));
 const light=new THREE.DirectionalLight(0xffffff,.8);light.position.set(-20,50,-10);scene.add(light);
-const camera=new THREE.PerspectiveCamera(55,1,.1,3000);
+const camera=new THREE.PerspectiveCamera(55,1,.1,10000);
 const raycaster=new THREE.Raycaster();
 const marker=new THREE.Group();
 const markerMaterial=new THREE.MeshLambertMaterial({color:0xe5b348});
@@ -111,7 +111,7 @@ function updateCamera(){
 function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();if(state?.map){state.map.camera.aspect=innerWidth/innerHeight;state.map.camera.updateProjectionMatrix();}updateCamera();}
 function clearTerrain(){
   resetInput();crouched=false;crouchButton.classList.remove('active');crouchButton.setAttribute('aria-pressed','false');markerPoint=null;jumpHeight=0;jumpVelocity=0;
-  if(state){state.clearing=true;state.window.clear();state.work.clear();if(state.waterMesh){scene.remove(state.waterMesh);state.waterMesh.geometry.dispose();state.waterMesh.material.dispose();}for(const entry of state.fallback.values())releaseMesh(entry);}
+  if(state){state.clearing=true;state.window.clear();state.work.clear();for(const mesh of [state.waterMesh,state.farWaterMesh])if(mesh){scene.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();}for(const entry of state.fallback.values())releaseMesh(entry);}
   state=null;marker.visible=false;
 }
 function groundAt(xM,yM){
@@ -130,9 +130,9 @@ function placeMarker(xM,yM,render=true){
   bridge.map.player(playerToSource(markerPoint));if(render)updateCamera();
 }
 function releaseMesh({mesh}){scene.remove(mesh);mesh.traverse(o=>{if(o.geometry)o.geometry.dispose();});mesh.material.dispose();}
-function makeTerrainMesh(chunk,far=false){
+function makeTerrainMesh(chunk,far=false,edgeCuts){
  if(state)state.terrainBuilds++;
- const data=far?seamGeometry(state.terrain,chunk):{positions:chunk.positions.slice(),normals:chunk.normals.slice(),indices:chunk.indices,boundary:new Set()};
+ const data=far?seamGeometry(state.terrain,chunk,edgeCuts):{positions:chunk.positions.slice(),normals:chunk.normals.slice(),indices:chunk.indices,boundary:new Set()};
  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(data.positions,3));geometry.setAttribute('normal',new THREE.BufferAttribute(data.normals,3));geometry.setIndex(new THREE.BufferAttribute(data.indices,1));
  const uv=new Float32Array(data.positions.length/3*2);
  for(let i=0;i<data.positions.length/3;i++){uv[i*2]=(chunk.originM.xM+data.positions[i*3])/state.terrain.widthM;uv[i*2+1]=1-(chunk.originM.yM+data.positions[i*3+2])/state.terrain.heightM;}
@@ -174,18 +174,23 @@ function setNearHole(entry){
  entry.hole.value.set((c.x-1)*64-x,(c.y-1)*64-y,(c.x+2)*64-x,(c.y+2)*64-y);
 }
 function refreshWater(xM,yM){
- const key=Math.floor(xM/512)+','+Math.floor(yM/512);
+ const key=(state.fastRender?'fast:':'normal:')+Math.floor(xM/512)+','+Math.floor(yM/512);
  if(key!==state.waterKey){
-  if(state.waterMesh){scene.remove(state.waterMesh);state.waterMesh.geometry.dispose();state.waterMesh.material.dispose();}
-  const anchor={xM:Math.floor(xM/512)*512,yM:Math.floor(yM/512)*512},positions=[];
-  for(const p of state.water.patches(xM,yM)){
-   const a=[p.x0-anchor.xM,p.surfaceM+.005,p.y0-anchor.yM],b=[p.x1-anchor.xM,p.surfaceM+.005,p.y0-anchor.yM],c=[p.x0-anchor.xM,p.surfaceM+.005,p.y1-anchor.yM],d=[p.x1-anchor.xM,p.surfaceM+.005,p.y1-anchor.yM];positions.push(...a,...c,...b,...b,...c,...d);
+  for(const mesh of [state.waterMesh,state.farWaterMesh])if(mesh){scene.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();}
+  const anchor={xM:Math.floor(xM/512)*512,yM:Math.floor(yM/512)*512};
+  function buildWater(patches,offset,transparent){
+   const positions=[];for(const p of patches){
+    const a=[p.x0-anchor.xM,p.surfaceM+offset,p.y0-anchor.yM],b=[p.x1-anchor.xM,p.surfaceM+offset,p.y0-anchor.yM],c=[p.x0-anchor.xM,p.surfaceM+offset,p.y1-anchor.yM],d=[p.x1-anchor.xM,p.surfaceM+offset,p.y1-anchor.yM];positions.push(...a,...c,...b,...b,...c,...d);
+   }
+   const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geometry.computeVertexNormals();
+   const material=new THREE.MeshLambertMaterial({color:0x2b95be,transparent,opacity:transparent?.72:1,depthWrite:!transparent});
+   const mesh=new THREE.Mesh(geometry,material);scene.add(mesh);return mesh;
   }
-  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geometry.computeVertexNormals();
-  const material=new THREE.MeshLambertMaterial({color:0x2b95be,transparent:true,opacity:.72,depthWrite:false});
-  state.waterMesh=new THREE.Mesh(geometry,material);state.waterAnchor=anchor;state.waterKey=key;scene.add(state.waterMesh);
+  state.waterMesh=buildWater(state.water.patches(xM,yM,state.fastRender?900:2800),.005,true);
+  state.farWaterMesh=buildWater((state.fastRender?[]:state.water.distantPatches(xM,yM)),.002,false);
+  state.waterAnchor=anchor;state.waterKey=key;
  }
- const q=state.terrain.toLocal(state.waterAnchor.xM,state.waterAnchor.yM,0,state.origin);state.waterMesh.position.set(q.x,q.y,q.z);
+ const q=state.terrain.toLocal(state.waterAnchor.xM,state.waterAnchor.yM,0,state.origin);state.waterMesh.position.set(q.x,q.y,q.z);state.farWaterMesh.position.set(q.x,q.y,q.z);
 }
 function refreshChunks(xM,yM){
  const fast=!!bridge.debugFastActive&&wasMoving;
@@ -194,7 +199,7 @@ function refreshChunks(xM,yM){
   state.window.clear();state.work.clear();state.far=new Map();
   if(fast){for(const e of state.fallback.values())releaseMesh(e);state.fallback.clear();}
   state.window=makeWindow(state.terrain,fast);state.fastRender=fast;state.lodKey='';
-  scene.fog.near=fast?350:1300;scene.fog.far=fast?700:2100;
+  scene.fog.near=fast?350:4500;scene.fog.far=fast?700:7800;
  }
  const previousNear=[...state.entries,...state.fallback.values()];
  state.window.update(xM,yM);
@@ -230,7 +235,7 @@ function showWorld(world,point,label){
   const origin={...point,elevationM:p.baseElevationM},window=makeWindow(terrain,false);
   state={terrain,origin,window,world,map:null,fastRender:false,dropOldChunks:false,idleFast:0,terrainBuilds:0,water:createWaterSurface(terrain,world),waterKey:null,waterMesh:null,far:new Map(),fallback:new Map(),clearing:false,lodKey:'',nearCenter:{x:0,y:0},settle:.6,drawDirty:false,morphSources:[],lastJobs:0,lastTexture:bridge.texture,get entries(){return this.window.entries;},label};
   state.work=createTerrainWorkQueue({build:q=>{
-   const entry=makeTerrainMesh(createTerrainChunk(terrain,q),true);prepareMorph(entry,state.morphSources);positionTerrain(entry);setNearHole(entry);return entry;
+   const entry=makeTerrainMesh(createTerrainChunk(terrain,q),true,q.edgeCuts);prepareMorph(entry,state.morphSources);positionTerrain(entry);setNearHole(entry);return entry;
   },release:releaseMesh,commit:(next)=>{
    state.drawDirty=true;state.far=next;for(const entry of next.values()){entry.mesh.material.map=bridge.texture;entry.mesh.material.needsUpdate=true;entry.mesh.visible=true;positionTerrain(entry);setNearHole(entry);}
    for(const entry of state.fallback.values())releaseMesh(entry);state.fallback.clear();state.morphSources=[];

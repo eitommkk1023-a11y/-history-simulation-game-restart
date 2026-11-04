@@ -4,13 +4,36 @@ export function selectTerrainLOD(terrain,xM,yM){
  function visit(x,y,size){
   if(x>=terrain.widthM||y>=terrain.heightM)return;
   const distance=Math.hypot(Math.max(x-px,0,px-x-size),Math.max(y-py,0,py-y-size));
-  if(distance>2048)return;
+  if(distance>8192)return;
   const overlapsNear=x<(cx+2)*64&&x+size>(cx-1)*64&&y<(cy+2)*64&&y+size>(cy-1)*64;
-  if(size>64&&(overlapsNear||distance<size*1.15)){
+  if(size>64&&(overlapsNear||distance<size)){
    const half=size/2;for(let dy=0;dy<2;dy++)for(let dx=0;dx<2;dx++)visit(x+dx*half,y+dy*half,half);
-  }else if(!(size===64&&overlapsNear))result.push({tileX:x/size,tileY:y/size,sizeM:size,segments:8,key:x+','+y+','+size});
+  }else if(!(size===64&&overlapsNear))result.push({tileX:x/size,tileY:y/size,sizeM:size,segments:size>=2048?16:8,key:x+','+y+','+size});
  }
- for(let y=Math.max(0,Math.floor((py-2048)/512));y<=Math.floor((py+2048)/512);y++)for(let x=Math.max(0,Math.floor((px-2048)/512));x<=Math.floor((px+2048)/512);x++)visit(x*512,y*512,512);
+ for(let y=Math.max(0,Math.floor((py-8192)/2048));y<=Math.floor((py+8192)/2048);y++)for(let x=Math.max(0,Math.floor((px-8192)/2048));x<=Math.floor((px+8192)/2048);x++)visit(x*2048,y*2048,2048);
+ // Match each side to the union of the adjacent interior grids. Near colliders
+ // contribute their real 2m grid, while distant boundaries stay coarse.
+ const near=[];for(let y=Math.max(0,cy-1);y<=cy+1;y++)for(let x=Math.max(0,cx-1);x<=cx+1;x++)if(x*64<terrain.widthM&&y*64<terrain.heightM)near.push({tileX:x,tileY:y,sizeM:64,segments:32});
+ const boxes=[...result,...near].map(q=>({...q,x:q.tileX*q.sizeM,z:q.tileY*q.sizeM,x1:Math.min(terrain.widthM,(q.tileX+1)*q.sizeM),z1:Math.min(terrain.heightM,(q.tileY+1)*q.sizeM)}));
+ for(let i=0;i<result.length;i++){
+  const a=boxes[i],cuts={west:[],east:[],north:[],south:[]};
+  const base=(b,axis)=>Array.from({length:b.segments+1},(_,k)=>b[axis]+(b[axis+'1']-b[axis])*k/b.segments);
+  for(const side of ['west','east'])cuts[side].push(...base(a,'z'));
+  for(const side of ['north','south'])cuts[side].push(...base(a,'x'));
+  for(const b of boxes){
+   if(b===a)continue;
+   if(Math.min(a.z1,b.z1)>Math.max(a.z,b.z)){
+    if(a.x===b.x1)cuts.west.push(...base(b,'z').filter(v=>v>=a.z&&v<=a.z1));
+    if(a.x1===b.x)cuts.east.push(...base(b,'z').filter(v=>v>=a.z&&v<=a.z1));
+   }
+   if(Math.min(a.x1,b.x1)>Math.max(a.x,b.x)){
+    if(a.z===b.z1)cuts.north.push(...base(b,'x').filter(v=>v>=a.x&&v<=a.x1));
+    if(a.z1===b.z)cuts.south.push(...base(b,'x').filter(v=>v>=a.x&&v<=a.x1));
+   }
+  }
+  for(const side of Object.keys(cuts)){const origin=side==='west'||side==='east'?a.z:a.x;cuts[side]=[...new Set(cuts[side].map(v=>Number((v-origin).toFixed(6))))].sort((a,b)=>a-b);}
+  result[i].edgeCuts=cuts;result[i].key+=':'+Object.values(cuts).map(v=>v.join('/')).join('|');
+ }
  return result;
 }
 /** Downward skirts hide cracks between differently sampled edges, never used for contact. */
