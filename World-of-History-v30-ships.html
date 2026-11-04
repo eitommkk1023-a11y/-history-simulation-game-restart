@@ -10234,7 +10234,7 @@ const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_p
   /** The game renders inside its own frame, so ship meshes and the boarded player are placed right before each render. */
   function patchRender() {
     const rd = nat.renderer, orig = rd.render.bind(rd);
-    rd.render = function (sc, cam) { try { if (fleet && env && S === cp.state && sc === gameScene() && !cp.view.overview) preRender(cam); } catch (_) { /* never break the game's render */ } return orig(sc, cam); };
+    rd.render = function (sc, cam) { try { if (fleet && env && S === cp.state) { if (cp.view.overview) { if (sc === nat.scene) syncOverview(); } else if (sc === gameScene()) preRender(cam); } } catch (_) { /* never break the game's render */ } return orig(sc, cam); };
   }
   function preRender() { syncMeshes(); }
 
@@ -10245,6 +10245,8 @@ const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_p
     S = cp.state; fleet = null; env = null; ref = null; ctl = {}; boarded = null;
     for (const m of meshes.values()) disposeMesh(m);
     meshes.clear();
+    for (const m of overviewMarkers.values()) { nat.scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
+    overviewMarkers.clear();
     lastSeed = String(globalThis.__geo?.seed ?? '');
     fleet = Ship.createFleet({ nearRadiusM: 1500, farRadiusM: 20000 });
     for (const [id, d] of Object.entries(Ship.sampleDesigns)) fleet.registerDesign(id, d);
@@ -10285,6 +10287,22 @@ const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_p
     return null;
   }
 
+  /** Heading (deg, clockwise from north) with the longest run of open water, so a new ship faces the sea. */
+  function openWaterHeading(xM, yM) {
+    const T = S.terrain; let best = 0, bestD = -1;
+    for (let h = 0; h < 360; h += 15) {
+      const sx = Math.sin(h * DEG), sy = -Math.cos(h * DEG); // xM east, yM south
+      let d = 0;
+      for (; d < 3000; d += 40) {
+        const x = xM + sx * d, y = yM + sy * d;
+        if (x < 5 || y < 5 || x > T.widthM - 5 || y > T.heightM - 5) break;
+        const e = elevAt(x, y); if (e === null || e > -6) break;
+      }
+      if (d > bestD) { bestD = d; best = h; }
+    }
+    return best;
+  }
+
   // ---------- ship meshes ----------
   const gameScene = () => cp.character?.parent ?? nat.scene; // the native view has its own scene (the one the player marker lives in)
   function disposeMesh(m) { m.group.parent?.remove(m.group); m.group.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); }); }
@@ -10323,14 +10341,33 @@ const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_p
     for (const id of [...meshes.keys()]) if (!fleet.has(id)) { disposeMesh(meshes.get(id)); meshes.delete(id); }
   }
 
+  const overviewMarkers = new Map(), WB = 3000;
+  function syncOverview() {
+    const mpc = S.terrain.metersPerCell ?? 33.3, k = WB / (WB - 1);
+    for (const rec of fleet.list()) {
+      let m = overviewMarkers.get(rec.id);
+      if (!m) {
+        const geo = new THREE_.ConeGeometry(34, 100, 3); geo.rotateX(-Math.PI / 2);
+        const mesh = new THREE_.Mesh(geo, new THREE_.MeshBasicMaterial({ color: boarded === rec.id ? 0x4cc2ff : 0xff6b4a, depthTest: false }));
+        mesh.renderOrder = 101; mesh.rotation.order = 'YXZ'; nat.scene.add(mesh); m = mesh; overviewMarkers.set(rec.id, m);
+      }
+      const st = rec.vessel.state, bx = (ref.xM + st.X) / mpc, by = (ref.yM - st.Y) / mpc;
+      m.position.set(bx * k - WB / 2, 25, by * k - WB / 2);
+      m.rotation.y = -st.psi; m.material.color.setHex(boarded === rec.id ? 0x4cc2ff : 0xff6b4a); m.visible = true;
+    }
+    for (const id of [...overviewMarkers.keys()]) if (!fleet.has(id)) { const m = overviewMarkers.get(id); nat.scene.remove(m); m.geometry.dispose(); m.material.dispose(); overviewMarkers.delete(id); }
+  }
+
   // ---------- actions ----------
   function spawn(designId) {
     const mp = cp.markerPoint; if (!mp) { toast('先にプレイヤーを置いてください'); return; }
     const spot = scan(mp.xM, mp.yM, (e, x, y) => e < -12 && [[60, 0], [-60, 0], [0, 60], [0, -60]].every(([dx, dy]) => (elevAt(x + dx, y + dy) ?? 0) < -10), 30000, 50);
     if (!spot) { toast('近くに十分深い海がない'); return; }
     if (!ref) { ref = { xM: spot.xM, yM: spot.yM }; makeEnv(); }
-    const id = fleet.addShip({ designId, X: spot.xM - ref.xM, Y: ref.yM - spot.yM, headingDeg: 0 });
-    ctl[id] = { heading: 0, held: 0, auto: true, oar: 0.8 };
+    const heading = openWaterHeading(spot.xM, spot.yM);
+    const id = fleet.addShip({ designId, X: spot.xM - ref.xM, Y: ref.yM - spot.yM, headingDeg: heading });
+    fleet.get(id).vessel.state.u = 1.5; // already under way, so the rudder bites
+    ctl[id] = { heading, held: 0, auto: true, oar: 0.8 };
     toast(`${id}（${designId}）を海に出した`); refreshList(); save();
   }
   function board(id) {
@@ -10368,6 +10405,7 @@ const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_p
     if (dt > 0) fleet.step(dt * speedX, env, focus);
     for (const e of fleet.takeEvents()) if (EVT[e.type]) toast(`${e.shipId}：${EVT[e.type]}`);
     syncMeshes();
+    if (boarded && fleet.has(boarded) && cp.view.overview) { const st = fleet.get(boarded).vessel.state; cp.placeMarker(ref.xM + st.X, ref.yM - st.Y, false); }
     if (boarded && fleet.has(boarded) && !cp.view.overview && meshes.has(boarded)) {
       // Put the player marker on the deck and move the orbit camera by the same amount, so the camera follows the ship rigidly.
       const st = fleet.get(boarded).vessel.state, xM = ref.xM + st.X, yM = ref.yM - st.Y, mk = cp.character, cam = cp.camera, o = mk.position.clone();
@@ -10393,12 +10431,13 @@ const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_p
 #shipBar{position:fixed;z-index:120;bottom:calc(8px + env(safe-area-inset-bottom));left:calc(150px + env(safe-area-inset-left));right:calc(240px + env(safe-area-inset-right));display:none;font:12px/1.3 -apple-system,"Hiragino Sans",sans-serif;color:#e6edf3;background:#10202ff2;border:1px solid #2e5576;border-radius:10px;padding:6px;-webkit-user-select:none;user-select:none}
 #shipBar .info{font-size:11px;color:#9fc4de;margin-bottom:2px}#shipBar .btns{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
 @media (max-width:720px){#shipBar{left:calc(8px + env(safe-area-inset-left));right:calc(8px + env(safe-area-inset-right));bottom:calc(150px + env(safe-area-inset-bottom))}}
+#shipPanel{touch-action:pan-y;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 #shipPanel button,#shipBar button{background:#25415a;color:#e6edf3;border:1px solid #3b6288;border-radius:7px;padding:6px 9px;font-size:12px;min-height:30px;margin:2px 2px 2px 0}
 #shipPanel button.on,#shipBar button.on{background:#4cc2ff;color:#04202e}#shipPanel h4{margin:6px 0 2px;font-size:12px;color:#7fc8f0}
 #shipPanel .row{display:flex;align-items:center;gap:6px}#shipPanel input[type=range]{flex:1;min-width:0}
 #shipToast{position:fixed;z-index:130;left:50%;bottom:calc(158px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#000c;color:#fff;padding:6px 12px;border-radius:8px;font:13px sans-serif;opacity:0;transition:opacity .3s;pointer-events:none}` });
     ui.btn = $('button', { id: 'shipBtn', textContent: '⛵ 船' });
-    ui.panel = $('div', { id: 'shipPanel' });
+    ui.panel = $('div', { id: 'shipPanel', className: 'scrollable' });
     ui.toast = $('div', { id: 'shipToast' });
     ui.btn.onclick = () => { ui.panel.style.display = ui.panel.style.display === 'block' ? 'none' : 'block'; };
     ui.spawn = $('div', {}, [$('h4', { textContent: '船を出す（近くの海へ）' }),
@@ -10407,7 +10446,7 @@ const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_p
     ui.bar = $('div', { id: 'shipBar' }, [ui.info, ui.ctrl]);
     ui.panel.append(ui.spawn, ui.list);
     document.body.append(css, ui.btn, ui.panel, ui.bar, ui.toast);
-    ['pointerdown', 'touchstart', 'mousedown', 'wheel'].forEach((ev) => { for (const el of [ui.panel, ui.btn, ui.bar]) el.addEventListener(ev, (e) => e.stopPropagation(), { passive: true}); });
+    ['pointerdown', 'pointermove', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'wheel'].forEach((ev) => { for (const el of [ui.panel, ui.btn, ui.bar]) el.addEventListener(ev, (e) => e.stopPropagation(), { passive: true}); });
   }
   function refreshList() {
     if (!ui.list) return;
