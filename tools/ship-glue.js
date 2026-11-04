@@ -17,20 +17,9 @@
   /** The game renders inside its own frame, so ship meshes and the boarded player are placed right before each render. */
   function patchRender() {
     const rd = nat.renderer, orig = rd.render.bind(rd);
-    rd.render = function (sc, cam) { try { if (fleet && env && S === cp.state) preRender(); } catch (_) { /* never break the game's render */ } return orig(sc, cam); };
+    rd.render = function (sc, cam) { try { if (fleet && env && S === cp.state && sc === gameScene() && !cp.view.overview) preRender(cam); } catch (_) { /* never break the game's render */ } return orig(sc, cam); };
   }
-  function preRender() {
-    syncMeshes();
-    if (boarded && fleet.has(boarded) && meshes.has(boarded)) {
-      const st = fleet.get(boarded).vessel.state, q = S.terrain.toLocal(ref.xM + st.X, ref.yM - st.Y, 0, S.origin);
-      const mk = cp.character, cam = cp.camera, ny = q.y + meshes.get(boarded).deckY;
-      // Move the marker onto the deck and translate the orbit camera by the same amount (direction stays as the game set it).
-      if (mk.position.x !== q.x || mk.position.y !== ny || mk.position.z !== q.z) {
-        cam.position.x += q.x - mk.position.x; cam.position.y += ny - mk.position.y; cam.position.z += q.z - mk.position.z;
-        mk.position.set(q.x, ny, q.z);
-      }
-    }
-  }
+  function preRender() { syncMeshes(); }
 
   function toast(text) { ui.toast.textContent = text; ui.toast.style.opacity = 1; clearTimeout(toast.t); toast.t = setTimeout(() => { ui.toast.style.opacity = 0; }, 3500); }
 
@@ -162,7 +151,17 @@
     if (dt > 0) fleet.step(dt * speedX, env, focus);
     for (const e of fleet.takeEvents()) if (EVT[e.type]) toast(`${e.shipId}：${EVT[e.type]}`);
     syncMeshes();
-    if (boarded && fleet.has(boarded)) { const st = fleet.get(boarded).vessel.state; cp.placeMarker(ref.xM + st.X, ref.yM - st.Y, false); }
+    if (boarded && fleet.has(boarded) && !cp.view.overview && meshes.has(boarded)) {
+      // Put the player marker on the deck and move the orbit camera by the same amount, so the camera follows the ship rigidly.
+      const st = fleet.get(boarded).vessel.state, xM = ref.xM + st.X, yM = ref.yM - st.Y, mk = cp.character, cam = cp.camera, o = mk.position.clone();
+      cp.placeMarker(xM, yM, false);
+      if (cp.markerPoint) {
+        const q = S.terrain.toLocal(xM, yM, 0, S.origin), deck = meshes.get(boarded).deckY, ny = q.y + deck;
+        cp.markerPoint.elevationM = deck; // the game keeps the marker at this height while the player stands still
+        mk.position.set(q.x, ny, q.z);
+        cam.position.x += q.x - o.x; cam.position.y += ny - o.y; cam.position.z += q.z - o.z;
+      }
+    }
     saveAcc += dt; if (saveAcc > 8) { saveAcc = 0; save(); }
     updateHud();
   }
@@ -173,21 +172,25 @@
     const css = $('style', { textContent: `
 #shipBtn,#shipPanel{position:fixed;z-index:120;left:calc(8px + env(safe-area-inset-left));font:12px/1.35 -apple-system,"Hiragino Sans",sans-serif;color:#e6edf3}
 #shipBtn{top:calc(56px + env(safe-area-inset-top));padding:6px 10px;background:#132a40e8;border:1px solid #2e5576;border-radius:8px}
-#shipPanel{top:calc(96px + env(safe-area-inset-top));width:min(300px,calc(100vw - 24px));max-height:calc(100vh - 150px);overflow:auto;background:#10202ff2;border:1px solid #2e5576;border-radius:10px;padding:8px;display:none;-webkit-user-select:none;user-select:none}
-#shipPanel button{background:#25415a;color:#e6edf3;border:1px solid #3b6288;border-radius:7px;padding:6px 9px;font-size:12px;min-height:30px;margin:2px 2px 2px 0}
-#shipPanel button.on{background:#4cc2ff;color:#04202e}#shipPanel h4{margin:6px 0 2px;font-size:12px;color:#7fc8f0}
+#shipPanel{top:calc(96px + env(safe-area-inset-top));width:min(300px,calc(100vw - 24px));max-height:calc(100vh - 260px);min-height:0;overflow:auto;background:#10202ff2;border:1px solid #2e5576;border-radius:10px;padding:8px;display:none;-webkit-user-select:none;user-select:none}
+#shipBar{position:fixed;z-index:120;bottom:calc(8px + env(safe-area-inset-bottom));left:calc(150px + env(safe-area-inset-left));right:calc(240px + env(safe-area-inset-right));display:none;font:12px/1.3 -apple-system,"Hiragino Sans",sans-serif;color:#e6edf3;background:#10202ff2;border:1px solid #2e5576;border-radius:10px;padding:6px;-webkit-user-select:none;user-select:none}
+#shipBar .info{font-size:11px;color:#9fc4de;margin-bottom:2px}#shipBar .btns{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+@media (max-width:720px){#shipBar{left:calc(8px + env(safe-area-inset-left));right:calc(8px + env(safe-area-inset-right));bottom:calc(150px + env(safe-area-inset-bottom))}}
+#shipPanel button,#shipBar button{background:#25415a;color:#e6edf3;border:1px solid #3b6288;border-radius:7px;padding:6px 9px;font-size:12px;min-height:30px;margin:2px 2px 2px 0}
+#shipPanel button.on,#shipBar button.on{background:#4cc2ff;color:#04202e}#shipPanel h4{margin:6px 0 2px;font-size:12px;color:#7fc8f0}
 #shipPanel .row{display:flex;align-items:center;gap:6px}#shipPanel input[type=range]{flex:1;min-width:0}
-#shipToast{position:fixed;z-index:130;left:50%;bottom:calc(90px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#000c;color:#fff;padding:6px 12px;border-radius:8px;font:13px sans-serif;opacity:0;transition:opacity .3s;pointer-events:none}` });
+#shipToast{position:fixed;z-index:130;left:50%;bottom:calc(158px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#000c;color:#fff;padding:6px 12px;border-radius:8px;font:13px sans-serif;opacity:0;transition:opacity .3s;pointer-events:none}` });
     ui.btn = $('button', { id: 'shipBtn', textContent: '⛵ 船' });
     ui.panel = $('div', { id: 'shipPanel' });
     ui.toast = $('div', { id: 'shipToast' });
     ui.btn.onclick = () => { ui.panel.style.display = ui.panel.style.display === 'block' ? 'none' : 'block'; };
     ui.spawn = $('div', {}, [$('h4', { textContent: '船を出す（近くの海へ）' }),
       ...Object.keys(Ship.sampleDesigns).map((d) => $('button', { textContent: d === 'galleon' ? 'ガレオン' : 'ガレー', onclick: () => spawn(d) }))]);
-    ui.list = $('div'); ui.ctrl = $('div'); ui.info = $('div', { style: 'margin-top:4px;color:#9fc4de' });
-    ui.panel.append(ui.spawn, ui.list, ui.ctrl, ui.info);
-    document.body.append(css, ui.btn, ui.panel, ui.toast);
-    ['pointerdown', 'touchstart', 'mousedown', 'wheel'].forEach((ev) => { ui.panel.addEventListener(ev, (e) => e.stopPropagation(), { passive: true }); ui.btn.addEventListener(ev, (e) => e.stopPropagation(), { passive: true }); });
+    ui.list = $('div'); ui.ctrl = $('div', { className: 'btns' }); ui.info = $('div', { className: 'info' });
+    ui.bar = $('div', { id: 'shipBar' }, [ui.info, ui.ctrl]);
+    ui.panel.append(ui.spawn, ui.list);
+    document.body.append(css, ui.btn, ui.panel, ui.bar, ui.toast);
+    ['pointerdown', 'touchstart', 'mousedown', 'wheel'].forEach((ev) => { for (const el of [ui.panel, ui.btn, ui.bar]) el.addEventListener(ev, (e) => e.stopPropagation(), { passive: true}); });
   }
   function refreshList() {
     if (!ui.list) return;
@@ -196,17 +199,18 @@
       $('button', { textContent: boarded === r.id ? '降りる' : '乗る', className: boarded === r.id ? 'on' : '', onclick: () => (boarded === r.id ? disembark() : board(r.id)) }),
       $('button', { textContent: '消す', onclick: () => removeShip(r.id) })])));
     ui.ctrl.replaceChildren();
+    ui.bar.style.display = boarded && fleet?.has(boarded) ? 'block' : 'none';
     if (!boarded || !fleet?.has(boarded)) return;
     const rec = fleet.get(boarded), c = ctl[boarded], v = rec.vessel;
     const hold = (label, dir) => { const b = $('button', { textContent: label }); const on = (e) => { e.preventDefault(); c.held = dir; }, off = () => { if (c.held === dir) c.held = 0; }; b.addEventListener('pointerdown', on); ['pointerup', 'pointerleave', 'pointercancel'].forEach((t) => b.addEventListener(t, off)); return b; };
-    ui.ctrl.append($('h4', { textContent: `操縦：${boarded}` }), hold('◀ 左へ', -1), hold('右へ ▶', 1),
+    ui.ctrl.append(hold('◀ 左へ', -1), hold('右へ ▶', 1),
       $('button', { textContent: v.state.anchor ? '錨を上げる' : '錨を下ろす', onclick: () => { if (v.state.anchor) v.raiseAnchor(); else { const r = v.dropAnchor(env, { anchorKg: 400, rodeM: 60 }); if (r.status !== 'ok') toast('投錨できない：' + r.status); } refreshList(); } }));
     if (v.sails.length) ui.ctrl.append($('button', { textContent: c.auto ? '帆：自動' : '帆：固定', className: c.auto ? 'on' : '', onclick: () => { c.auto = !c.auto; refreshList(); } }));
-    if (v.oars.length) { const r = $('input', { type: 'range', min: -100, max: 100, step: 5, value: Math.round(c.oar * 100) }); r.oninput = () => { c.oar = r.value / 100; }; ui.ctrl.append($('div', { className: 'row' }, [$('span', { textContent: '櫂' }), r])); }
-    ui.ctrl.append($('button', { textContent: `倍速 ×${speedX}`, onclick: (e) => { speedX = speedX === 1 ? 4 : speedX === 4 ? 10 : 1; e.target.textContent = `倍速 ×${speedX}`; } }));
+    if (v.oars.length) { const r = $('input', { type: 'range', min: -100, max: 100, step: 5, value: Math.round(c.oar * 100) }); r.oninput = () => { c.oar = r.value / 100; }; ui.ctrl.append($('span', { textContent: '櫂' }), r); r.style.cssText = 'width:90px'; }
+    ui.ctrl.append($('button', { textContent: '降りる', onclick: () => disembark() }), $('button', { textContent: `倍速 ×${speedX}`, onclick: (e) => { speedX = speedX === 1 ? 4 : speedX === 4 ? 10 : 1; e.target.textContent = `倍速 ×${speedX}`; } }));
   }
   function updateHud() {
-    if (!ui.info || ui.panel.style.display !== 'block') return;
+    if (!ui.info) return;
     if (!boarded || !fleet?.has(boarded)) { ui.info.textContent = ''; return; }
     const v = fleet.get(boarded).vessel, s = v.snapshot(), f = v.forces(env), c = ctl[boarded];
     const w = env.wind(v.state.X, v.state.Y, 0), wf = (Math.atan2(-w.x, -w.y) / DEG + 360) % 360;
