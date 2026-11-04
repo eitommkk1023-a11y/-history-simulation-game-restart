@@ -12,7 +12,7 @@
   const boot = setInterval(() => { cp = globalThis.__chunkPreview; nat = globalThis.__wohNative; THREE_ = globalThis.THREE; if (cp && nat?.scene && THREE_ && typeof Ship !== 'undefined') { clearInterval(boot); buildHud(); patchRender(); requestAnimationFrame(frame); } }, 500);
 
   // Read-only handles for tests and debugging.
-  globalThis.__wohShips = { get fleet() { return fleet; }, get env() { return env; }, get ref() { return ref; }, get boarded() { return boarded; }, spawn: (d) => spawn(d), board: (id) => board(id), disembark: () => disembark() };
+  globalThis.__wohShips = { Ship, get lastSeed() { return lastSeed; }, get fleet() { return fleet; }, get env() { return env; }, get ref() { return ref; }, get boarded() { return boarded; }, spawn: (d) => spawn(d), board: (id) => board(id), disembark: () => disembark() };
 
   /** The game renders inside its own frame, so ship meshes and the boarded player are placed right before each render. */
   function patchRender() {
@@ -23,8 +23,12 @@
     syncMeshes();
     if (boarded && fleet.has(boarded) && meshes.has(boarded)) {
       const st = fleet.get(boarded).vessel.state, q = S.terrain.toLocal(ref.xM + st.X, ref.yM - st.Y, 0, S.origin);
-      cp.character.position.set(q.x, q.y + meshes.get(boarded).deckY, q.z);
-      nat.updateCamera?.();
+      const mk = cp.character, cam = cp.camera, ny = q.y + meshes.get(boarded).deckY;
+      // Move the marker onto the deck and translate the orbit camera by the same amount (direction stays as the game set it).
+      if (mk.position.x !== q.x || mk.position.y !== ny || mk.position.z !== q.z) {
+        cam.position.x += q.x - mk.position.x; cam.position.y += ny - mk.position.y; cam.position.z += q.z - mk.position.z;
+        mk.position.set(q.x, ny, q.z);
+      }
     }
   }
 
@@ -41,7 +45,7 @@
     try {
       const raw = localStorage.getItem(KEY_PREFIX + lastSeed), data = raw && JSON.parse(raw);
       if (data?.fleet && data.ref) { fleet.restore(data.fleet); ref = data.ref; ctl = data.ctl ?? {}; makeEnv(); toast(`船 ${fleet.list().length} 隻を読み込んだ`); }
-    } catch (e) { fleet = Ship.createFleet(); for (const [id, d] of Object.entries(Ship.sampleDesigns)) fleet.registerDesign(id, d); ref = null; }
+    } catch (e) { console.warn('ship restore failed:', e && e.message); fleet = Ship.createFleet(); for (const [id, d] of Object.entries(Ship.sampleDesigns)) fleet.registerDesign(id, d); ref = null; }
     refreshList();
   }
   function makeEnv() {
@@ -69,14 +73,15 @@
       for (let a = 0, n = Math.max(1, Math.round(2 * Math.PI * r / sp)); a < n; a++) {
         const th = a / n * 2 * Math.PI, x = xM + r * Math.cos(th), y = yM + r * Math.sin(th);
         if (x < 5 || y < 5 || x > T.widthM - 5 || y > T.heightM - 5) continue;
-        const e = elevAt(x, y); if (e !== null && pred(e)) return { xM: x, yM: y };
+        const e = elevAt(x, y); if (e !== null && pred(e, x, y)) return { xM: x, yM: y };
       }
     }
     return null;
   }
 
   // ---------- ship meshes ----------
-  function disposeMesh(m) { nat.scene.remove(m.group); m.group.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); }); }
+  const gameScene = () => cp.character?.parent ?? nat.scene; // the native view has its own scene (the one the player marker lives in)
+  function disposeMesh(m) { m.group.parent?.remove(m.group); m.group.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); }); }
   function makeMesh(rec) {
     const d = Ship.sampleDesigns[rec.designId] ?? null, hull = Ship.createHull(d.hull), mesh = Ship.buildHullMesh(hull);
     const g = new THREE_.BufferGeometry();
@@ -96,7 +101,7 @@
       pivot.add(sail); inner.add(pivot); sails.push({ sail: s, pivot });
     }
     const group = new THREE_.Group(); group.rotation.order = 'YXZ'; group.add(inner); group.frustumCulled = false;
-    nat.scene.add(group);
+    gameScene().add(group);
     return { group, sails, deckY: top - p.draftM + 0.1, L };
   }
   function syncMeshes() {
@@ -115,7 +120,7 @@
   // ---------- actions ----------
   function spawn(designId) {
     const mp = cp.markerPoint; if (!mp) { toast('先にプレイヤーを置いてください'); return; }
-    const spot = scan(mp.xM, mp.yM, (e) => e < -7, 30000, 50);
+    const spot = scan(mp.xM, mp.yM, (e, x, y) => e < -12 && [[60, 0], [-60, 0], [0, 60], [0, -60]].every(([dx, dy]) => (elevAt(x + dx, y + dy) ?? 0) < -10), 30000, 50);
     if (!spot) { toast('近くに十分深い海がない'); return; }
     if (!ref) { ref = { xM: spot.xM, yM: spot.yM }; makeEnv(); }
     const id = fleet.addShip({ designId, X: spot.xM - ref.xM, Y: ref.yM - spot.yM, headingDeg: 0 });
@@ -156,6 +161,7 @@
     trimAcc += dt; if (trimAcc > 1) { trimAcc = 0; for (const rec of fleet.list()) if (ctl[rec.id]?.auto) rec.vessel.autoTrim(env); }
     if (dt > 0) fleet.step(dt * speedX, env, focus);
     for (const e of fleet.takeEvents()) if (EVT[e.type]) toast(`${e.shipId}：${EVT[e.type]}`);
+    syncMeshes();
     if (boarded && fleet.has(boarded)) { const st = fleet.get(boarded).vessel.state; cp.placeMarker(ref.xM + st.X, ref.yM - st.Y, false); }
     saveAcc += dt; if (saveAcc > 8) { saveAcc = 0; save(); }
     updateHud();
