@@ -55,7 +55,7 @@ const env = {
 
 // ---------- scene ----------
 const canvas = $('c'), renderer = new T.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2)); renderer.localClippingEnabled = true;
 const scene = new T.Scene(); scene.background = new T.Color(0xa8c8dc); scene.fog = new T.Fog(0xa8c8dc, 1500, 9000);
 scene.add(new T.HemisphereLight(0xd8efff, 0x4b6a80, 0.95)); const sun = new T.DirectionalLight(0xffffff, 0.85); sun.position.set(-40, 80, -30); scene.add(sun);
 const camera = new T.PerspectiveCamera(60, 1, 0.3, 20000);

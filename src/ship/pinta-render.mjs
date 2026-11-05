@@ -139,5 +139,5 @@ export function addPintaStructure(T, obj, design, vessel) {
   });
   // Scale references: a barrel by the hatch (the person figure is added by the host page).
   { const barrel = new T.Mesh(new T.CylinderGeometry(0.28, 0.28, 0.9, 12), mat(T, 0x7a5a32)); barrel.position.copy(P3(T, 9.6, -1.1, DECK_Z + 0.45)); structure.add(barrel); }
-  obj.setDetail = (level) => { structure.visible = level <= 1; seams.visible = level === 0; rigging.visible = level <= 1; }; // LOD: 0 near, 1 medium, 2 far silhouette
+  obj.setDetail = (level) => { structure.visible = level <= 1 && !obj.cutaway; seams.visible = level === 0 && !obj.cutaway; rigging.visible = level <= 1 && !obj.cutaway; }; // LOD: 0 near, 1 medium, 2 far silhouette
 }

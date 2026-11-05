@@ -5,22 +5,29 @@
   'use strict';
   const DEG = Math.PI / 180, KEY_PREFIX = 'woh-ships-';
   const EVT = { captain_route_planned: '航路を決めた', captain_no_route: '', captain_tack: '帆の向きを替えた', captain_reef: '帆を絞った', captain_arriving: '目的地に近づいた', captain_arrived: '到着した', captain_replan: '浅瀬を避けて航路を引き直した', captain_cancelled: '航海をやめた', grounded: '座礁した', refloated: '離礁した', anchor_dropped: '錨を下ろした', anchor_raised: '錨を上げた', anchor_dragging: '錨が走っている', anchor_parted: '錨索が切れた' };
-  let ladderSig = '', pickMode = false, destMarker = null, routeLine = null, cp, nat, THREE_, S = null, fleet = null, env = null, ref = null, ctl = {}, meshes = new Map(), boarded = null, speedX = 1, lastT = null, saveAcc = 0, trimAcc = 0, lastSeed = null;
+  const dbg = {}; let renderError = null, ladderSig = '', pickMode = false, destMarker = null, routeLine = null, cp, nat, THREE_, S = null, fleet = null, env = null, ref = null, ctl = {}, meshes = new Map(), boarded = null, speedX = 1, lastT = null, saveAcc = 0, trimAcc = 0, lastSeed = null;
   const REASON = { destination_too_shallow: 'そこは浅くて行けない', blocked: '回り込む道がない', search_limit: '遠すぎて航路を決められない' };
   const ui = {};
   const $ = (tag, props = {}, kids = []) => { const e = Object.assign(document.createElement(tag), props); for (const k of kids) e.append(k); return e; };
 
-  const boot = setInterval(() => { cp = globalThis.__chunkPreview; nat = globalThis.__wohNative; THREE_ = globalThis.THREE; if (cp && nat?.scene && THREE_ && typeof Ship !== 'undefined') { clearInterval(boot); buildHud(); patchRender(); patchWalker(); requestAnimationFrame(frame); } }, 500);
+  const boot = setInterval(() => { cp = globalThis.__chunkPreview; nat = globalThis.__wohNative; THREE_ = globalThis.THREE; if (cp && nat?.scene && THREE_ && typeof Ship !== 'undefined') { clearInterval(boot); nat.renderer.localClippingEnabled = true; buildHud(); patchRender(); patchWalker(); requestAnimationFrame(frame); } }, 500);
 
   // Read-only handles for tests and debugging.
-  globalThis.__wohShips = { mesh: (id) => meshes.get(id), Ship, get lastSeed() { return lastSeed; }, get fleet() { return fleet; }, get env() { return env; }, get ref() { return ref; }, get boarded() { return boarded; }, spawn: (d) => spawn(d), board: (id) => board(id), disembark: () => disembark() };
+  globalThis.__wohShips = { dbg, get renderError() { return renderError && String(renderError.stack || renderError).slice(0, 400); }, mesh: (id) => meshes.get(id), Ship, get lastSeed() { return lastSeed; }, get fleet() { return fleet; }, get env() { return env; }, get ref() { return ref; }, get boarded() { return boarded; }, spawn: (d) => spawn(d), board: (id) => board(id), disembark: () => disembark() };
 
   /** The game renders inside its own frame, so ship meshes and the boarded player are placed right before each render. */
   function patchRender() {
     const rd = nat.renderer, orig = rd.render.bind(rd);
-    rd.render = function (sc, cam) { try { if (fleet && env && S === cp.state) { if (cp.view.overview) { if (sc === nat.scene) { syncOverview(); if (boarded) updateRoute(boarded); } } else if (sc === gameScene()) preRender(cam); } } catch (_) { /* never break the game's render */ } return orig(sc, cam); };
+    rd.render = function (sc, cam) { try { if (fleet && env && S === cp.state) { if (cp.view.overview) { if (sc === nat.scene) { syncOverview(); if (boarded) updateRoute(boarded); } } else if (sc === gameScene()) preRender(cam); } } catch (e) { renderError = e; /* never break the game's render */ } return orig(sc, cam); };
   }
-  function preRender() { syncMeshes(); }
+  /** Just before every render: update the ships, and while aboard put the player on the deck and the orbit camera around the player. */
+  function preRender(cam) {
+    syncMeshes();
+    if (!boarded || !fleet.has(boarded) || !meshes.has(boarded)) return;
+    const mk = cp.character, w = deckPoint(meshes.get(boarded)), v = cp.view, r = 4, target = w.clone(); target.y += 1.2; // the game's own orbit: 4 m around the player
+    mk.position.copy(w);
+    cam.position.set(target.x + r * Math.cos(v.pitch) * Math.sin(v.yaw), target.y + r * Math.sin(v.pitch), target.z + r * Math.cos(v.pitch) * Math.cos(v.yaw)); cam.lookAt(target);
+  }
 
   function toast(text) { ui.toast.textContent = text; ui.toast.style.opacity = 1; clearTimeout(toast.t); toast.t = setTimeout(() => { ui.toast.style.opacity = 0; }, 3500); }
 
@@ -147,7 +154,7 @@
     const rec = fleet.get(id), m = meshes.get(id); if (!m) return;
     boarded = id; if (m.interior) m.pos = m.interior.startPosition(); ui.panel.style.display = 'none'; refreshList(); toast(`${id} に乗った（移動で甲板を歩けます）`);
   }
-  function clearLadders() { ladderSig = ''; ui.ladders?.replaceChildren(); }
+  function clearLadders() { ladderSig = ''; ui.ladders?.replaceChildren(); setWater(true); }
   function disembark() {
     if (!boarded) return;
     const mo = meshes.get(boarded); if (mo) Ship.setViewDeck(mo, mo.weatherDeck);
@@ -212,6 +219,7 @@
     saveAcc += dt; if (saveAcc > 8) { saveAcc = 0; save(); }
     updateHud();
   }
+  const setWater = (on) => { for (const w of [S?.waterMesh, S?.farWaterMesh]) if (w && w.visible !== on) w.visible = on; };
   /** World point (game scene coordinates) of the player's deck position, using the ship's current pose. */
   function deckPoint(m) {
     m.group.updateMatrixWorld(true);
@@ -243,6 +251,7 @@
     cp.placeMarker(w.x + S.origin.xM, w.z + S.origin.yM, false);
     if (cp.markerPoint) cp.markerPoint.elevationM = w.y + S.origin.elevationM; // the game keeps the marker at this height while the player stands still
     Ship.setViewDeck(m, m.pos.deck, m.interior.roomOf(m.pos.deck, m.pos.x, m.pos.y)?.id ?? null);
+    setWater(!m.cutaway); // below deck the hold floor is under the sea surface: hide the sea (cutaway view) so the hold can be seen
     if (m.crewFigs?.length) Ship.updateCrewFigures(m, m.pos.deck);
     const near = m.interior.laddersNear(m.pos), sig = near.map((l) => l.id).join(',');
     if (sig !== ladderSig) { ladderSig = sig; ui.ladders.replaceChildren(...near.map((l) => $('button', { textContent: l.direction === 'up' ? '上る' : '下りる', className: 'on', onclick: () => { m.pos = m.interior.climb(m.pos, l.id); ladderSig = ''; } }))); }
