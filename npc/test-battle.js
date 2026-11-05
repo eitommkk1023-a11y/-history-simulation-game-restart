@@ -1,0 +1,103 @@
+'use strict';
+// 小さな野戦の検証：node npc/test-battle.js [generator.js world.bin]   （引数があれば、実際の世界の標高の戦場でも動かす）
+const Bt = require('./battle.js');
+let ok = 0, ng = 0; const t = (name, cond, extra) => { if (cond) ok++; else { ng++; console.log('NG', name, extra == null ? '' : extra); } };
+const W20 = [['spear', true, 10], ['spear', false, 4], ['sword', true, 2], ['bow', false, 4]];   // 20人の部隊
+
+// ---------------------------------------------------------------- 場面
+function scenario(kind, seed, o) {
+  o = o || {};
+  const jig = (k) => (Bt.makeRng(seed * 7 + k)() - 0.5) * 60;
+  const patches = [{ x: 1330 + jig(1) * 0.5, y: 670 + jig(2) * 0.3, r: 55 }, { x: 1330 + jig(3) * 0.5, y: 930 + jig(4) * 0.3, r: 55 }, { x: 900 + jig(5) * 4, y: 300 + jig(6) * 4, r: 80 }, { x: 700 + jig(7) * 3, y: 1250 + jig(8) * 3, r: 70 }];
+  const F = Bt.makeField({ seed, size: 1600, hill: 8, patches }), B = Bt.create(F, seed);
+  const A = o.A || {}, aUnits = [];
+  for (let i = 0; i < 3; i++) aUnits.push(Bt.addUnit(B, { side: 1, x: 250, y: 700 + i * 100, facing: 0, weapons: W20, discipline: A.discipline == null ? 0.1 : A.discipline, name: 'A' + i }));
+  const ca = Bt.addCommander(B, 1, { x: 150, y: 800, doctrine: A.doctrine || 'frontal' }); ca.guess = { x: 1400, y: 800 }; ca.advanceAt = A.advanceAt;
+  if (kind === 'trickster') {
+    const bait = Bt.addUnit(B, { side: 2, x: 1100, y: 800, facing: Math.PI, weapons: W20, discipline: 0.9, name: 'bait' });
+    const a1 = Bt.addUnit(B, { side: 2, x: 1420, y: 660, facing: Math.PI, weapons: W20, discipline: 0.9, name: 'amb1' });
+    const a2 = Bt.addUnit(B, { side: 2, x: 1420, y: 940, facing: Math.PI, weapons: W20, discipline: 0.9, name: 'amb2' });
+    const cb = Bt.addCommander(B, 2, { x: 1500, y: 800, doctrine: 'scripted' });
+    cb.script = [[bait, { type: 'feint', x: 1100, y: 800, facing: Math.PI, contactR: 70, engageSec: 12, rx: 1480, ry: 800, turnFacing: Math.PI }], [a1, { type: 'ambush', x: patches[0].x, y: patches[0].y, facing: Math.PI / 2, springR: 160, minEnemies: 8 }], [a2, { type: 'ambush', x: patches[1].x, y: patches[1].y, facing: -Math.PI / 2, springR: 160, minEnemies: 8 }]];
+  } else {
+    for (let i = 0; i < 3; i++) Bt.addUnit(B, { side: 2, x: 1350, y: 700 + i * 100, facing: Math.PI, weapons: W20, discipline: 0.9, name: 'B' + i });
+    Bt.addCommander(B, 2, { x: 1500, y: 800, doctrine: 'cautious' });
+  }
+  return B;
+}
+const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+function play(kind, seed, o, secs) { const B = scenario(kind, seed, o); Bt.run(B, secs || 1200); const S = Bt.summary(B); const a = S.sides[1], b = S.sides[2]; const enc = S.log.filter(l => l.e === 'encircled' && (B.units.find(u => u.id === l.unit) || {}).side === 1).length; return { B, S, enc, aOk: a.ok, bOk: b.ok, aDown: a.down, bDown: b.down, bWin: b.ok > a.ok, aRear: a.rear, aFlank: a.flank, sprung: S.stats.sprung }; }
+
+// ---------------------------------------------------------------- 1. 向き：背面からの攻撃は、正面より傷が大きい（盾は正面を守る）
+{
+  const f = (sh, ang) => Bt.hitFactor({ x: 0, y: 0, f: 0, shield: sh }, Math.cos(ang) * 5, Math.sin(ang) * 5);
+  t('正面：盾があれば傷が半分', f(true, 0) === 0.5 && f(false, 0) === 0.8); t('側面は等倍', f(false, Math.PI / 2) === 1.0); t('背面は1.6倍（盾も効かない）', f(true, Math.PI) === 1.6);
+}
+  { const s = { f: 0 }; Bt.face(s, Math.PI / 2); t('向きを変えるのには時間がかかる（0.5秒で約0.5ラジアン）', Math.abs(s.f - 0.5) < 1e-9); for (let i = 0; i < 3; i++) Bt.face(s, Math.PI / 2); t('数秒で向き直る', Math.abs(s.f - Math.PI / 2) < 1e-9); }
+// ---------------------------------------------------------------- 2. 伝令：遅れて届く・届くまでは前の命令で動く・討たれることがある
+{
+  const F = Bt.makeField({ seed: 1, hill: 0 }), B = Bt.create(F, 1);
+  const u = Bt.addUnit(B, { side: 1, x: 500, y: 800, facing: 0, weapons: W20 }); Bt.addCommander(B, 1, { x: 200, y: 800, doctrine: 'cautious' });
+  Bt.issue(B, 1, u, { type: 'advance', x: 900, y: 800 }); let at = -1; for (let i = 0; i < 400; i++) { Bt.step(B); if (at < 0 && u.order.type === 'advance') at = B.t; }
+  t('伝令の遅れ：約300mを走るので、届くのは40〜60秒後', at >= 40 && at <= 60, at);
+  const B2 = Bt.create(F, 2), u2 = Bt.addUnit(B2, { side: 1, x: 500, y: 800, facing: 0, weapons: W20 }); Bt.addCommander(B2, 1, { x: 200, y: 800, doctrine: 'cautious' }); Bt.issue(B2, 1, u2, { type: 'advance', x: 900, y: 800 });
+  for (let i = 0; i < 20; i++) Bt.step(B2); t('届くまでは、前の命令（持ち場）のまま', u2.order.type === 'hold');
+  let lost = 0; for (let sd = 1; sd <= 30; sd++) { const Bx = Bt.create(F, sd), ux = Bt.addUnit(Bx, { side: 1, x: 500, y: 800, facing: 0, weapons: [['spear', true, 4]] }); Bt.addCommander(Bx, 1, { x: 200, y: 800, doctrine: 'cautious' }); const en = Bt.addUnit(Bx, { side: 2, x: 340, y: 800, facing: Math.PI, weapons: [['spear', true, 3]] }); en.order = { type: 'hold', x: 340, y: 800 }; Bt.issue(Bx, 1, ux, { type: 'advance', x: 900, y: 800 }); Bt.run(Bx, 60); if (Bx.stats.msgLost) lost++; }
+  t('敵兵が通り道にいると、伝令が討たれることがある（30回中10回以上）', lost >= 10, lost);
+}
+// ---------------------------------------------------------------- 3. 視界：伏兵は近づくまで見えない／尾根と森は視界をさえぎる
+{
+  const F = Bt.makeField({ seed: 1, hill: 0, patches: [{ x: 600, y: 800, r: 50 }] }), B = Bt.create(F, 3);
+  const a = Bt.addUnit(B, { side: 1, x: 400, y: 800, facing: 0, weapons: [['spear', true, 5]] }); const h = Bt.addUnit(B, { side: 2, x: 600, y: 800, facing: Math.PI, weapons: [['spear', true, 5]] });
+  h.order = { type: 'ambush', x: 600, y: 800, facing: Math.PI, springR: 5, minEnemies: 99 }; for (let i = 0; i < 20; i++) Bt.step(B);
+  t('隠れた伏兵は、200mからは見えない（相手の見たものに入らない）', h.hidden && ![...a.seen.keys()].some(id => h.members.some(s => s.id === id)), h.hidden);
+  for (const s of a.members) { s.x = 575; s.y = 800; } B.t += 1; for (let i = 0; i < 4; i++) Bt.step(B);
+  t('30m以内に近づくと、伏兵が見つかる（見つかった／飛び出した）', [...a.seen.keys()].some(id => h.members.some(s => s.id === id)) || B.stats.sprung > 0);
+  const R = Bt.makeField({ seed: 1, size: 1600, elevFn: (x, y) => 30 * Math.exp(-Math.pow((x - 800) / 60, 2)) });
+  t('尾根は視界をさえぎる', !R.los(600, 800, 1000, 800) && R.los(600, 800, 700, 800));
+  const Fo = Bt.makeField({ seed: 1, hill: 0, patches: [{ x: 800, y: 800, r: 120 }] }); t('厚い森は視界をさえぎる', !Fo.los(600, 800, 1000, 800) && Fo.los(600, 400, 1000, 400));
+}
+// ---------------------------------------------------------------- 4. 士気：囲まれると崩れる（敵が一方向だけなら崩れにくい）
+{
+  const mk = (surround, seed) => { const F = Bt.makeField({ seed, hill: 0 }), B = Bt.create(F, seed); const me = Bt.addUnit(B, { side: 1, x: 800, y: 800, facing: 0, weapons: [['spear', true, 16]], discipline: 0.9 }); Bt.addCommander(B, 1, { x: 700, y: 800, doctrine: 'cautious' });
+    const n = 30; for (let k = 0; k < (surround ? 3 : 1); k++) { const ang = surround ? (k * 2 * Math.PI / 3) : 0; const e = Bt.addUnit(B, { side: 2, x: 800 + Math.cos(ang) * 22, y: 800 + Math.sin(ang) * 22, facing: ang + Math.PI, weapons: [['spear', true, 10]], formation: 'loose', discipline: 0.9 }); e.order = { type: 'advance', x: 800, y: 800 }; }
+    Bt.addCommander(B, 2, { x: 1500, y: 800, doctrine: 'cautious' }); Bt.run(B, 40); return B.stats.routs; };
+  const rs = mean(Array.from({ length: 10 }, (_, i) => mk(true, i + 1))), r1 = mean(Array.from({ length: 10 }, (_, i) => mk(false, i + 1)));
+  t('囲まれた部隊は、一方向から攻められた部隊より崩れる', rs > r1 + 1, rs + ' vs ' + r1);
+}
+// ---------------------------------------------------------------- 5. 偽装撤退と伏兵（本題）
+{
+  const N = 24, base = [], trick = [], cautious = [], sprungC = [];
+  for (let sd = 1; sd <= N; sd++) { base.push(play('frontal', sd, { A: { discipline: 0.1 } })); trick.push(play('trickster', sd, { A: { discipline: 0.1 } })); cautious.push(play('trickster', sd, { A: { discipline: 0.9, doctrine: 'cautious' } })); }
+  const win = a => a.filter(r => r.bWin).length / a.length, ratio = a => mean(a.map(r => (r.aDown + 1) / (r.bDown + 1)));
+  console.log('野戦の統計（A＝西の軍・命令どおり前進し、規律が低く敵を深追いする。24回ずつ、各軍60人）');
+  console.log(`  B＝持ち場を守る（基準）      ：Bの勝ち ${(win(base) * 100).toFixed(0)}% ／ A損害÷B損害 ${ratio(base).toFixed(2)} ／ Aの背面・側面の損害 ${mean(base.map(r => r.aRear + r.aFlank)).toFixed(1)}人`);
+  console.log(`  B＝偽装撤退と伏兵            ：Bの勝ち ${(win(trick) * 100).toFixed(0)}% ／ A損害÷B損害 ${ratio(trick).toFixed(2)} ／ Aの背面・側面の損害 ${mean(trick.map(r => r.aRear + r.aFlank)).toFixed(1)}人 ／ 伏兵が飛び出した ${trick.filter(r => r.sprung > 0).length}回`);
+  console.log(`  Aが用心深い（前進しない）に対し、Bが伏兵：飛び出した ${cautious.filter(r => r.sprung > 0).length}回 ／ 双方の損害 平均 ${mean(cautious.map(r => r.aDown + r.bDown)).toFixed(1)}人`);
+  t('偽装撤退と伏兵は、持ち場を守るだけより、勝ちが多い', win(trick) >= win(base) + 0.2, win(trick) + ' vs ' + win(base));
+  const rf = a => mean(a.map(r => (r.aRear + r.aFlank) / Math.max(1, r.aDown)));
+  console.log(`  Aの損害のうち、背面・側面から受けた割合：基準 ${(rf(base) * 100).toFixed(0)}% ／ 伏兵 ${(rf(trick) * 100).toFixed(0)}%`);
+  t('伏兵で、相手の背面・側面の損害が増える（側面・背面から攻められる）', mean(trick.map(r => r.aRear + r.aFlank)) > mean(base.map(r => r.aRear + r.aFlank)) + 2 || rf(trick) > rf(base) + 0.08, mean(trick.map(r => r.aRear + r.aFlank)) + ' vs ' + mean(base.map(r => r.aRear + r.aFlank)));
+  t('伏兵は、罠に入ったときだけ飛び出す（用心深い相手には飛び出さない）', trick.filter(r => r.sprung > 0).length >= N * 0.5 && cautious.filter(r => r.sprung > 0).length <= N * 0.25, trick.filter(r => r.sprung > 0).length + ' / ' + cautious.filter(r => r.sprung > 0).length);
+  t('用心深い相手には、罠は効かず損害が小さい', mean(cautious.map(r => r.aDown + r.bDown)) < mean(trick.map(r => r.aDown + r.bDown)));
+}
+// ---------------------------------------------------------------- 6. 決定性と性能
+{
+  const a = play('trickster', 5, {}, 760), b = play('trickster', 5, {}, 760); t('決定性：同じSeedは同じ結果', JSON.stringify(a.S.sides) === JSON.stringify(b.S.sides) && a.S.log.length === b.S.log.length);
+  const c = play('trickster', 6, {}, 760); t('Seedが違えば結果が違う', JSON.stringify(a.S.sides) !== JSON.stringify(c.S.sides) || a.S.log.length !== c.S.log.length);
+  // 規模：1部隊20人×10部隊×2軍＝400人
+  const F = Bt.makeField({ seed: 9, size: 1600, hill: 8 }), B = Bt.create(F, 9);
+  for (let i = 0; i < 10; i++) { Bt.addUnit(B, { side: 1, x: 500, y: 300 + i * 100, facing: 0, weapons: W20, discipline: 0.3 }); Bt.addUnit(B, { side: 2, x: 700, y: 300 + i * 100, facing: Math.PI, weapons: W20, discipline: 0.3 }); }
+  const ca = Bt.addCommander(B, 1, { x: 400, y: 800, doctrine: 'frontal' }); ca.guess = { x: 700, y: 800 }; ca.advanceAt = 5; Bt.addCommander(B, 2, { x: 800, y: 800, doctrine: 'cautious' });
+  const t0 = process.hrtime.bigint(); const steps = 600; for (let i = 0; i < steps; i++) Bt.step(B); const ms = Number(process.hrtime.bigint() - t0) / 1e6 / steps;
+  console.log(`規模（400人・5分）：1ステップ（0.5秒）あたり ${ms.toFixed(2)}ms`); t('400人でも1ステップ（0.5秒）は10ms以下（iPhoneで30fps以上の目安の約1/3）', ms <= 10, ms);
+}
+// ---------------------------------------------------------------- 7. 実際の世界の標高で動く
+if (process.argv.length >= 4) {
+  const v8 = require('v8'), fs = require('fs'), world = v8.deserialize(fs.readFileSync(process.argv[3]));
+  const F = Bt.fieldFromWorld(world, 1500, 1500, { size: 1600, patches: [{ x: 800, y: 800, r: 60 }] });
+  let mn = 1e9, mx = -1e9; for (const e of F.elev) { mn = Math.min(mn, e); mx = Math.max(mx, e); }
+  const B = Bt.create(F, 4); Bt.addUnit(B, { side: 1, x: 300, y: 800, facing: 0, weapons: W20 }); Bt.addUnit(B, { side: 2, x: 1300, y: 800, facing: Math.PI, weapons: W20 }); Bt.addCommander(B, 1, { x: 200, y: 800, doctrine: 'cautious' }); Bt.addCommander(B, 2, { x: 1400, y: 800, doctrine: 'cautious' });
+  Bt.run(B, 60); console.log(`実際の世界の戦場（${(F.size / 1000).toFixed(1)}km四方・標高 ${mn.toFixed(0)}〜${mx.toFixed(0)}m）：60秒を実行`); t('実際の標高の戦場で動く（標高に起伏がある）', mx - mn > 1 && B.t >= 60 - 1e-9, mx - mn);
+}
+console.log(ng ? 'FAIL ' + ng + ' / ' + (ok + ng) : 'OK ' + ok + ' 件通過'); process.exit(ng ? 1 : 0);
