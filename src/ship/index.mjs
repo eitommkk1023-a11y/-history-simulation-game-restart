@@ -15,3 +15,6 @@ export { PINTA_1492_PROFILE } from './pinta-1492-data.mjs';
 export { PINTA_1492_PARAMS, validatePintaProfile, validatePintaParams } from './pinta-1492-params.mjs';
 export { addPintaStructure } from './pinta-render.mjs';
 export { pintaHullSpec, pintaHullReport, pintaLightshipMassItems, pintaInterior, pintaSails, pintaLoad, buildPintaDesign } from './pinta-design.mjs';
+export { createCrew, pintaRoster, pintaStations, WATCH_SECONDS } from './crew.mjs';
+export { CARGO_KINDS, cargoItem, withCargo } from './cargo.mjs';
+export { createAugust1492, SCENARIO } from './pinta-1492-scenario.mjs';

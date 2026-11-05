@@ -74,7 +74,7 @@ export function createVessel({ ship, analysis, hullParams, sails = [], rudder, o
   if (new Set(oarList.map((o) => o.id)).size !== oarList.length) throw new TypeError('duplicate oar bank id');
   const events = [];
   const s0 = { x: 0, y: 0, headingDeg: 0, u: 0, v: 0, r: 0, ...initial };
-  const st = { time: 0, X: s0.x, Y: s0.y, psi: s0.headingDeg * DEG, u: s0.u, v: s0.v, r: s0.r, rudderDeg: 0, rudderTargetDeg: 0, headingTarget: null, heelDeg: 0, overpowered: false, anchor: null, aground: false, groundingDamageMJ: 0 };
+  const st = { time: 0, X: s0.x, Y: s0.y, psi: s0.headingDeg * DEG, u: s0.u, v: s0.v, r: s0.r, rudderDeg: 0, rudderTargetDeg: 0, rudderHealth: 1, sailSlewDegS: 0, headingTarget: null, heelDeg: 0, overpowered: false, anchor: null, aground: false, groundingDamageMJ: 0 };
   if (rud) rud.xRel = rud.x - hp.cgX;
 
   const fwd = () => [Math.sin(st.psi), Math.cos(st.psi)];
@@ -161,7 +161,7 @@ export function createVessel({ ship, analysis, hullParams, sails = [], rudder, o
       const vr = vw + st.r * rud.xRel, Vr2 = uw * uw + vr * vr;
       const alpha = st.rudderDeg * DEG + Math.atan2(vr, Math.abs(uw) + 1e-9) * Math.sign(uw || 1);
       const CN = Math.sin(2 * clamp(alpha, -35 * DEG, 35 * DEG));
-      const Yr = -q * rud.areaM2 * Vr2 * CN;
+      const Yr = -q * rud.areaM2 * Vr2 * CN * st.rudderHealth; // 1 = sound, 0 = disengaged or lost
       Y += Yr; N += Yr * rud.xRel;
       out.rudderForceN = Yr;
     }
@@ -207,6 +207,11 @@ export function createVessel({ ship, analysis, hullParams, sails = [], rudder, o
   }
 
   /** Choose, for each sail, the trim (within its brace limit) that maximises forward drive. */
+  /** With sailSlewDegS > 0 the sails move toward their target trim at that rate (hands on the braces and sheets); 0 = instant. */
+  function slewSails(dt) {
+    if (!(st.sailSlewDegS > 0)) return;
+    for (const s of sailList) if (s.targetTrimDeg !== undefined) { const d = s.targetTrimDeg - s.trimDeg, m = st.sailSlewDegS * dt; s.trimDeg += Math.abs(d) <= m ? d : Math.sign(d) * m; }
+  }
   function autoTrim(env = {}) {
     const aw = apparentWind(env);
     for (const s of sailList) {
@@ -215,7 +220,7 @@ export function createVessel({ ship, analysis, hullParams, sails = [], rudder, o
         const fx = sailForce(s, sg * a, aw, st.heelDeg)[0];
         if (fx > bestFx) { bestFx = fx; best = sg * a; }
       }
-      s.trimDeg = best;
+      if (st.sailSlewDegS > 0) s.targetTrimDeg = best; else s.trimDeg = best;
     }
   }
 
@@ -230,6 +235,7 @@ export function createVessel({ ship, analysis, hullParams, sails = [], rudder, o
 
   function step(dt = 0.1, env = {}) {
     if (st.headingTarget !== null && st.headingTarget !== undefined) steerTowards(st.headingTarget); // helm runs every physics step
+    slewSails(dt);
     // Rudder follows its target at a limited rate.
     if (rud) {
       const tgt = clamp(st.rudderTargetDeg, -rud.maxDeg, rud.maxDeg), dr = rud.rateDegS * dt;
@@ -290,6 +296,8 @@ export function createVessel({ ship, analysis, hullParams, sails = [], rudder, o
     forces, step, run, autoTrim, apparentWind, steerTowards,
     setRudder(deg) { st.headingTarget = null; st.rudderTargetDeg = deg; },
     /** Hold a compass heading (deg) automatically every physics step; null returns to manual rudder control. */
+    setRudderHealth(h) { st.rudderHealth = Math.min(1, Math.max(0, h)); },
+    setSailSlew(degPerS) { st.sailSlewDegS = Math.max(0, degPerS); },
     setHeadingTarget(deg) { st.headingTarget = deg === null ? null : ((deg % 360) + 360) % 360; },
     setOarEffort(id, e) { const o = oarList.find((x) => x.id === id); if (!o) throw new RangeError(`unknown oar bank ${id}`); o.effort = clamp(e, -1, 1); },
     setAllOarEffort(e) { for (const o of oarList) o.effort = clamp(e, -1, 1); },
@@ -312,7 +320,7 @@ export function createVessel({ ship, analysis, hullParams, sails = [], rudder, o
     setSailDeployed(id, frac) { sailById(id).deployed = clamp(frac, 0, 1); },
     snapshot() {
       const f = fwd(), s = stb(), sx = st.u * f[0] + st.v * s[0], sy = st.u * f[1] + st.v * s[1];
-      return { time: st.time, x: st.X, y: st.Y, headingDeg: ((st.psi / DEG) % 360 + 360) % 360, u: st.u, v: st.v, yawRateDegS: st.r / DEG, speedOverGround: Math.hypot(sx, sy), velocity: { x: sx, y: sy }, heelDeg: st.heelDeg, overpowered: st.overpowered, rudderDeg: st.rudderDeg, aground: st.aground, anchored: !!st.anchor, anchorDragging: !!st.anchor?.dragging, groundingDamageMJ: st.groundingDamageMJ, stamina: oarList.length ? Math.min(...oarList.map((o) => o.stamina)) : null };
+      return { time: st.time, x: st.X, y: st.Y, headingDeg: ((st.psi / DEG) % 360 + 360) % 360, u: st.u, v: st.v, yawRateDegS: st.r / DEG, speedOverGround: Math.hypot(sx, sy), velocity: { x: sx, y: sy }, heelDeg: st.heelDeg, overpowered: st.overpowered, rudderDeg: st.rudderDeg, rudderHealth: st.rudderHealth, aground: st.aground, anchored: !!st.anchor, anchorDragging: !!st.anchor?.dragging, groundingDamageMJ: st.groundingDamageMJ, stamina: oarList.length ? Math.min(...oarList.map((o) => o.stamina)) : null };
     },
   };
 }
