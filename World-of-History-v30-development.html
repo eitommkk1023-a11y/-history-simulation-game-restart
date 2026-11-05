@@ -10937,15 +10937,17 @@ function createWorldTerrain(world, options = {}) {
     metricPoint(xM,yM); finite('elevationM',elevationM);
     return {xM,yM,elevationM};
   }
+  const nodeLimit=options.nodeLimit;
+  function nodeM(ix,iy) {
+    const m=finite('mapped elevation',elevationToMeters(finite('elevation',world.elev[iy*width+ix])));
+    return nodeLimit?Math.min(m,nodeLimit(ix,iy)):m;
+  }
   function sampleBase(xM,yM) {
     const p=metersToGrid(xM,yM);
     // The last node belongs to the last interval: preserve the edge slope.
     const x0=Math.min(width-2,Math.floor(p.x)),y0=Math.min(height-2,Math.floor(p.y));
     const u=p.x-x0,v=p.y-y0;
-    const a=finite('mapped elevation',elevationToMeters(finite('elevation',world.elev[y0*width+x0])));
-    const b=finite('mapped elevation',elevationToMeters(finite('elevation',world.elev[y0*width+x0+1])));
-    const c=finite('mapped elevation',elevationToMeters(finite('elevation',world.elev[(y0+1)*width+x0])));
-    const d=finite('mapped elevation',elevationToMeters(finite('elevation',world.elev[(y0+1)*width+x0+1])));
+    const a=nodeM(x0,y0),b=nodeM(x0+1,y0),c=nodeM(x0,y0+1),d=nodeM(x0+1,y0+1);
     const baseElevationM=mix(mix(a,b,u),mix(c,d,u),v);
     const dx=mix(b-a,d-c,v)/metersPerCell,dy=mix(c-a,d-b,u)/metersPerCell;
     const length=Math.hypot(dx,1,dy);
@@ -11007,9 +11009,49 @@ function createDetailedTerrain(base,world,seed){
 // Meter-based playable surface; source geography and save coordinates are unchanged.
 const PLAYABLE_HORIZONTAL_SCALE=0.01;
 const PLAYABLE_SURFACE_VERSION='meter-detail-v1';
-function playableElevationMeters(sourceM){return 1000*Math.tanh(sourceM/3000);}
+// Heights above 3,000 m keep rising (soft knee) so summits stand out instead of flattening at ~1,000 m.
+function playableElevationMeters(sourceM){const d=Math.max(0,sourceM-3000);return 1000*Math.tanh(sourceM/3000)+.15*d*d/(d+1000);}
+// Slope limit for the playable surface: highlands are lowered into a ramp of at most ~35 degrees
+// from the nearest sea/lowland (summits far from the coast keep their height). Coarse chamfer envelope.
+const PLAYABLE_MAX_SLOPE_DEG=35,PLAYABLE_ENVELOPE_STEP=4;
+const playableEnvelopeCache=new WeakMap();
+function playableSlopeEnvelope(world,metersPerCell){
+ const hit=playableEnvelopeCache.get(world);if(hit&&hit.mpc===metersPerCell)return hit;
+ const W=world.stats?.width??3000,H=world.stats?.height??3000,S=PLAYABLE_ENVELOPE_STEP,cw=Math.ceil(W/S),ch=Math.ceil(H/S);
+ const tan=Math.tan(PLAYABLE_MAX_SLOPE_DEG*Math.PI/180)/1.04,u=tan*metersPerCell*S,ud=u*Math.SQRT2;
+ const e=new Float32Array(cw*ch);
+ for(let cy=0;cy<ch;cy++)for(let cx=0;cx<cw;cx++){
+  let m=1e9;
+  for(let y=cy*S;y<Math.min(H,cy*S+S);y++)for(let x=cx*S;x<Math.min(W,cx*S+S);x++){
+   const i=y*W+x;let h=playableElevationMeters(world.elev[i]);
+   if(!world.type[i])h=Math.max(h,0);
+   else if(world.water[i]===2&&world.lakeId?.[i]>0){const lv=world.lakeLevels?.[world.lakeId[i]];if(Number.isFinite(lv))h=Math.max(h,playableElevationMeters(lv));}
+   if(h<m)m=h;
+  }
+  e[cy*cw+cx]=m;
+ }
+ for(let y=0;y<ch;y++)for(let x=0;x<cw;x++){
+  const i=y*cw+x;let v=e[i];
+  if(x>0)v=Math.min(v,e[i-1]+u);
+  if(y>0){v=Math.min(v,e[i-cw]+u);if(x>0)v=Math.min(v,e[i-cw-1]+ud);if(x<cw-1)v=Math.min(v,e[i-cw+1]+ud);}
+  e[i]=v;
+ }
+ for(let y=ch-1;y>=0;y--)for(let x=cw-1;x>=0;x--){
+  const i=y*cw+x;let v=e[i];
+  if(x<cw-1)v=Math.min(v,e[i+1]+u);
+  if(y<ch-1){v=Math.min(v,e[i+cw]+u);if(x<cw-1)v=Math.min(v,e[i+cw+1]+ud);if(x>0)v=Math.min(v,e[i+cw-1]+ud);}
+  e[i]=v;
+ }
+ const out={mpc:metersPerCell,limit(ix,iy){
+  const gx=Math.min(cw-1,ix/S),gy=Math.min(ch-1,iy/S),x0=Math.min(cw-2,Math.floor(gx)),y0=Math.min(ch-2,Math.floor(gy)),fx=gx-x0,fy=gy-y0;
+  const a=e[y0*cw+x0],b=e[y0*cw+x0+1],c=e[(y0+1)*cw+x0],d=e[(y0+1)*cw+x0+1];
+  return (a+(b-a)*fx)*(1-fy)+(c+(d-c)*fx)*fy;
+ }};
+ playableEnvelopeCache.set(world,out);return out;
+}
 function createPlayableTerrain(world,seed=globalThis.__wohNative?.seed??'0'){
- const base=createWorldTerrain(world,{metersPerCell:(world.geology?.kmPerBlock??3.33)*1000*PLAYABLE_HORIZONTAL_SCALE,elevationTransform:playableElevationMeters});
+ const mpc=(world.geology?.kmPerBlock??3.33)*1000*PLAYABLE_HORIZONTAL_SCALE;
+ const base=createWorldTerrain(world,{metersPerCell:mpc,elevationTransform:playableElevationMeters,nodeLimit:playableSlopeEnvelope(world,mpc).limit});
  const enriched=world.rocks?{...base,sampleBase(xM,yM){return {...base.sampleBase(xM,yM),...sampleRockSurface(world,xM/base.metersPerCell,yM/base.metersPerCell)};}}:base;
  return createDetailedTerrain(enriched,world,seed);
 }
