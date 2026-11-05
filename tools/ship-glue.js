@@ -236,7 +236,7 @@
     ui.toast = $('div', { id: 'shipToast' });
     ui.btn.onclick = () => { ui.panel.style.display = ui.panel.style.display === 'block' ? 'none' : 'block'; };
     ui.spawn = $('div', {}, [$('h4', { textContent: '船を出す（近くの海へ）' }),
-      ...['pinta', 'galleon', 'galley'].map((d) => $('button', { textContent: Ship.sampleDesigns[d].label, onclick: () => spawn(d) }))]);
+      ...['pinta-1492', 'pinta-1492-lateen', 'galleon', 'galley'].map((d) => $('button', { textContent: Ship.sampleDesigns[d].label, onclick: () => spawn(d) }))]);
     ui.list = $('div'); ui.ctrl = $('div', { className: 'btns' }); ui.info = $('div', { className: 'info' });
     ui.bar = $('div', { id: 'shipBar' }, [ui.info, ui.ctrl]);
     ui.panel.append(ui.spawn, ui.list);

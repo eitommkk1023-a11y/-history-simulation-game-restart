@@ -67,17 +67,16 @@ test('rooms convert to flooding boxes with floors and ceilings from the decks', 
   assert.equal(it.roomOf('gun', 20, 0).id, 'gundeck'); assert.equal(it.roomOf('gun', 10.2, 0), null, 'in the wall gap');
 });
 
-test('Pinta interior: cabin door, ladders, poop deck and hold', () => {
-  const ph = createHull(sampleDesigns.pinta.hull), pi = createInterior(sampleInteriors.pinta, { hull: ph });
-  assert.equal(pi.rooms.length, 5); assert.deepEqual(pi.startPosition().deck, 'weather');
-  // Walk aft from the main deck through the cabin door, then into the cabin; the cabin wall blocks off the door line.
-  let p = { x: 8, y: 0, deck: 'weather' }; for (let i = 0; i < 40; i++) p = pi.move(p, -0.1, 0);
-  assert.ok(p.x < 5 && p.x > 1, `inside the cabin, x=${p.x}`);
-  let q = { x: 8, y: 2.5, deck: 'weather' }; for (let i = 0; i < 40; i++) q = pi.move(q, -0.1, 0);
-  assert.ok(q.x > 5.5, `blocked by the cabin wall, x=${q.x}`);
-  const up = pi.climb({ x: 6.8, y: 1.6, deck: 'weather' }, 'l-poop'); assert.equal(up.deck, 'poop'); assert.ok(pi.walkable('poop', up.x, up.y));
-  const down = pi.climb({ x: 12, y: 1, deck: 'weather' }, 'l-hold'); assert.equal(down.deck, 'hold');
-  assert.deepEqual(pi.wallRects('weather').map((w) => w.room).filter((r, i, a) => a.indexOf(r) === i), ['cabin'], 'only the cabin has walls on the main deck');
-  assert.equal(pi.wallRects('weather')[0].h, 1.3);
-  const boxes = Object.fromEntries(pi.toFloodingBoxes(5.5).map((b) => [b.id, b.box])); assert.equal(boxes.hold.z0, 1.3); assert.equal(boxes.hold.z1, 3.6);
+test('Pinta 1492 interior: open main deck, small quarterdeck, hold below; no cabin is invented', () => {
+  const d = sampleDesigns['pinta-1492'], ph = createHull(d.hull), pi = createInterior(d.interior, { hull: ph });
+  assert.deepEqual(pi.rooms.map((r) => r.id).sort(), ['hold', 'main', 'quarter']);
+  assert.equal(pi.wallRects('main').length + pi.wallRects('quarter').length, 0, 'no walls on the open decks');
+  assert.ok(!pi.rooms.some((r) => r.use === 'cabin'));
+  assert.equal(pi.deckZ('main'), 2.6); assert.ok(pi.deckZ('quarter') > pi.deckZ('main')); assert.ok(pi.deckZ('hold') < pi.deckZ('main') - 1.5);
+  const start = pi.startPosition(); assert.equal(start.deck, 'main');
+  const up = pi.climb({ x: 5.2, y: 1.3, deck: 'main' }, 'l-quarter'); assert.equal(up.deck, 'quarter'); assert.ok(pi.walkable('quarter', up.x, up.y));
+  const down = pi.climb({ x: 8.4, y: 0.2, deck: 'main' }, 'l-hatch'); assert.equal(down.deck, 'hold');
+  const q = (x) => pi.walkable('main', x, 0);
+  assert.equal(q(2), false, 'the quarterdeck is a different level'); assert.equal(q(8), true); assert.equal(q(16.5), false, 'beyond the walkable bow deck');
+  const boxes = Object.fromEntries(pi.toFloodingBoxes(4.5).map((b) => [b.id, b.box])); assert.ok(boxes.hold.z1 <= 2.6 + 1e-9);
 });

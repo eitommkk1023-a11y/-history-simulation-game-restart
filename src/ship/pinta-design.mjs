@@ -11,7 +11,11 @@ import { createHull } from './hull-geometry.mjs';
 import { submergedVolume } from './hydrostatics.mjs';
 
 const dim = (k) => P.dimensions[k].value;
-export const LOA = dim('length_overall'), LWL = dim('length_waterline'), BEAM = dim('beam_max'), BEAM_WL = dim('beam_waterline'), DRAFT = dim('lightship_draft');
+export const LOA = dim('length_overall');
+export const LWL = dim('length_waterline');
+export const BEAM = dim('beam_max');
+export const BEAM_WL = dim('beam_waterline');
+export const DRAFT = dim('lightship_draft');
 export const DECK_Z = G.hull.deckHeightZ.value;
 export const RHO_SEA = 1025;
 const AFT_WL = G.hull.sternOverhang.value, FWD_WL = AFT_WL + LWL;   // waterline runs from x = 0.45 to x = 16.20
@@ -74,4 +78,61 @@ export function pintaLightshipMassItems(hull = createHull(pintaHullSpec()), rep 
     { id: 'rig-and-gear', massKg: mRig, x: xr, y: 0, z: z.rigAndGear },
     { id: 'fittings', massKg: M * s.fittings, x: lcb, y: 0, z: z.fittings },
   ];
+}
+
+// ---------- interior, rig presets, loadouts and the fleet design ----------
+export function pintaInterior() {
+  const q = LOA * G.quarterdeck.lengthU.value, qz = DECK_Z + G.quarterdeck.rise.value, holdZ = DECK_Z - G.interior.holdWalkClearance.value;
+  const hatchX = ((G.interior.hatch.value.u0 + G.interior.hatch.value.u1) / 2) * LOA;
+  return {
+    // No cabin: the original layout is unknown, and a lavish captain's cabin is forbidden by the spec. The low space under the quarterdeck is not modelled.
+    decks: [{ id: 'quarter', z: qz, name: '船尾甲板', exterior: true }, { id: 'main', z: DECK_Z, name: '主甲板', exterior: true }, { id: 'hold', z: holdZ, name: '船倉' }],
+    rooms: [
+      { id: 'main', deck: 'main', name: '主甲板', use: 'deck', open: true, floor: false, x0: q + 0.35, x1: LOA - 0.9, y0: -2.3, y1: 2.3 },
+      { id: 'quarter', deck: 'quarter', name: '船尾甲板', use: 'deck', open: true, x0: 0.7, x1: q - 0.1, y0: -1.9, y1: 1.9 },
+      { id: 'hold', deck: 'hold', name: '船倉', use: 'cargo', x0: 1.4, x1: 15.3, y0: -2.2, y1: 2.2 },
+    ],
+    doors: [],
+    ladders: [
+      { id: 'l-quarter', name: '船尾甲板への階段', a: { deck: 'main', x: q + 0.7, y: 1.4 }, b: { deck: 'quarter', x: q - 0.6, y: 1.4 } },
+      { id: 'l-hatch', name: '昇降口（船倉）', a: { deck: 'main', x: hatchX, y: 0 }, b: { deck: 'hold', x: hatchX, y: 0 } },
+    ],
+  };
+}
+
+const rigGeometry = () => ['foremast', 'mainmast', 'mizzen'].map((k) => ({ key: k, ...G.rig[k].value, x: G.rig[k].value.u * LOA }));
+/** Sails for a rig preset. Preset ids come from the research profile; every size is level D. */
+export function pintaSails(rigPreset = 'atlantic_square_rig') {
+  const masts = rigGeometry(), out = [];
+  for (const m of masts) {
+    const lateen = rigPreset === 'departure_lateen_hypothesis' || m.key === 'mizzen';
+    const shape = lateen ? 'lateen' : 'square', area = rigPreset === 'departure_lateen_hypothesis' && m.key !== 'mizzen' ? m.sailAreaM2 * 0.85 : m.sailAreaM2;
+    out.push({ id: m.key, type: shape, shape, areaM2: area, x: m.x, zCe: DECK_Z + m.height * (lateen ? 0.45 : 0.5), mastHeight: m.height, yard: m.yard });
+  }
+  return out;
+}
+
+/** Loadouts: only the lightship is tied to a research figure (the 1.58 m draft). The crossing scenario items are level D. */
+export function pintaLoad(loadout = 'lightship') {
+  if (loadout === 'lightship') return [];
+  const m = G.mass, n = G.crew.scenarioSize.value;
+  return [
+    { id: 'crew', massKg: n * m.personKg.value, x: 8.2, y: 0, z: DECK_Z + 0.5 },
+    { id: 'water-barrels', massKg: 10 * m.waterBarrelKg.value, x: 7.0, y: 0, z: 1.0 },
+    { id: 'provisions', massKg: 1200, x: 9.5, y: 0, z: 1.0 },
+  ];
+}
+
+export function buildPintaDesign({ rigPreset = 'atlantic_square_rig', loadout = 'crossing_1492_scenario' } = {}) {
+  const spec = pintaHullSpec(), hull = createHull(spec), rep = pintaHullReport(hull);
+  const items = [...pintaLightshipMassItems(hull, rep), ...pintaLoad(loadout)];
+  const t = G.tuning;
+  return {
+    label: rigPreset === 'atlantic_square_rig' ? 'ピンタ号 1492（大西洋横断・研究復元案）' : 'ピンタ号 1492（出航時ラテン帆仮説）',
+    hull: spec, massItems: items, sails: pintaSails(rigPreset),
+    rudder: { x: G.rudder.hingeX.value, areaM2: G.rudder.areaM2.value },
+    tuning: { roughnessCf: t.roughnessCf.value, form: t.form.value, waveK: t.waveK.value, keelLiftSlope: t.keelLiftSlope.value, windageAreaM2: t.windageAreaM2.value },
+    interior: pintaInterior(), visual: { plank: true },
+    evidence: { profile: P.selected_profile, rigPreset, loadout, lightDisplacementKg: rep.lightDisplacementKg, notes: ['research reconstruction, not original plans', 'hull curve, rig, masses, interior: level D hypotheses', 'toneladas de arqueo (40.10) is a volume measure and is not used as mass', 'armament unresolved: none modelled'] },
+  };
 }

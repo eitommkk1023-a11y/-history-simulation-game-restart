@@ -17,7 +17,7 @@ export function buildShipObject(T, { hull: hullSpec, vessel, visual = {} }) {
   const offZ = p.cgX - hull.xMin; // the group origin sits at the CG
   inner.position.set(0, -p.draftM, offZ);
   const sails = [], masts = [];
-  for (const s of vessel.sails) {
+  for (const s of visual.customRig ? [] : vessel.sails) { // a design with its own rig builder (e.g. the Pinta) skips the generic one
     const mastH = Math.max(8, s.zCe * 1.5), zMast = -(s.x - hull.xMin);
     const mast = new T.Mesh(new T.CylinderGeometry(0.25, 0.35, mastH, 6), new T.MeshStandardMaterial({ color: 0x5a432a }));
     mast.position.set(0, top + mastH / 2, zMast); inner.add(mast); masts.push(mast);
@@ -45,7 +45,7 @@ export function buildShipObject(T, { hull: hullSpec, vessel, visual = {} }) {
   const halfBeam = mid[mid.length - 1].b * 0.8;
   const deck = { y: top - p.draftM + 0.1, halfBeam, zMin: -(L - offZ) + 0.12 * L, zMax: offZ - 0.12 * L };
   const frame = { cgX: p.cgX, draft: p.draftM };
-  return { group, sails, masts, hullMesh, frame, deckY: deck.y, deck, L, interiorGroups: new Map(), dispose() { group.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); }); } };
+  return { group, inner, hull, vessel, sails, masts, hullMesh, frame, deckY: deck.y, deck, L, interiorGroups: new Map(), dispose() { group.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); }); } };
 }
 
 /** Red cross on white cloth (cross of the Order of Christ, flared arms), drawn once and shared. */
@@ -60,9 +60,10 @@ function crossTexture(T) {
 }
 
 /** Sail angles and reefing follow the vessel (call every frame). Position and rotation are set by the caller. */
-export function updateShipObject(obj) {
+export function updateShipObject(obj, hint = {}) {
   const DEG = Math.PI / 180;
   for (const { sail, pivot } of obj.sails) { pivot.rotation.y = sail.trimDeg * DEG; pivot.scale.set(1, Math.max(0.05, sail.deployed), 1); }
+  for (const f of obj.updaters ?? []) f(hint);
 }
 
 const USE_COLOR = { cabin: 0x9b7b4f, crew: 0x7a6038, cargo: 0x6a5a40, store: 0x806a48, deck: 0x8a6a3f };

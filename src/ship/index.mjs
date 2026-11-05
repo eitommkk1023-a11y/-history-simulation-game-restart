@@ -13,3 +13,5 @@ export { buildShipObject, updateShipObject, addInterior, setViewDeck, placePlaye
 export { createInterior } from './interior.mjs';
 export { PINTA_1492_PROFILE } from './pinta-1492-data.mjs';
 export { PINTA_1492_PARAMS, validatePintaProfile, validatePintaParams } from './pinta-1492-params.mjs';
+export { addPintaStructure } from './pinta-render.mjs';
+export { pintaHullSpec, pintaHullReport, pintaLightshipMassItems, pintaInterior, pintaSails, pintaLoad, buildPintaDesign } from './pinta-design.mjs';

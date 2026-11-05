@@ -90,8 +90,8 @@ test('captain: saved and restored in the fleet, the voyage continues identically
   assert.equal(g.get(id).captain.mode, f.get(id).captain.mode);
 });
 
-test('captain: the Pinta (mostly square rig) sails a downwind leg and arrives; her rig is judged square', () => {
-  const d = D.pinta, ship = createShip({ id: 'p', hull: d.hull, massItems: d.massItems }), analysis = analyzeHydrostatics(ship);
+test('captain: the Pinta 1492 (mostly square rig) sails a downwind leg and arrives', () => {
+  const d = D['pinta-1492'], ship = createShip({ id: 'p', hull: d.hull, massItems: d.massItems }), analysis = analyzeHydrostatics(ship);
   const v = createVessel({ ship, analysis, rudder: d.rudder, sails: d.sails.map((s) => ({ ...s })), windageAreaM2: d.windageAreaM2, ...d.tuning });
   v.state.u = 2; v.state.psi = Math.PI; const env = open(), c = createCaptain(v), dest = { X: 100, Y: -1400 };
   assert.equal(c.setDestination(env, dest).status, 'ok');

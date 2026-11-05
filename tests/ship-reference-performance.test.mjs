@@ -42,18 +42,18 @@ test('galley (170 rowers): sustained and burst speeds, fatigue, and turning', ()
   inRange(radius, 0.8 * 36, 3 * 36, 'turning radius (m)');
 });
 
-// Pinta-like caravela redonda (mixed square/lateen rig), ~99 t. Ranges are the author's rough estimates, NOT sourced figures.
+// Pinta 1492 (research_compact_1690 hull, level D rig). These are SANITY bounds on model output, not historical
+// performance: the sources give no reliable speed data and distances in the log must not be converted to knots mechanically.
 import { measureDesign } from '../tools/ship-calibration.mjs';
-const pinta = measureDesign('pinta', { headings: [40, 60, 70, 90, 130, 180], seconds: 300 });
-const pAt = (h) => pinta.find((r) => r.h === h);
+const sq = measureDesign('pinta-1492', { headings: [40, 60, 90, 130, 180], seconds: 300 }), lat = measureDesign('pinta-1492-lateen', { headings: [40, 60, 90, 130, 180], seconds: 300 });
+const at = (rows, h) => rows.find((r) => r.h === h);
 
-test('Pinta: reaching and running at a few knots in a fresh breeze, in the range of small square-rigged ships', () => {
-  for (const h of [90, 130, 180]) inRange(pAt(h).kt, 4.5, 7.5, `Pinta speed at ${h} deg`);
+test('Pinta 1492: model output is finite and in a plausible band for a small ship in a 10 m/s wind', () => {
+  for (const rows of [sq, lat]) for (const r of rows) { assert.ok(Number.isFinite(r.kt) && r.kt > 1.5 && r.kt < 9, `speed ${r.kt} at ${r.h}`); assert.ok(r.heel < 15); }
 });
 
-test('Pinta: close to the wind she makes little or no headway, with large leeway', () => {
-  assert.ok(pAt(40).vmg < 0, `VMG at 40 deg ${pAt(40).vmg}`);
-  const best = Math.max(...pinta.filter((r) => r.h <= 70).map((r) => r.vmg));
-  inRange(best, -0.5, 1.5, 'Pinta best upwind VMG');
-  inRange(pAt(70).leeway, 5, 12, 'Pinta leeway at 70 deg');
+test('Pinta 1492: the square-sail preset cannot make way close to the wind; the lateen hypothesis can', () => {
+  assert.ok(at(sq, 40).vmg < 0, `square VMG at 40 deg ${at(sq, 40).vmg}`);
+  assert.ok(at(lat, 40).vmg > 0.3, `lateen VMG at 40 deg ${at(lat, 40).vmg}`);
+  assert.ok(at(sq, 60).leeway > 3 && at(lat, 40).leeway > 3, 'real leeway, not a keel-boat');
 });
