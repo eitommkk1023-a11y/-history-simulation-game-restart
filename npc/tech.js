@@ -53,9 +53,9 @@
     { id: 'cart', ax: 'transport', jp: '車', req: ['draft'], need: p => p.wood > 0.25 ? 1 : 0, adopt: c => 0.45, v: 'wheel' },
     // 記録・組織
     { id: 'tally', ax: 'record', jp: '記録（刻み）', req: [], need: p => p.stone > 0.1 || p.clay > 0.1 ? 1 : 0, adopt: c => 0.7, v: 'mark' },
-    { id: 'script', ax: 'record', jp: '文字', req: ['tally', 'cultivate'], need: p => p.pop >= 250 ? 1 : 0, adopt: c => 0.3 + 0.3 * c[CULT.COUNCIL] + 0.15 * c[CULT.ELDER] },
-    { id: 'chiefdom', ax: 'organize', jp: '首長制', req: [], need: p => p.pop >= 150 ? 1 : 0, adopt: c => 0.6 + 0.2 * c[CULT.HEREDITY] },
-    { id: 'state', ax: 'organize', jp: '国家', req: ['chiefdom', 'cultivate', 'tally'], need: p => p.pop >= 600 ? 1 : 0, adopt: c => 0.3 + 0.3 * c[CULT.HEREDITY] + 0.2 * c[CULT.COUNCIL] },
+    { id: 'script', minPop: 250, ax: 'record', jp: '文字', req: ['tally', 'cultivate'], need: p => p.pop >= 250 ? 1 : 0, adopt: c => 0.3 + 0.3 * c[CULT.COUNCIL] + 0.15 * c[CULT.ELDER] },
+    { id: 'chiefdom', minPop: 150, ax: 'organize', jp: '首長制', req: [], need: p => p.pop >= 150 ? 1 : 0, adopt: c => 0.6 + 0.2 * c[CULT.HEREDITY] },
+    { id: 'state', minPop: 600, ax: 'organize', jp: '国家', req: ['chiefdom', 'cultivate', 'tally'], need: p => p.pop >= 600 ? 1 : 0, adopt: c => 0.3 + 0.3 * c[CULT.HEREDITY] + 0.2 * c[CULT.COUNCIL] },
     // 軍事
     { id: 'bow', ax: 'military', jp: '弓', req: [], need: p => p.wood > 0.15 ? 1 : 0, adopt: c => 0.8 },
     { id: 'metalarms', ax: 'military', jp: '金属武器', req: ['chiefdom'], need: p => 1, adopt: c => 0.6 + 0.2 * c[CULT.PATRI], any: ['bronze', 'iron'] },
@@ -72,18 +72,27 @@
     let s = 0, n = 0; for (let j = Math.max(0, cy - r); j <= Math.min(h - 1, cy + r); j++) for (let i = Math.max(0, cx - r); i <= Math.min(w - 1, cx + r); i++) { s += arr[j * w + i]; n++; }
     return n ? s / n : 0;
   }
+  // 家畜にできる動物のいる気候格子のセル（重複なし）を、世界ごとに1回だけ集める
+  const HERD_CACHE = new WeakMap();
+  function herdCells(world) {
+    let h = HERD_CACHE.get(world); if (h) return h; h = {}; const gw = world.climate.cell.gridW;
+    for (const sid of DOMESTIC) { const S = world.fauna.species[sid]; if (!S) continue; const seen = new Set(), arr = []; for (const p of S.pops) { if (p.alive === false) continue; for (const c of p.cells) if (!seen.has(c)) { seen.add(c); arr.push(c % gw, Math.floor(c / gw)); } } h[sid] = arr; }
+    HERD_CACHE.set(world, h); return h;
+  }
   // R＝[近い, 中距離, 遠い]（ブロック）。各資源が、どの段階の距離に最初に現れるか（tier：0＝近い、1＝中距離、2＝遠い、-1＝無い）
   const RADII = [40, 150, 400];
   function siteProfile(world, x, y, R, pop) {
     const R3 = Array.isArray(R) ? R : RADII, prof = { pop: pop || 0, tier: {}, grains: [], herds: [], river: false, coast: false, clay: 0, stone: 0, wood: 0 };
     const upd = (kind, d2) => { for (let t = 0; t < 3; t++) if (d2 <= R3[t] * R3[t]) { if (prof.tier[kind] == null || prof.tier[kind] > t) prof.tier[kind] = t; return; } };
-    for (const d of world.resources.deposits) { if (d.grade < 0.3) continue; const dx = d.x - x, dy = d.y - y; upd(d.kind, dx * dx + dy * dy); }
+    // 鉱床は、鉱山まで出かける・鉱石を交易で手に入れる前提で、手が届く範囲を広めにとる
+    const DR = [R3[0] * 1.75, R3[1] * 1.33, R3[2] * 1.12], updD = (kind, d2) => { for (let t = 0; t < 3; t++) if (d2 <= DR[t] * DR[t]) { if (prof.tier[kind] == null || prof.tier[kind] > t) prof.tier[kind] = t; return; } };
+    for (const d of world.resources.deposits) { if (d.grade < 0.3) continue; const dx = d.x - x, dy = d.y - y; updD(d.kind, dx * dx + dy * dy); }
     for (const wp of world.resources.wild) { if (wp.kind !== 'plant' || wp.use !== '穀物') continue; for (const c of wp.centers) { const dx = c.x - x, dy = c.y - y, d2 = dx * dx + dy * dy; upd('grain', d2); if (d2 <= R3[1] * R3[1] && !prof.grains.includes(wp.id)) prof.grains.push(wp.id); } }
     // 作れる穀物が近くに無くても、遠くから伝わってきた場合は、いちばん近い穀物を使う
     if (!prof.grains.length) { let best = null, bd = 1e18; for (const wp of world.resources.wild) { if (wp.kind !== 'plant' || wp.use !== '穀物') continue; for (const c of wp.centers) { const dx = c.x - x, dy = c.y - y, d2 = dx * dx + dy * dy; if (d2 < bd) { bd = d2; best = wp.id; } } } if (best && bd <= R3[2] * R3[2]) prof.grains.push(best); }
-    const cc = world.climate.cell, st = cc.gridStep, gw = cc.gridW, cx = Math.floor(x / st), cy = Math.floor(y / st);
-    for (const sid of DOMESTIC) { const S = world.fauna.species[sid]; if (!S) continue; for (const p of S.pops) { if (p.alive === false) continue; for (const c of p.cells) { const px = c % gw, py = (c - px) / gw, dx = (px - cx) * st, dy = (py - cy) * st; upd('herd', dx * dx + dy * dy); if (dx * dx + dy * dy <= R3[1] * R3[1] && !prof.herds.includes(sid)) prof.herds.push(sid); } } }
-    if (!prof.herds.length) { let best = null, bd = 1e18; for (const sid of DOMESTIC) { const S = world.fauna.species[sid]; if (!S) continue; for (const p of S.pops) { if (p.alive === false) continue; for (const c of p.cells) { const px = c % gw, py = (c - px) / gw, dx = (px - cx) * st, dy = (py - cy) * st, d2 = dx * dx + dy * dy; if (d2 < bd) { bd = d2; best = sid; } } } } if (best && bd <= R3[2] * R3[2]) prof.herds.push(best); }
+    const cc = world.climate.cell, st = cc.gridStep, gw = cc.gridW, cx = Math.floor(x / st), cy = Math.floor(y / st), HC = herdCells(world);
+    for (const sid of DOMESTIC) { const cells = HC[sid]; if (!cells) continue; for (let k = 0; k < cells.length; k += 2) { const dx = (cells[k] - cx) * st, dy = (cells[k + 1] - cy) * st, d2 = dx * dx + dy * dy; upd('herd', d2); if (d2 <= R3[1] * R3[1] && !prof.herds.includes(sid)) prof.herds.push(sid); } }
+    if (!prof.herds.length) { let best = null, bd = 1e18; for (const sid of DOMESTIC) { const cells = HC[sid]; if (!cells) continue; for (let k = 0; k < cells.length; k += 2) { const dx = (cells[k] - cx) * st, dy = (cells[k + 1] - cy) * st, d2 = dx * dx + dy * dy; if (d2 < bd) { bd = d2; best = sid; } } } if (best && bd <= R3[2] * R3[2]) prof.herds.push(best); }
     const P = world.riverPts, W = world.stats.width, rr = R3[0] * R3[0] * 0.25; if (P) for (let k = 0; k + 2 < P.length; k += 3) { const dx = P[k] - x, dy = P[k + 1] - y; if (dx * dx + dy * dy <= rr) { prof.river = true; break; } }
     for (let a = 0; a < 8 && !prof.coast; a++) for (const f of [0.5, 1]) { const ax = Math.round(x + R3[0] * f * Math.cos(a * Math.PI / 4)), ay = Math.round(y + R3[0] * f * Math.sin(a * Math.PI / 4)); if (ax >= 0 && ay >= 0 && ax < W && ay < world.stats.height && world.type[ay * W + ax] === 0) { prof.coast = true; break; } }
     prof.clay = cellMean(world, 'clay', x, y, R3[0]); prof.stone = cellMean(world, 'stone', x, y, R3[0]); prof.wood = cellMean(world, 'wood', x, y, R3[0]);
@@ -123,6 +132,6 @@
   function worldDistance(A, B) { let s = 0; for (const a of A) { let m = 1e9; for (const b of B) m = Math.min(m, hamming(a, b)); s += m; } return s / A.length; }
   function withinDiversity(A) { let s = 0, n = 0; for (let i = 0; i < A.length; i++) for (let j = i + 1; j < A.length; j++) { s += hamming(A[i], A[j]); n++; } return n ? s / n : 0; }
 
-  const api = { RADII, REACH, NODES, NODE_IDX, CULT, siteProfile, ethTech, signature, hamming, worldDistance, withinDiversity, techName };
+  const api = { H, U, RADII, REACH, NODES, NODE_IDX, CULT, siteProfile, ethTech, signature, hamming, worldDistance, withinDiversity, techName };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohTech = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
