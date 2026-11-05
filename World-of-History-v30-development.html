@@ -352,11 +352,17 @@
   #bagPanel.show{display:block}#bagPanel .bh{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-weight:700}
   #bagPanel .br{display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid #ffffff14}#bagPanel .br i{color:#9fb0c3;font-style:normal}
   #bagPanel .bst{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0;color:#c9d6e4;font-size:11.5px}#bagPanel .bar{flex:0 0 90px;height:8px;border-radius:4px;background:#ffffff1a;overflow:hidden}#bagPanel .bar b{display:block;height:100%;background:#6fbf5a}#bagPanel .bar b.hungry{background:#e0a640}#bagPanel .bar b.starving{background:#d9534f}
+
+  #talkPanel{position:fixed;z-index:60;left:50%;transform:translateX(-50%);bottom:calc(10px + env(safe-area-inset-bottom) + var(--u,1px) * 62);width:min(360px,52vw);max-height:calc(100vh - 80px - var(--u,1px) * 62);overflow:auto;background:#0c1420f2;border:1px solid #ffffff44;border-radius:12px;padding:8px 10px;font:12px system-ui;color:#e8eef5;display:none}
+  #talkPanel.show{display:block}#talkPanel .th{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:4px}#talkPanel .th b{font-size:14px}#talkPanel .tm{color:#9fb0c3;font-size:11px;margin-bottom:4px}
+  #talkPanel .tsay{background:#16263a;border-radius:8px;padding:6px 8px;margin:6px 0;line-height:1.5;min-height:2.4em}
+  #talkPanel .tact{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}#talkPanel button{height:28px;padding:0 10px;border-radius:14px;border:1px solid #ffffff44;background:#24384f;color:#e8eef5;font-size:12px}
+  #bagPanel .bstand{display:flex;align-items:center;gap:8px;color:#c9d6e4;font-size:11.5px;padding:3px 0}#bagPanel .bstand .bar{flex:1}
   #bagPanel .bsec{margin-top:6px;color:#9fd0ff;font-weight:700}#bagPanel .bnote{color:#8fa3b8;font-size:10px;line-height:1.35;margin-bottom:4px}#bagPanel button.dim{opacity:.45}
   #bagPanel .bact{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 4px}
   #bagPanel button{height:26px;padding:0 8px;border-radius:13px;border:1px solid #ffffff44;background:#24384f;color:#e8eef5;font-size:11px}
 </style>
-<button id="uiToggle">UIを表示</button><button id="joystick" aria-label="移動スティック"><span id="stick"></span></button><div id="actions"><button id="sprint" aria-pressed="false">ダッシュ</button><button id="jump">ジャンプ</button><button id="crouch" aria-pressed="false">しゃがむ</button></div><div id="forageMsg"></div><div id="forageBar"><div class="fb"><button id="fgFood">食料を探す</button><button id="fgMat" class="mat">素材を探す</button><button id="fgView" class="bag">視点：3人称</button><button id="fgBag" class="bag">持ち物</button></div></div><div id="bagPanel"></div><div id="movementNotice"></div><div id="integrationCompat"><details id="settings"></details><p id="status"></p><button id="generate"></button><input id="wire" type="checkbox"></div>
+<button id="uiToggle">UIを表示</button><button id="joystick" aria-label="移動スティック"><span id="stick"></span></button><div id="actions"><button id="sprint" aria-pressed="false">ダッシュ</button><button id="jump">ジャンプ</button><button id="crouch" aria-pressed="false">しゃがむ</button></div><div id="forageMsg"></div><div id="forageBar"><div class="fb"><button id="fgFood">食料を探す</button><button id="fgMat" class="mat">素材を探す</button><button id="fgView" class="bag">視点：3人称</button><button id="fgBag" class="bag">持ち物</button></div></div><div id="bagPanel"></div><div id="talkPanel"></div><div id="movementNotice"></div><div id="integrationCompat"><details id="settings"></details><p id="status"></p><button id="generate"></button><input id="wire" type="checkbox"></div>
 
 <div id="toolbar">
   <button id="btnRegen" class="primary">大陸を再生成</button>
@@ -6198,7 +6204,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
 
   // 体と暮らしの状態：kcal＝おなかの蓄え、t＝最後に時間を反映した日、sickUntil＝体調不良が続く日、fire＝焚き火、soak＝水にさらした木の実
   const KCAL_MAX = 3000, KCAL_DAY = 2000, KCAL_START = 2200;
-  function newState() { return { inv: {}, depl: {}, total: {}, wear: {}, home: null, store: {}, n: {}, seq: 0, kcal: KCAL_START, t: 0, sickUntil: 0, fire: null, soak: null }; }
+  function newState() { return { inv: {}, depl: {}, total: {}, wear: {}, home: null, store: {}, n: {}, standing: 0, given: 0, rationAt: -99, lessons: {}, talkDay: {}, seq: 0, kcal: KCAL_START, t: 0, sickUntil: 0, fire: null, soak: null }; }
   function count(st, id) { return st.inv[id] || 0; }
 
   // 場所の状況から、拾えるものの「豊かさ」を求める（0〜）
@@ -6288,7 +6294,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
   // 時間：day は日数（ゲームの時計）。時計が進んだ分だけおなかが減る
   function tick(st, day) {
     if (day < st.t) { st.t = day; return; }           // 時計が戻った（別の記録を読み込んだ等）
-    const d = day - st.t; if (d > 0) { st.kcal = Math.max(0, st.kcal - d * KCAL_DAY); st.t = day; }
+    const d = day - st.t; if (d > 0) { st.kcal = Math.max(0, st.kcal - d * KCAL_DAY); st.standing = Math.max(0, (st.standing || 0) - d * 0.04); st.t = day; }
   }
   function hunger(st) {
     const k = st.kcal;
@@ -6319,7 +6325,12 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
 
   // 焚き火：薪2と繊維1（火口）を使う。失敗すると繊維だけ失う
   const FIRE_WOOD = 2, WOOD_DAYS = 0.75, FIRE_RANGE = 2;
-  function fireActive(st, bx, by, day) { const f = st.fire; return !!f && day < f.until && Math.abs(f.bx - bx) <= FIRE_RANGE && Math.abs(f.by - by) <= FIRE_RANGE; }
+  function ownFireActive(st, bx, by, day) { const f = st.fire; return !!f && day < f.until && Math.abs(f.bx - bx) <= FIRE_RANGE && Math.abs(f.by - by) <= FIRE_RANGE; }
+  // 集団の野営地の中心にある、みんなの炉（保存しない。画面側が今の野営地に合わせて毎回設定する）
+  const COMMONS_RANGE = 1;
+  function setCommons(st, c) { st.commons = c && Number.isFinite(c.bx) && Number.isFinite(c.by) ? { bx: Math.floor(c.bx), by: Math.floor(c.by) } : null; }
+  function atCommons(st, bx, by) { const c = st.commons; return !!c && Math.abs(c.bx - Math.floor(bx)) <= COMMONS_RANGE && Math.abs(c.by - Math.floor(by)) <= COMMONS_RANGE; }
+  function fireActive(st, bx, by, day) { return ownFireActive(st, bx, by, day) || atCommons(st, bx, by); }
   function fireLeft(st, day) { return st.fire && day < st.fire.until ? st.fire.until - day : 0; }
   function makeFire(st, bx, by, day, skill, rng, wet) {
     if (st.fire && day < st.fire.until && Math.abs(st.fire.bx - bx) <= FIRE_RANGE && Math.abs(st.fire.by - by) <= FIRE_RANGE) return { ok: false, why: 'ここにはもう火がある' };
@@ -6336,6 +6347,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
   function stoke(st, bx, by, day) {
     if (!fireActive(st, bx, by, day)) return { ok: false, why: '近くに火がない' };
     if (!(st.inv.firewood > 0)) return { ok: false, why: '薪がない' };
+    if (!ownFireActive(st, bx, by, day)) { drop(st, 'firewood', 1); gainStanding(st, 1.5); bump(st, 'give'); return { ok: true, commons: true }; }   // みんなの炉に薪をくべる
     drop(st, 'firewood', 1); st.fire.until += WOOD_DAYS; return { ok: true, days: fireLeft(st, day) };
   }
 
@@ -6347,7 +6359,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     for (const raw in ROAST) { const c = st.inv[raw] || 0; if (c > 0) { const k = Math.min(c, 30 - n); if (k <= 0) break; drop(st, raw, k); st.inv[ROAST[raw]] = (st.inv[ROAST[raw]] || 0) + k; made[ROAST[raw]] = k; n += k; } }
     if (!n) return { ok: false, why: '焼ける物がない（魚・貝・根・草の実・水さらしした木の実）' };
     // 焼くには火の勢いを少し使う
-    st.fire.until = Math.max(day, st.fire.until - 0.1 - n * 0.01);
+    if (ownFireActive(st, bx, by, day)) st.fire.until = Math.max(day, st.fire.until - 0.1 - n * 0.01); else bump(st, 'commonCook');
     return { ok: true, made, n };
   }
 
@@ -6400,7 +6412,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     if (rng() > p) { for (const k in r.lose) drop(st, k, r.lose[k]); return { ok: false, why: name + 'づくりに失敗した（' + lostText(r) + 'を失った）' }; }
     for (const k in r.need) drop(st, k, r.need[k]);
     st.inv[id] = (st.inv[id] || 0) + r.out; st.total[id] = (st.total[id] || 0) + r.out;
-    if (r.fire && st.fire) st.fire.until = Math.max(day, st.fire.until - 0.3);   // 焼成で火を使う
+    if (r.fire && ownFireActive(st, bx, by, day)) st.fire.until = Math.max(day, st.fire.until - 0.3); else if (r.fire) bump(st, 'commonCook');   // 焼成で火を使う
     return { ok: true, name };
   }
   function needText(r) { return Object.keys(r.need).map(k => ITEMS[IDX[k]].name + '×' + r.need[k]).join('・'); }
@@ -6417,7 +6429,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     const batches = Math.min(STEW_MAX, Math.floor(total / STEW_N)); let need = batches * STEW_N;
     for (const k of STEW_IN) { const t = Math.min(need, st.inv[k] || 0); if (t) { drop(st, k, t); need -= t; } if (!need) break; }
     st.inv.stew = (st.inv.stew || 0) + batches; st.total.stew = (st.total.stew || 0) + batches;
-    st.fire.until = Math.max(day, st.fire.until - 0.15);
+    if (ownFireActive(st, bx, by, day)) st.fire.until = Math.max(day, st.fire.until - 0.15); else bump(st, 'commonCook');
     const broke = wearTool(st, 'pot');
     return { ok: true, n: batches, broke };
   }
@@ -6479,6 +6491,11 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     { id: 'stew',   text: '煮物を作る',                need: 1,  have: st => st.total.stew || 0 },
     { id: 'home',   text: '家を建てる',                need: 1,  have: st => (st.n || {}).home || 0 },
     { id: 'sleep',  text: '家で眠る',                  need: 1,  have: st => (st.n || {}).sleepHome || 0 },
+    { id: 'talk',   text: '集団の人と話す',            need: 1,  have: st => (st.n || {}).talk || 0 },
+    { id: 'share',  text: '近くの人に食べ物を分ける',   need: 1,  have: st => (st.n || {}).share || 0 },
+    { id: 'hearth', text: '集団のみんなの炉で調理する', need: 1,  have: st => (st.n || {}).commonCook || 0 },
+    { id: 'give',   text: '食べ物や薪を集団に分ける',   need: 1,  have: st => (st.n || {}).give || 0 },
+    { id: 'learn',  text: '集団の人に技を教わる',       need: 1,  have: st => (st.n || {}).learn || 0 },
   ];
   // 順番に、最初の未達成の目標を返す。done＝達成した数、all＝全部達成
   function goals(st) {
@@ -6487,7 +6504,90 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     return { all: true, done, total: GOALS.length, id: null, text: '暮らしの基本を身につけた', have: 0, need: 0 };
   }
 
-  function save(st) { return JSON.parse(JSON.stringify(st)); }
+  // ---------------------------------------------------------------- 集団とのつながり：評判・分け合い・配給・教わる・話す
+  const KCAL_PER_KG = 1800, CAMP_REACH = 2;
+  function gainStanding(st, x) { st.standing = Math.min(100, Math.max(0, (st.standing || 0) + x)); }
+  function standingInfo(st) {
+    const v = st.standing || 0;
+    return v >= 60 ? { v, level: 3, label: '頼られる人' } : v >= 30 ? { v, level: 2, label: '仲間' } : v >= 10 ? { v, level: 1, label: '顔見知り' } : { v, level: 0, label: 'よそ者' };
+  }
+  function nearCamp(camp, bx, by) { return !!camp && Math.abs(camp.bx - Math.floor(bx)) <= CAMP_REACH && Math.abs(camp.by - Math.floor(by)) <= CAMP_REACH; }
+  // 食べ物を集団の蓄えに分ける（野営地の近くで）。生の物は価値が低い
+  function giveToGroup(st, g, camp, id, n, bx, by) {
+    if (!g || !camp) return { ok: false, why: '集団がない' };
+    if (!nearCamp(camp, bx, by)) return { ok: false, why: '集団の野営地（みんなの炉のそば）でしか分けられない' };
+    const it = ITEMS[IDX[id]]; if (!it || it.group !== 'food') return { ok: false, why: '食べ物ではない' };
+    const have = st.inv[id] || 0; if (have <= 0) return { ok: false, why: '持っていない' };
+    const k = Math.min(n == null ? have : n, have); drop(st, id, k);
+    const kcal = k * it.kcal * (it.raw ? 0.6 : 1), kg = kcal / KCAL_PER_KG;
+    g.food = (g.food || 0) + kg; st.given = (st.given || 0) + kcal; gainStanding(st, kg * 3); bump(st, 'give');
+    return { ok: true, n: k, name: it.name, kg };
+  }
+  // 配給：おなかが空いていて、仲間と認められていれば、集団の蓄えから分けてもらえる
+  const RATION_KCAL = 1400, RATION_DAYS = 2;
+  function ration(st, g, camp, day, bx, by) {
+    if (!g || !camp) return { ok: false, why: '集団がない' };
+    if (!nearCamp(camp, bx, by)) return { ok: false, why: '野営地でしかもらえない' };
+    if (day - (st.rationAt == null ? -99 : st.rationAt) < RATION_DAYS) return { ok: false, why: '配給は' + RATION_DAYS + '日に1度' };
+    if (st.kcal > 1200) return { ok: false, why: 'まだおなかは空いていない' };
+    if ((st.standing || 0) < 8) return { ok: false, why: 'まだ仲間とは認められていない（食べ物や薪を分けて、評判を上げよう）' };
+    const kg = RATION_KCAL / KCAL_PER_KG; if ((g.food || 0) < kg) return { ok: false, why: 'いま集団に蓄えがない' };
+    g.food -= kg; st.kcal = Math.min(EAT_FULL, st.kcal + RATION_KCAL); st.rationAt = day; gainStanding(st, -2); bump(st, 'ration');
+    return { ok: true, kcal: RATION_KCAL };
+  }
+  // 近くの人に食べ物を分ける：その人の信頼・好意が上がる（相手から見たあなた）
+  function clampB(x) { return x < 0 ? 0 : x > 255 ? 255 : x; }
+  // 関係の枠が埋まっていても、いちばん薄い関係を押しのけて、あなたとの関係を作る（あなたは特別な存在として、必ず覚えてもらえる）
+  function relSlot(P, i, j) {
+    let sl = P._slot(i, j, true); if (sl >= 0) return sl;
+    const K = Math.round(P.relId.length / P.cap); let w = -1, wd = 1e9;
+    for (let k = 0; k < K; k++) { const v = (i * K + k) * 3, d = Math.abs(P.relV[v] - 128) + Math.abs(P.relV[v + 1] - 128) + Math.abs(P.relV[v + 2] - 128); if (d < wd) { wd = d; w = k; } }
+    if (w < 0) return -1;
+    const b = i * K + w; P.relId[b] = j; P.relV[b * 3] = P.relV[b * 3 + 1] = P.relV[b * 3 + 2] = 128; return b;
+  }
+  function share(P, st, me, npc, id) {
+    if (!P || !(P.alive ? P.alive(npc) : true) || npc === me) return { ok: false, why: '相手がいない' };
+    const it = ITEMS[IDX[id]]; if (!it || it.group !== 'food') return { ok: false, why: '食べ物ではない' };
+    if (!(st.inv[id] > 0)) return { ok: false, why: '持っていない' };
+    const sl = relSlot(P, npc, me); if (sl < 0) return { ok: false, why: 'うまく伝わらなかった' };
+    drop(st, id, 1);
+    const v = sl * 3, R = P.relV, w = it.raw ? 0.6 : 1;
+    R[v] = clampB(R[v] + Math.round(6 * w)); R[v + 1] = clampB(R[v + 1] + Math.round(8 * w));
+    const s2 = relSlot(P, me, npc); if (s2 >= 0) { P.relV[s2 * 3 + 1] = clampB(P.relV[s2 * 3 + 1] + 3); }
+    gainStanding(st, 0.8 * w); bump(st, 'share');
+    return { ok: true, name: it.name, trust: R[v] };
+  }
+  // 技を教わる：相手の信頼が一定以上で、相手がその道に詳しいとき。1人から5日に1度
+  const LESSON_TRUST = 140, LESSON_DAYS = 5;
+  function learn(P, st, me, npc, day, NS, jobs) {
+    if (!P || npc === me || !(P.alive ? P.alive(npc) : true)) return { ok: false, why: '相手がいない' };
+    const j = P.job[npc]; if (!j) return { ok: false, why: 'この人には教わることがない（仕事をしていない）' };
+    const k = j - 1, sn = P.skills[npc * NS + k], sm = P.skills[me * NS + k], name = jobs && jobs[j] ? jobs[j].skill : '技';
+    const b = P.bondOf ? P.bondOf(npc, me) : null, trust = b ? b[0] : 128;
+    if (trust < LESSON_TRUST) return { ok: false, why: 'まだ打ち解けていない（食べ物を分けて、信頼を得よう）' };
+    if (sn < 30 || sn < sm + 10) return { ok: false, why: 'この人からは、もう教わることがない（' + name + '）' };
+    const last = st.lessons[npc]; if (last != null && day - last < LESSON_DAYS) return { ok: false, why: '今日はもう教わった（' + (LESSON_DAYS - Math.floor(day - last)) + '日後にまた）' };
+    P.practice(me, k, 2, 3);
+    const after = P.skills[me * NS + k]; st.lessons[npc] = day; gainStanding(st, 0.5); bump(st, 'learn');
+    const keys = Object.keys(st.lessons); if (keys.length > 60) delete st.lessons[keys[0]];
+    return { ok: true, name, before: sm, after };
+  }
+  // 話す：その人の言葉（仕事・集団の食料の具合・あなたとの関係から決まる。同じ日・同じ人なら同じ言葉）
+  function talk(st, info, day, npc) {
+    const hash = ((npc * 2654435761) ^ (Math.floor(day / 10) * 40503)) >>> 0;
+    const job = info.job || '', fed = info.fed == null ? 1 : info.fed, w = [];
+    if (fed < 0.6) w.push('このところ食べ物が足りなくて、みんな苦しんでいる。', '蓄えが減ってきた。冬を越せるだろうか。');
+    else if (fed > 0.95) w.push('今年は食べ物に困らない。ありがたいことだ。', 'みんなおなかいっぱいで、顔色がいい。');
+    else w.push('食べ物はなんとか足りている。', '蓄えはそこそこだ。油断はできないが。');
+    const J = { 採集者: '私は木の実や草の実を集めている。秋は木の実が実り、冬は新芽が少し出る。', 狩人: '私は狩りをしている。獲物は夜明けと夕暮れによく動く。', 漁師: '私は魚や貝を獲っている。網があれば魚はずっと獲れる。', 道具製作者: '私は道具を作っている。石を割って、縄で結ぶんだ。', 建築従事者: '私は家を建てている。竪穴を掘って、茅で屋根を葺く。', 運搬者: '私は荷を運んでいる。', 治療者: '私は病人の世話をしている。熱が出たら、よく寝ることだ。', 警備者: '私は周りを見張っている。', 農民: '私は畑を見ている。', 牧畜従事者: '私は家畜の世話をしている。', 交易者: '私は遠くの人と物を替えている。' };
+    const lines = [w[hash % w.length]]; if (J[job]) lines.push(J[job]); else if (info.relation) lines.push('あなたは「' + info.relation + '」だね。');
+    const lv = standingInfo(st).level; lines.push(lv >= 2 ? '君はこの集団の仲間だ。頼りにしているよ。' : lv === 1 ? '最近よく見かける顔だ。' : '見かけない顔だな。何か分けてくれると助かる。');
+    const first = st.talkDay[npc] == null || st.talkDay[npc] !== Math.floor(day);
+    if (first) { st.talkDay[npc] = Math.floor(day); bump(st, 'talk'); const ks = Object.keys(st.talkDay); if (ks.length > 80) delete st.talkDay[ks[0]]; }
+    return { ok: true, text: lines.join('') };
+  }
+
+  function save(st) { const o = JSON.parse(JSON.stringify(st)); delete o.commons; return o; }
   function load(o) {
     const st = newState();
     if (o && typeof o === 'object') {
@@ -6499,6 +6599,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
       const hm = o.home; if (hm && Number.isFinite(hm.bx) && Number.isFinite(hm.by) && Number.isFinite(hm.ready)) st.home = { bx: hm.bx, by: hm.by, xM: Number.isFinite(hm.xM) ? hm.xM : null, yM: Number.isFinite(hm.yM) ? hm.yM : null, ready: hm.ready };
       for (const id in (o.store || {})) if (IDX[id] != null && o.store[id] > 0) st.store[id] = o.store[id] | 0;
       for (const k in (o.n || {})) if (Number.isFinite(o.n[k]) && o.n[k] > 0) st.n[k] = o.n[k] | 0;
+      if (Number.isFinite(o.standing)) st.standing = Math.max(0, Math.min(100, o.standing));
+      if (Number.isFinite(o.given)) st.given = Math.max(0, o.given); if (Number.isFinite(o.rationAt)) st.rationAt = o.rationAt;
+      for (const k in (o.lessons || {})) if (Number.isFinite(o.lessons[k])) st.lessons[k] = o.lessons[k];
+      for (const k in (o.talkDay || {})) if (Number.isFinite(o.talkDay[k])) st.talkDay[k] = o.talkDay[k];
       const k = o.soak; if (k && Number.isFinite(k.bx) && Number.isFinite(k.by) && Number.isFinite(k.n) && Number.isFinite(k.ready) && k.n > 0) st.soak = { bx: k.bx, by: k.by, n: k.n | 0, ready: k.ready };
       for (const id in (o.inv || {})) if (IDX[id] != null && o.inv[id] > 0) st.inv[id] = o.inv[id] | 0;
       for (const id in (o.total || {})) if (IDX[id] != null) st.total[id] = o.total[id] | 0;
@@ -6513,7 +6617,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     return function () { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   }
 
-  const api = { goals, GOALS, slotsOf, HOME_NEED, HOME_DAYS, HOME_REACH, STORE_SLOTS, homeStatus, nearHome, homeNeedText, buildHome, demolishHome, storePut, storeTake, storeList, storeRoom, sleep, SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
+  const api = { setCommons, atCommons, ownFireActive, standingInfo, gainStanding, giveToGroup, ration, share, learn, talk, nearCamp, KCAL_PER_KG, goals, GOALS, slotsOf, HOME_NEED, HOME_DAYS, HOME_REACH, STORE_SLOTS, homeStatus, nearHome, homeNeedText, buildHome, demolishHome, storePut, storeTake, storeList, storeRoom, sleep, SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohForage = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
@@ -9419,6 +9523,36 @@ function forageSkill(kind) {
   try { const y = people && WohPeople.peopleYou(people); if (!y || y.over) return 0.3; const P = people.npc, SK = P.skills, N = WohNpc.NSKILL; return Math.min(1, SK[y.id * N + (kind === 'fish' ? 2 : kind === 'craft' ? 3 : 0)] / 255); } catch (e) { return 0.3; }
 }
 function forageSay(t) { const el = document.getElementById('forageMsg'); if (!el) return; el.textContent = t; el.style.display = 'block'; clearTimeout(forageMsgTimer); forageMsgTimer = setTimeout(() => { el.style.display = 'none'; }, 3500); }
+// ---- 近くの人と話す
+let talkNpc = null;
+const TALK_FOODS = ['stew', 'fishC', 'nutC', 'rootC', 'shellC', 'seedC', 'nutL', 'fruit', 'bud', 'seed', 'root', 'shell', 'fish'];
+function talkRender(say) {
+  const el = document.getElementById('talkPanel'); if (!el) return;
+  if (talkNpc === null || !people) { el.classList.remove('show'); return; }
+  const V = globalThis.WohNpcView, P = people.npc, me = people.player ? people.player.id : -1;
+  if (P.death[talkNpc] !== 0x7fffffff) { el.innerHTML = '<div class="th"><b>（この人は亡くなった）</b></div><div class="tact"><button data-tk="close">閉じる</button></div>'; el.classList.add('show'); return; }
+  const d = V.viewDescribe(people, talkNpc), b = P.bondOf(talkNpc, me), tr = b ? b[0] : 128;
+  const bt = tr >= 160 ? '打ち解けている' : tr >= 140 ? '親しくなってきた' : tr >= 131 ? '顔なじみ' : '初対面に近い';
+  const gift = TALK_FOODS.find(k => forageSt.inv[k] > 0), gname = gift ? WohForage.ITEMS[WohForage.IDX[gift]].name : null;
+  el.innerHTML = '<div class="th"><b>' + (globalThis.__wohPersonName ? __wohPersonName(talkNpc) : '') + '</b><span>' + d.job + '・' + d.sex + '・' + d.age + '歳</span></div>' +
+    '<div class="tm">' + (d.relation ? '関係：' + d.relation + '　' : '') + 'あなたへの気持ち：' + bt + '</div>' +
+    '<div class="tsay" id="talkSay">' + (say || '近くにいる人に話しかけた。') + '</div>' +
+    '<div class="tact"><button data-tk="talk">話す</button><button data-tk="share"' + (gift ? '' : ' style="opacity:.45"') + '>' + (gname ? gname + 'を分ける' : '食べ物を分ける') + '</button><button data-tk="learn">技を教わる</button><button data-tk="close">閉じる</button></div>';
+  el.classList.add('show');
+}
+function talkAct(k) {
+  if (k === 'close') { talkNpc = null; talkRender(); return; }
+  const F = WohForage, day = forageNow(); if (!people || talkNpc === null) return;
+  const P = people.npc, me = people.player.id, V = globalThis.WohNpcView, G = forageGroup();
+  let say = '';
+  if (k === 'talk') { const d = V.viewDescribe(people, talkNpc); say = F.talk(forageSt, { job: d.job, fed: G ? G.g.fed : 1, relation: d.relation }, day, talkNpc).text; }
+  else if (k === 'share') { const gift = TALK_FOODS.find(x => forageSt.inv[x] > 0); if (!gift) say = '分けられる食べ物を持っていない。'; else { const r = F.share(P, forageSt, me, talkNpc, gift); say = r.ok ? r.name + 'を分けた。「ありがとう」' : r.why; } }
+  else if (k === 'learn') { const r = F.learn(P, forageSt, me, talkNpc, day, WohNpc.NSKILL, WohNpc.JOBS); say = r.ok ? '「' + r.name + '」を教わった（技能 ' + r.before + ' → ' + r.after + '）' : r.why; }
+  talkRender(say); forageBagRender();
+}
+document.getElementById('talkPanel')?.addEventListener('click', e => { const b = e.target.closest('button'); if (b && b.dataset.tk) talkAct(b.dataset.tk); });
+function talkOpen(npc) { talkNpc = npc; document.getElementById('bagPanel')?.classList.remove('show'); talkRender(); }
+globalThis.__wohTalk = { open: talkOpen, act: talkAct, get npc() { return talkNpc; } };
 // 家と焚き火を、3Dの世界に置く（状態に合わせて出し入れする）
 function forageSyncProps() {
   const P = globalThis.__wohProps; if (!P) return;
@@ -9436,7 +9570,19 @@ setInterval(() => {
     if (sig !== forageSig) { forageSig = sig; forageBagRender(); }
   } catch (e) { }
 }, 1500);
-function forageNow() { WohForage.tick(forageSt, clock.day); return clock.day; }
+// 自分の集団（野営地・蓄え）
+function forageGroup() {
+  try {
+    if (!people || !people.player || people.player.id < 0) return null;
+    const P = people.npc, gid = P.group[people.player.id], g = people.groups[gid - 1]; if (!g || !g.alive) return null;
+    const c = WohPeople.peCampCenter(g); return { g, gid, camp: { bx: Math.floor(c.x), by: Math.floor(c.y) } };
+  } catch (e) { return null; }
+}
+function forageNow() {
+  WohForage.tick(forageSt, clock.day);
+  const G = forageGroup(); WohForage.setCommons(forageSt, G ? G.camp : null);
+  return clock.day;
+}
 function forageDo(group) {
   const now = Date.now(); if (now - forageBusy < 700) return; forageBusy = now;
   const day = forageNow(), f = forageContext(); if (!f) { forageSay('ここでは探せない'); return; }
@@ -9453,7 +9599,7 @@ function forageAct(act, id) {
   const rng = WohForage.rngFor(forageSt, seedToInt(currentSeed), day), F = WohForage;
   let r, msg = '';
   if (act === 'fire') { r = F.makeFire(forageSt, f.bx, f.by, day, forageSkill('plant'), rng, f.ctx.water && !f.ctx.coast); if (r.ok) { const pt = window.__wohAvatar.point; if (pt && forageSt.fire) { forageSt.fire.xM = pt.xM + 1.4; forageSt.fire.yM = pt.yM; } } msg = r.ok ? '火がついた（約' + r.days.toFixed(1) + '日もつ）' : r.why + (f.ctx.water && !f.ctx.coast ? '' : ''); }
-  else if (act === 'stoke') { r = F.stoke(forageSt, f.bx, f.by, day); msg = r.ok ? '薪をくべた（残り約' + r.days.toFixed(1) + '日）' : r.why; }
+  else if (act === 'stoke') { r = F.stoke(forageSt, f.bx, f.by, day); msg = r.ok ? (r.commons ? 'みんなの炉に薪をくべた（評判が上がった）' : '薪をくべた（残り約' + r.days.toFixed(1) + '日）') : r.why; }
   else if (act === 'roast') { r = F.roast(forageSt, f.bx, f.by, day); msg = r.ok ? r.n + '個を焼いた' : r.why; }
   else if (act === 'soak') { r = F.soakStart(forageSt, f.bx, f.by, day, f.ctx.water && !f.ctx.coast); msg = r.ok ? '木の実' + r.n + '個を水にさらした（2日後に受け取れる）' : r.why; }
   else if (act === 'collect') { r = F.soakCollect(forageSt, f.bx, f.by, day); msg = r.ok ? '水さらしした木の実を' + r.n + '個受け取った' : r.why; }
@@ -9463,6 +9609,8 @@ function forageAct(act, id) {
   else if (act === 'demolish') { r = F.demolishHome(forageSt); msg = r.ok ? '家を壊した' : r.why; }
   else if (act === 'put') { r = F.storePut(forageSt, id, null, f.bx, f.by, day); msg = r.ok ? '貯蔵庫に ' + r.n + '個 預けた' : r.why; }
   else if (act === 'take') { r = F.storeTake(forageSt, id, null, f.bx, f.by, day); msg = r.ok ? '貯蔵庫から ' + r.n + '個 取り出した' : r.why; }
+  else if (act === 'give') { const G = forageGroup(); r = F.giveToGroup(forageSt, G && G.g, G && G.camp, id, 5, f.bx, f.by); msg = r.ok ? r.name + 'を' + r.n + '個、集団の蓄えに分けた（評判が上がった）' : r.why; }
+  else if (act === 'ration') { const G = forageGroup(); r = F.ration(forageSt, G && G.g, G && G.camp, day, f.bx, f.by); msg = r.ok ? '集団から配給をもらった（+' + r.kcal + 'kcal）' : r.why; }
   else if (act === 'craft') { r = F.craft(forageSt, id, forageSkill('craft'), rng, f.bx, f.by, day); msg = r.ok ? r.name + 'を作った' : r.why; }
   else if (act === 'boil') { r = F.boil(forageSt, f.bx, f.by, day, f.ctx.water && !f.ctx.coast); msg = r.ok ? '煮物を' + r.n + 'つ作った' + (r.broke ? '（' + r.broke + 'が壊れた）' : '') : r.why; }
   else if (act === 'eat') { r = F.eat(forageSt, id, rng, day); msg = r.ok ? r.name + 'を食べた（+' + r.kcal + 'kcal）' + (r.sick ? '。おなかをこわしたようだ' : '') : r.why; }
@@ -9472,18 +9620,20 @@ function forageBagRender() {
   const el = document.getElementById('bagPanel'); if (!el) return;
   try { forageSyncProps(); } catch (e) { }
   const day = forageNow(), F = WohForage, L = F.list(forageSt), used = F.slotsUsed(forageSt), hg = F.hunger(forageSt), pct = Math.round(100 * forageSt.kcal / F.KCAL_MAX);
-  const fl = F.fireLeft(forageSt, day), so = forageSt.soak, hs = F.homeStatus(forageSt, day), blk = (window.__wohAvatar && window.__wohAvatar.block && window.__wohAvatar.block()) || null, near = !!(blk && hs === 'built' && F.nearHome(forageSt, blk.x, blk.y)), y0 = (people && WohPeople.peopleYou(people)) || null, SL = F.storeList(forageSt);
+  const fl = F.fireLeft(forageSt, day), so = forageSt.soak, stl = F.standingInfo(forageSt), GG = forageGroup(), hs = F.homeStatus(forageSt, day), blk = (window.__wohAvatar && window.__wohAvatar.block && window.__wohAvatar.block()) || null, near = !!(blk && hs === 'built' && F.nearHome(forageSt, blk.x, blk.y)), y0 = (people && WohPeople.peopleYou(people)) || null, SL = F.storeList(forageSt), campNear = !!(blk && GG && F.nearCamp(GG.camp, blk.x, blk.y)), campD = (blk && GG) ? ((d => d >= 1000 ? (d / 1000).toFixed(1) + ' km' : d + ' m')(Math.round(Math.hypot(GG.camp.bx - blk.x, GG.camp.by - blk.y) * 33))) : null;
   const edible = id => F.ITEMS[F.IDX[id]].group === 'food';
   el.innerHTML = '<div class="bh"><span>持ち物</span><span>' + used + ' / ' + F.SLOTS + ' 枠</span></div>' +
     '<div class="bst"><span>おなか：' + hg.name + (F.sick(forageSt, day) ? '・体調不良' : '') + '</span><span class="bar"><b style="width:' + pct + '%" class="' + hg.id + '"></b></span></div>' +
     '<div class="bst"><span>焚き火：' + (fl > 0 ? '燃えている（残り約' + fl.toFixed(1) + '日）' : 'なし') + '</span><span>' + (so ? '水さらし：' + so.n + '個（' + (day >= so.ready ? '受け取れる' : 'あと' + Math.ceil(so.ready - day) + '日') + '）' : '') + '</span></div>' +
+    '<div class="bstand"><span>集団での評判：' + stl.label + '</span><span class="bar"><b style="width:' + Math.round(stl.v) + '%;background:#8ab4f8"></b></span>' + (campNear ? '<button data-act="ration">配給をもらう</button>' : '') + '</div>' +
+    (campNear ? '<div class="bnote">みんなの炉のそば：炉で焼く・煮る・土器が使える／薪をくべる・食べ物を「分ける」と評判が上がる／評判が高いと、空腹のとき配給がもらえる</div>' : '<div class="bnote">集団の野営地の中心（みんなの炉）まで ' + (campD == null ? '-' : campD) + '</div>') +
     '<div class="bst"><span>住まい：' + (hs === 'none' ? 'なし' : hs === 'building' ? '建築中（あと' + Math.ceil(forageSt.home.ready - day) + '日）' : 'あり') + (y0 && y0.camp && blk ? '</span><span>野営地まで約' + (d => d >= 1000 ? (d / 1000).toFixed(1) + ' km' : d + ' m')(Math.round(Math.hypot(y0.camp.x - blk.x, y0.camp.y - blk.y) * 33)) : '') + '</span></div>' +
     '<div class="bact">' + (hs === 'none' ? '<button data-act="home" title="' + F.homeNeedText() + '">家を建てる</button>' : '<button data-act="gohome">家へ戻る</button>') + '<button data-act="sleep">眠る（1日）</button>' + (hs === 'built' ? '<button data-act="demolish">家を壊す</button>' : '') + '</div>' +
     (hs === 'none' ? '<div class="bnote">家＝' + F.homeNeedText() + '（水辺・海辺は不可。完成まで' + F.HOME_DAYS + '日）／家で眠ると体調が戻る。焚き火のそばでも野宿できる</div>' : '') +
     '<div class="bact"><button data-act="fire">火を起こす</button><button data-act="stoke">薪をくべる</button><button data-act="roast">焼く</button><button data-act="soak">木の実を水にさらす</button><button data-act="collect">受け取る</button></div>' +
     '<div class="bsec">作る</div><div class="bact">' + Object.keys(F.RECIPES).map(id => '<button data-act="craft" data-id="' + id + '" class="' + (F.canCraft(forageSt, id) ? '' : 'dim') + '" title="' + Object.keys(F.RECIPES[id].need).map(k => F.ITEMS[F.IDX[k]].name + '×' + F.RECIPES[id].need[k]).join('・') + (F.RECIPES[id].fire ? '（火のそばで）' : '') + '">' + F.ITEMS[F.IDX[id]].name + '</button>').join('') + '<button data-act="boil">煮る</button></div>' +
     '<div class="bnote">' + Object.keys(F.RECIPES).map(id => F.ITEMS[F.IDX[id]].name + '＝' + Object.keys(F.RECIPES[id].need).map(k => F.ITEMS[F.IDX[k]].name.replace(/（.*）/, '') + F.RECIPES[id].need[k]).join('+') + (F.RECIPES[id].fire ? '(火)' : '')).join('　') + '　煮る＝土器・火・水辺で食材4つ→煮物</div>' +
-    (L.length ? L.map(it => '<div class="br"><span>' + it.name + (it.raw ? ' <i>（生）</i>' : '') + (F.LIFE[it.id] ? ' <i>（あと' + (F.LIFE[it.id] - ((forageSt.wear || {})[it.id] || 0)) + '回ほど）</i>' : '') + '</span><span>×' + it.n + ' ' + (edible(it.id) ? '<button data-act="eat" data-id="' + it.id + '">食べる</button> ' : '') + (near ? '<button data-act="put" data-id="' + it.id + '">預ける</button> ' : '') + '<button data-drop="' + it.id + '">捨てる</button></span></div>').join('') : '<div class="br"><i>何も持っていない</i></div>') +
+    (L.length ? L.map(it => '<div class="br"><span>' + it.name + (it.raw ? ' <i>（生）</i>' : '') + (F.LIFE[it.id] ? ' <i>（あと' + (F.LIFE[it.id] - ((forageSt.wear || {})[it.id] || 0)) + '回ほど）</i>' : '') + '</span><span>×' + it.n + ' ' + (edible(it.id) ? '<button data-act="eat" data-id="' + it.id + '">食べる</button> ' : '') + (near ? '<button data-act="put" data-id="' + it.id + '">預ける</button> ' : '') + (campNear && edible(it.id) ? '<button data-act="give" data-id="' + it.id + '">分ける</button> ' : '') + '<button data-drop="' + it.id + '">捨てる</button></span></div>').join('') : '<div class="br"><i>何も持っていない</i></div>') +
     (near ? '<div class="bsec">貯蔵庫（' + F.slotsOf(forageSt.store) + ' / ' + F.STORE_SLOTS + ' 枠）</div>' + (SL.length ? SL.map(it => '<div class="br"><span>' + it.name + '</span><span>×' + it.n + ' <button data-act="take" data-id="' + it.id + '">取り出す</button></span></div>').join('') : '<div class="br"><i>空</i></div>') : (hs === 'built' ? '<div class="bnote">貯蔵庫は家のそばで使える</div>' : '')) +
     '<div class="bh" style="margin-top:6px"><span></span><button id="bagClose">閉じる</button></div>';
 }
@@ -9574,7 +9724,8 @@ globalThis.__wohForage = { context: forageContext, get state() { return forageSt
   let hmode = 'food';
   const setMode = m => { hmode = m; q('hmFood').classList.toggle('on', m === 'food'); q('hmMat').classList.toggle('on', m === 'mat'); };
   q('hmFood').addEventListener('click', () => setMode('food')); q('hmMat').addEventListener('click', () => setMode('mat'));
-  q('hudTalk').addEventListener('click', () => click(hmode === 'food' ? 'fgFood' : 'fgMat'));
+  let nearNpc = null;
+  q('hudTalk').addEventListener('click', () => { if (nearNpc !== null && globalThis.__wohTalk) { __wohTalk.open(nearNpc); return; } click(hmode === 'food' ? 'fgFood' : 'fgMat'); });
   q('hudHot').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return; const k = b.dataset.hot;
     if (k === 'bag') click('fgBag');
@@ -9614,6 +9765,13 @@ globalThis.__wohForage = { context: forageContext, get state() { return forageSt
     // 方位・視点
     try { const cam = globalThis.__chunkPreview && __chunkPreview.camera; if (cam) { const v = new THREE.Vector3(); cam.getWorldDirection(v); compassUpdate((Math.atan2(v.x, -v.z) * 180 / Math.PI + 360) % 360); } } catch (e) { }
     q('mzView').classList.toggle('on', !!(window.__wohAvatar && __wohAvatar.firstPerson));
+    // 近くに人がいれば「話す」
+    try {
+      const me = people && people.player ? people.player.id : -1, nv = globalThis.__wohNpcView && __wohNpcView.nearest ? __wohNpcView.nearest(4.5, me) : null; nearNpc = nv ? nv.i : null;
+      const tk = q('hudTalk'), lab = tk.querySelector('span'), want = nearNpc !== null ? '話す' : '調べる';
+      if (lab.textContent !== want) { lab.textContent = want; q('hudMode').style.display = nearNpc !== null ? 'none' : ''; }
+      if (talkNpc !== null && (!nv || nv.i !== talkNpc) && q('talkPanel').classList.contains('show') && !__wohNpcView.nearest(9, me)) { talkNpc = null; talkRender(); }
+    } catch (e) { }
   }
   setInterval(refresh, 150);
   refresh();
@@ -12836,7 +12994,7 @@ function npcTapAt(cx,cy){
  renderer.domElement.addEventListener('pointerdown',e=>{tap={x:e.clientX,y:e.clientY,t:performance.now(),id:e.pointerId};},true);
  renderer.domElement.addEventListener('pointerup',e=>{const s=tap;tap=null;if(!s||s.id!==e.pointerId||overview)return;if(Math.hypot(e.clientX-s.x,e.clientY-s.y)>10||performance.now()-s.t>400)return;npcTapAt(e.clientX,e.clientY);});}
 globalThis.__wohSettle={get stats(){return {...dwStats,counts:{...dwN}};},get layouts(){return npcCamps.size;}};
-globalThis.__wohNpcView={get count(){return npcList.length;},get selected(){return npcSel;},screens:npcScreens,tapAt:npcTapAt};
+globalThis.__wohNpcView={get count(){return npcList.length;},get selected(){return npcSel;},screens:npcScreens,tapAt:npcTapAt,positions(){return npcList.map(e=>({i:e.i,xM:e.x+state.origin.xM,yM:e.z+state.origin.yM}));},nearest(maxM,skip){let b=null;for(const e of npcList){if(e.i===skip)continue;const d=Math.hypot(e.x-marker.position.x,e.z-marker.position.z);if(d<=maxM&&(!b||d<b.d))b={i:e.i,d};}return b;}};
 globalThis.__wohAvatar={setFirstPerson,get firstPerson(){return firstPerson;},setView(y,p,d){yaw=y;pitch=p;globalThis.__wohCamDist=d||4;updateCamera();},toBlock(bx,by,dx,dz){if(!state)return false;const q=state.terrain.gridToMeters(bx,by);placeMarker(q.xM+(dx||0),q.yM+(dz||0));return true;},toPlayer(){const pe=window.__geo?.people,y=pe&&globalThis.WohPeople?.peopleYou(pe);if(!y?.camp||!state)return false;const q=state.terrain.gridToMeters(y.camp.x,y.camp.y);placeMarker(q.xM,q.yM);return true;},get point(){return markerPoint;},block(){if(!state||!markerPoint)return null;const q=state.terrain.metersToGrid(markerPoint.xM,markerPoint.yM);return {x:q.x,y:q.y};}};
 window.__wohPlayerSave=()=>playerToSource(globalThis.__wohDev?.savedPlayer()??(markerPoint?{xM:markerPoint.xM,yM:markerPoint.yM,yaw}:null));
 document.body.classList.add('integration-third');

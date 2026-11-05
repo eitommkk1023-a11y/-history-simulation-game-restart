@@ -49,7 +49,7 @@
 
   // 体と暮らしの状態：kcal＝おなかの蓄え、t＝最後に時間を反映した日、sickUntil＝体調不良が続く日、fire＝焚き火、soak＝水にさらした木の実
   const KCAL_MAX = 3000, KCAL_DAY = 2000, KCAL_START = 2200;
-  function newState() { return { inv: {}, depl: {}, total: {}, wear: {}, home: null, store: {}, n: {}, seq: 0, kcal: KCAL_START, t: 0, sickUntil: 0, fire: null, soak: null }; }
+  function newState() { return { inv: {}, depl: {}, total: {}, wear: {}, home: null, store: {}, n: {}, standing: 0, given: 0, rationAt: -99, lessons: {}, talkDay: {}, seq: 0, kcal: KCAL_START, t: 0, sickUntil: 0, fire: null, soak: null }; }
   function count(st, id) { return st.inv[id] || 0; }
 
   // 場所の状況から、拾えるものの「豊かさ」を求める（0〜）
@@ -139,7 +139,7 @@
   // 時間：day は日数（ゲームの時計）。時計が進んだ分だけおなかが減る
   function tick(st, day) {
     if (day < st.t) { st.t = day; return; }           // 時計が戻った（別の記録を読み込んだ等）
-    const d = day - st.t; if (d > 0) { st.kcal = Math.max(0, st.kcal - d * KCAL_DAY); st.t = day; }
+    const d = day - st.t; if (d > 0) { st.kcal = Math.max(0, st.kcal - d * KCAL_DAY); st.standing = Math.max(0, (st.standing || 0) - d * 0.04); st.t = day; }
   }
   function hunger(st) {
     const k = st.kcal;
@@ -170,7 +170,12 @@
 
   // 焚き火：薪2と繊維1（火口）を使う。失敗すると繊維だけ失う
   const FIRE_WOOD = 2, WOOD_DAYS = 0.75, FIRE_RANGE = 2;
-  function fireActive(st, bx, by, day) { const f = st.fire; return !!f && day < f.until && Math.abs(f.bx - bx) <= FIRE_RANGE && Math.abs(f.by - by) <= FIRE_RANGE; }
+  function ownFireActive(st, bx, by, day) { const f = st.fire; return !!f && day < f.until && Math.abs(f.bx - bx) <= FIRE_RANGE && Math.abs(f.by - by) <= FIRE_RANGE; }
+  // 集団の野営地の中心にある、みんなの炉（保存しない。画面側が今の野営地に合わせて毎回設定する）
+  const COMMONS_RANGE = 1;
+  function setCommons(st, c) { st.commons = c && Number.isFinite(c.bx) && Number.isFinite(c.by) ? { bx: Math.floor(c.bx), by: Math.floor(c.by) } : null; }
+  function atCommons(st, bx, by) { const c = st.commons; return !!c && Math.abs(c.bx - Math.floor(bx)) <= COMMONS_RANGE && Math.abs(c.by - Math.floor(by)) <= COMMONS_RANGE; }
+  function fireActive(st, bx, by, day) { return ownFireActive(st, bx, by, day) || atCommons(st, bx, by); }
   function fireLeft(st, day) { return st.fire && day < st.fire.until ? st.fire.until - day : 0; }
   function makeFire(st, bx, by, day, skill, rng, wet) {
     if (st.fire && day < st.fire.until && Math.abs(st.fire.bx - bx) <= FIRE_RANGE && Math.abs(st.fire.by - by) <= FIRE_RANGE) return { ok: false, why: 'ここにはもう火がある' };
@@ -187,6 +192,7 @@
   function stoke(st, bx, by, day) {
     if (!fireActive(st, bx, by, day)) return { ok: false, why: '近くに火がない' };
     if (!(st.inv.firewood > 0)) return { ok: false, why: '薪がない' };
+    if (!ownFireActive(st, bx, by, day)) { drop(st, 'firewood', 1); gainStanding(st, 1.5); bump(st, 'give'); return { ok: true, commons: true }; }   // みんなの炉に薪をくべる
     drop(st, 'firewood', 1); st.fire.until += WOOD_DAYS; return { ok: true, days: fireLeft(st, day) };
   }
 
@@ -198,7 +204,7 @@
     for (const raw in ROAST) { const c = st.inv[raw] || 0; if (c > 0) { const k = Math.min(c, 30 - n); if (k <= 0) break; drop(st, raw, k); st.inv[ROAST[raw]] = (st.inv[ROAST[raw]] || 0) + k; made[ROAST[raw]] = k; n += k; } }
     if (!n) return { ok: false, why: '焼ける物がない（魚・貝・根・草の実・水さらしした木の実）' };
     // 焼くには火の勢いを少し使う
-    st.fire.until = Math.max(day, st.fire.until - 0.1 - n * 0.01);
+    if (ownFireActive(st, bx, by, day)) st.fire.until = Math.max(day, st.fire.until - 0.1 - n * 0.01); else bump(st, 'commonCook');
     return { ok: true, made, n };
   }
 
@@ -251,7 +257,7 @@
     if (rng() > p) { for (const k in r.lose) drop(st, k, r.lose[k]); return { ok: false, why: name + 'づくりに失敗した（' + lostText(r) + 'を失った）' }; }
     for (const k in r.need) drop(st, k, r.need[k]);
     st.inv[id] = (st.inv[id] || 0) + r.out; st.total[id] = (st.total[id] || 0) + r.out;
-    if (r.fire && st.fire) st.fire.until = Math.max(day, st.fire.until - 0.3);   // 焼成で火を使う
+    if (r.fire && ownFireActive(st, bx, by, day)) st.fire.until = Math.max(day, st.fire.until - 0.3); else if (r.fire) bump(st, 'commonCook');   // 焼成で火を使う
     return { ok: true, name };
   }
   function needText(r) { return Object.keys(r.need).map(k => ITEMS[IDX[k]].name + '×' + r.need[k]).join('・'); }
@@ -268,7 +274,7 @@
     const batches = Math.min(STEW_MAX, Math.floor(total / STEW_N)); let need = batches * STEW_N;
     for (const k of STEW_IN) { const t = Math.min(need, st.inv[k] || 0); if (t) { drop(st, k, t); need -= t; } if (!need) break; }
     st.inv.stew = (st.inv.stew || 0) + batches; st.total.stew = (st.total.stew || 0) + batches;
-    st.fire.until = Math.max(day, st.fire.until - 0.15);
+    if (ownFireActive(st, bx, by, day)) st.fire.until = Math.max(day, st.fire.until - 0.15); else bump(st, 'commonCook');
     const broke = wearTool(st, 'pot');
     return { ok: true, n: batches, broke };
   }
@@ -330,6 +336,11 @@
     { id: 'stew',   text: '煮物を作る',                need: 1,  have: st => st.total.stew || 0 },
     { id: 'home',   text: '家を建てる',                need: 1,  have: st => (st.n || {}).home || 0 },
     { id: 'sleep',  text: '家で眠る',                  need: 1,  have: st => (st.n || {}).sleepHome || 0 },
+    { id: 'talk',   text: '集団の人と話す',            need: 1,  have: st => (st.n || {}).talk || 0 },
+    { id: 'share',  text: '近くの人に食べ物を分ける',   need: 1,  have: st => (st.n || {}).share || 0 },
+    { id: 'hearth', text: '集団のみんなの炉で調理する', need: 1,  have: st => (st.n || {}).commonCook || 0 },
+    { id: 'give',   text: '食べ物や薪を集団に分ける',   need: 1,  have: st => (st.n || {}).give || 0 },
+    { id: 'learn',  text: '集団の人に技を教わる',       need: 1,  have: st => (st.n || {}).learn || 0 },
   ];
   // 順番に、最初の未達成の目標を返す。done＝達成した数、all＝全部達成
   function goals(st) {
@@ -338,7 +349,90 @@
     return { all: true, done, total: GOALS.length, id: null, text: '暮らしの基本を身につけた', have: 0, need: 0 };
   }
 
-  function save(st) { return JSON.parse(JSON.stringify(st)); }
+  // ---------------------------------------------------------------- 集団とのつながり：評判・分け合い・配給・教わる・話す
+  const KCAL_PER_KG = 1800, CAMP_REACH = 2;
+  function gainStanding(st, x) { st.standing = Math.min(100, Math.max(0, (st.standing || 0) + x)); }
+  function standingInfo(st) {
+    const v = st.standing || 0;
+    return v >= 60 ? { v, level: 3, label: '頼られる人' } : v >= 30 ? { v, level: 2, label: '仲間' } : v >= 10 ? { v, level: 1, label: '顔見知り' } : { v, level: 0, label: 'よそ者' };
+  }
+  function nearCamp(camp, bx, by) { return !!camp && Math.abs(camp.bx - Math.floor(bx)) <= CAMP_REACH && Math.abs(camp.by - Math.floor(by)) <= CAMP_REACH; }
+  // 食べ物を集団の蓄えに分ける（野営地の近くで）。生の物は価値が低い
+  function giveToGroup(st, g, camp, id, n, bx, by) {
+    if (!g || !camp) return { ok: false, why: '集団がない' };
+    if (!nearCamp(camp, bx, by)) return { ok: false, why: '集団の野営地（みんなの炉のそば）でしか分けられない' };
+    const it = ITEMS[IDX[id]]; if (!it || it.group !== 'food') return { ok: false, why: '食べ物ではない' };
+    const have = st.inv[id] || 0; if (have <= 0) return { ok: false, why: '持っていない' };
+    const k = Math.min(n == null ? have : n, have); drop(st, id, k);
+    const kcal = k * it.kcal * (it.raw ? 0.6 : 1), kg = kcal / KCAL_PER_KG;
+    g.food = (g.food || 0) + kg; st.given = (st.given || 0) + kcal; gainStanding(st, kg * 3); bump(st, 'give');
+    return { ok: true, n: k, name: it.name, kg };
+  }
+  // 配給：おなかが空いていて、仲間と認められていれば、集団の蓄えから分けてもらえる
+  const RATION_KCAL = 1400, RATION_DAYS = 2;
+  function ration(st, g, camp, day, bx, by) {
+    if (!g || !camp) return { ok: false, why: '集団がない' };
+    if (!nearCamp(camp, bx, by)) return { ok: false, why: '野営地でしかもらえない' };
+    if (day - (st.rationAt == null ? -99 : st.rationAt) < RATION_DAYS) return { ok: false, why: '配給は' + RATION_DAYS + '日に1度' };
+    if (st.kcal > 1200) return { ok: false, why: 'まだおなかは空いていない' };
+    if ((st.standing || 0) < 8) return { ok: false, why: 'まだ仲間とは認められていない（食べ物や薪を分けて、評判を上げよう）' };
+    const kg = RATION_KCAL / KCAL_PER_KG; if ((g.food || 0) < kg) return { ok: false, why: 'いま集団に蓄えがない' };
+    g.food -= kg; st.kcal = Math.min(EAT_FULL, st.kcal + RATION_KCAL); st.rationAt = day; gainStanding(st, -2); bump(st, 'ration');
+    return { ok: true, kcal: RATION_KCAL };
+  }
+  // 近くの人に食べ物を分ける：その人の信頼・好意が上がる（相手から見たあなた）
+  function clampB(x) { return x < 0 ? 0 : x > 255 ? 255 : x; }
+  // 関係の枠が埋まっていても、いちばん薄い関係を押しのけて、あなたとの関係を作る（あなたは特別な存在として、必ず覚えてもらえる）
+  function relSlot(P, i, j) {
+    let sl = P._slot(i, j, true); if (sl >= 0) return sl;
+    const K = Math.round(P.relId.length / P.cap); let w = -1, wd = 1e9;
+    for (let k = 0; k < K; k++) { const v = (i * K + k) * 3, d = Math.abs(P.relV[v] - 128) + Math.abs(P.relV[v + 1] - 128) + Math.abs(P.relV[v + 2] - 128); if (d < wd) { wd = d; w = k; } }
+    if (w < 0) return -1;
+    const b = i * K + w; P.relId[b] = j; P.relV[b * 3] = P.relV[b * 3 + 1] = P.relV[b * 3 + 2] = 128; return b;
+  }
+  function share(P, st, me, npc, id) {
+    if (!P || !(P.alive ? P.alive(npc) : true) || npc === me) return { ok: false, why: '相手がいない' };
+    const it = ITEMS[IDX[id]]; if (!it || it.group !== 'food') return { ok: false, why: '食べ物ではない' };
+    if (!(st.inv[id] > 0)) return { ok: false, why: '持っていない' };
+    const sl = relSlot(P, npc, me); if (sl < 0) return { ok: false, why: 'うまく伝わらなかった' };
+    drop(st, id, 1);
+    const v = sl * 3, R = P.relV, w = it.raw ? 0.6 : 1;
+    R[v] = clampB(R[v] + Math.round(6 * w)); R[v + 1] = clampB(R[v + 1] + Math.round(8 * w));
+    const s2 = relSlot(P, me, npc); if (s2 >= 0) { P.relV[s2 * 3 + 1] = clampB(P.relV[s2 * 3 + 1] + 3); }
+    gainStanding(st, 0.8 * w); bump(st, 'share');
+    return { ok: true, name: it.name, trust: R[v] };
+  }
+  // 技を教わる：相手の信頼が一定以上で、相手がその道に詳しいとき。1人から5日に1度
+  const LESSON_TRUST = 140, LESSON_DAYS = 5;
+  function learn(P, st, me, npc, day, NS, jobs) {
+    if (!P || npc === me || !(P.alive ? P.alive(npc) : true)) return { ok: false, why: '相手がいない' };
+    const j = P.job[npc]; if (!j) return { ok: false, why: 'この人には教わることがない（仕事をしていない）' };
+    const k = j - 1, sn = P.skills[npc * NS + k], sm = P.skills[me * NS + k], name = jobs && jobs[j] ? jobs[j].skill : '技';
+    const b = P.bondOf ? P.bondOf(npc, me) : null, trust = b ? b[0] : 128;
+    if (trust < LESSON_TRUST) return { ok: false, why: 'まだ打ち解けていない（食べ物を分けて、信頼を得よう）' };
+    if (sn < 30 || sn < sm + 10) return { ok: false, why: 'この人からは、もう教わることがない（' + name + '）' };
+    const last = st.lessons[npc]; if (last != null && day - last < LESSON_DAYS) return { ok: false, why: '今日はもう教わった（' + (LESSON_DAYS - Math.floor(day - last)) + '日後にまた）' };
+    P.practice(me, k, 2, 3);
+    const after = P.skills[me * NS + k]; st.lessons[npc] = day; gainStanding(st, 0.5); bump(st, 'learn');
+    const keys = Object.keys(st.lessons); if (keys.length > 60) delete st.lessons[keys[0]];
+    return { ok: true, name, before: sm, after };
+  }
+  // 話す：その人の言葉（仕事・集団の食料の具合・あなたとの関係から決まる。同じ日・同じ人なら同じ言葉）
+  function talk(st, info, day, npc) {
+    const hash = ((npc * 2654435761) ^ (Math.floor(day / 10) * 40503)) >>> 0;
+    const job = info.job || '', fed = info.fed == null ? 1 : info.fed, w = [];
+    if (fed < 0.6) w.push('このところ食べ物が足りなくて、みんな苦しんでいる。', '蓄えが減ってきた。冬を越せるだろうか。');
+    else if (fed > 0.95) w.push('今年は食べ物に困らない。ありがたいことだ。', 'みんなおなかいっぱいで、顔色がいい。');
+    else w.push('食べ物はなんとか足りている。', '蓄えはそこそこだ。油断はできないが。');
+    const J = { 採集者: '私は木の実や草の実を集めている。秋は木の実が実り、冬は新芽が少し出る。', 狩人: '私は狩りをしている。獲物は夜明けと夕暮れによく動く。', 漁師: '私は魚や貝を獲っている。網があれば魚はずっと獲れる。', 道具製作者: '私は道具を作っている。石を割って、縄で結ぶんだ。', 建築従事者: '私は家を建てている。竪穴を掘って、茅で屋根を葺く。', 運搬者: '私は荷を運んでいる。', 治療者: '私は病人の世話をしている。熱が出たら、よく寝ることだ。', 警備者: '私は周りを見張っている。', 農民: '私は畑を見ている。', 牧畜従事者: '私は家畜の世話をしている。', 交易者: '私は遠くの人と物を替えている。' };
+    const lines = [w[hash % w.length]]; if (J[job]) lines.push(J[job]); else if (info.relation) lines.push('あなたは「' + info.relation + '」だね。');
+    const lv = standingInfo(st).level; lines.push(lv >= 2 ? '君はこの集団の仲間だ。頼りにしているよ。' : lv === 1 ? '最近よく見かける顔だ。' : '見かけない顔だな。何か分けてくれると助かる。');
+    const first = st.talkDay[npc] == null || st.talkDay[npc] !== Math.floor(day);
+    if (first) { st.talkDay[npc] = Math.floor(day); bump(st, 'talk'); const ks = Object.keys(st.talkDay); if (ks.length > 80) delete st.talkDay[ks[0]]; }
+    return { ok: true, text: lines.join('') };
+  }
+
+  function save(st) { const o = JSON.parse(JSON.stringify(st)); delete o.commons; return o; }
   function load(o) {
     const st = newState();
     if (o && typeof o === 'object') {
@@ -350,6 +444,10 @@
       const hm = o.home; if (hm && Number.isFinite(hm.bx) && Number.isFinite(hm.by) && Number.isFinite(hm.ready)) st.home = { bx: hm.bx, by: hm.by, xM: Number.isFinite(hm.xM) ? hm.xM : null, yM: Number.isFinite(hm.yM) ? hm.yM : null, ready: hm.ready };
       for (const id in (o.store || {})) if (IDX[id] != null && o.store[id] > 0) st.store[id] = o.store[id] | 0;
       for (const k in (o.n || {})) if (Number.isFinite(o.n[k]) && o.n[k] > 0) st.n[k] = o.n[k] | 0;
+      if (Number.isFinite(o.standing)) st.standing = Math.max(0, Math.min(100, o.standing));
+      if (Number.isFinite(o.given)) st.given = Math.max(0, o.given); if (Number.isFinite(o.rationAt)) st.rationAt = o.rationAt;
+      for (const k in (o.lessons || {})) if (Number.isFinite(o.lessons[k])) st.lessons[k] = o.lessons[k];
+      for (const k in (o.talkDay || {})) if (Number.isFinite(o.talkDay[k])) st.talkDay[k] = o.talkDay[k];
       const k = o.soak; if (k && Number.isFinite(k.bx) && Number.isFinite(k.by) && Number.isFinite(k.n) && Number.isFinite(k.ready) && k.n > 0) st.soak = { bx: k.bx, by: k.by, n: k.n | 0, ready: k.ready };
       for (const id in (o.inv || {})) if (IDX[id] != null && o.inv[id] > 0) st.inv[id] = o.inv[id] | 0;
       for (const id in (o.total || {})) if (IDX[id] != null) st.total[id] = o.total[id] | 0;
@@ -364,6 +462,6 @@
     return function () { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   }
 
-  const api = { goals, GOALS, slotsOf, HOME_NEED, HOME_DAYS, HOME_REACH, STORE_SLOTS, homeStatus, nearHome, homeNeedText, buildHome, demolishHome, storePut, storeTake, storeList, storeRoom, sleep, SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
+  const api = { setCommons, atCommons, ownFireActive, standingInfo, gainStanding, giveToGroup, ration, share, learn, talk, nearCamp, KCAL_PER_KG, goals, GOALS, slotsOf, HOME_NEED, HOME_DAYS, HOME_REACH, STORE_SLOTS, homeStatus, nearHome, homeNeedText, buildHome, demolishHome, storePut, storeTake, storeList, storeRoom, sleep, SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohForage = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -259,7 +259,7 @@ t('不毛地は全部ほぼ0', Object.values(F.availability(desert)).every(v => 
 {
   const fixed = (v) => () => v;
   const G = F.newState();
-  let g = F.goals(G); t('最初の目標は食べ物集め', !g.all && g.id === 'food' && g.have === 0 && g.need === 5 && g.done === 0 && g.total === 11, JSON.stringify(g));
+  let g = F.goals(G); t('最初の目標は食べ物集め', !g.all && g.id === 'food' && g.have === 0 && g.need === 5 && g.done === 0 && g.total === 16, JSON.stringify(g));
   G.total = { nut: 3, fish: 1 }; g = F.goals(G); t('進み具合が数えられる', g.id === 'food' && g.have === 4);
   G.total = { nut: 3, fish: 2, firewood: 4 }; g = F.goals(G); t('食べ物が済むと次は薪', g.id === 'wood' && g.have === 4 && g.done === 1);
   G.total = { nut: 9, firewood: 12 }; g = F.goals(G); t('薪が済むと火', g.id === 'fire' && g.done === 2);
@@ -274,12 +274,81 @@ t('不毛地は全部ほぼ0', Object.values(F.availability(desert)).every(v => 
   const H = F.newState(); H.inv = { firewood: 10, fiber: 12, rope: 2, clay: 4 }; F.buildHome(H, 0, 0, 0, 1, 1, true); t('家を建てると数える', H.n.home === 1);
   F.sleep(H, 0, 0, 1); t('建築中は家で眠った数に入らない', !H.n.sleepHome); F.sleep(H, 0, 0, 5); t('家で眠ると数える', H.n.sleepHome === 1);
   // 全部達成
-  const A = F.newState(); A.total = { nut: 5, firewood: 10, rope: 1, clay: 4, pot: 1, nutL: 1, stew: 1 }; A.n = { fire: 1, cooked: 1, home: 1, sleepHome: 1 };
-  g = F.goals(A); t('全部達成', g.all && g.done === 11 && /身につけた/.test(g.text), JSON.stringify(g));
+  const A = F.newState(); A.total = { nut: 5, firewood: 10, rope: 1, clay: 4, pot: 1, nutL: 1, stew: 1 }; A.n = { fire: 1, cooked: 1, home: 1, sleepHome: 1, talk: 1, share: 1, commonCook: 1, give: 1, learn: 1 };
+  g = F.goals(A); t('全部達成', g.all && g.done === 16 && /身につけた/.test(g.text), JSON.stringify(g));
   // 保存
   const L = F.load(JSON.parse(JSON.stringify(F.save(A)))); t('カウンターも保存', JSON.stringify(L.n) === JSON.stringify(A.n) && F.goals(L).all);
   t('古い保存でも目標は動く', F.goals(F.load({ inv: {} })).id === 'food');
   t('壊れた n でも落ちない', Object.keys(F.load({ n: { fire: 'x', cooked: -1 } }).n).length === 0);
+}
+
+// ---------------------------------------------------------------- 集団とのつながり
+{
+  const Npc = require('./npc-core.js'), NS = Npc.NSKILL, JOBS = Npc.JOBS;
+  const fixed = (v) => () => v;
+  const camp = { bx: 100, by: 100 };
+  // 共同の炉
+  const C = F.newState();
+  t('炉の設定前は火なし', !F.fireActive(C, 100, 100, 0));
+  F.setCommons(C, camp); t('野営地の中心とそのまわり1ブロックは炉が使える', F.fireActive(C, 100, 100, 0) && F.fireActive(C, 101, 99, 0) && !F.fireActive(C, 103, 100, 0));
+  t('自分の火ではない', !F.ownFireActive(C, 100, 100, 0));
+  C.inv = { fish: 2, shell: 3 }; let r = F.roast(C, 100, 100, 0); t('みんなの炉で焼ける', r.ok && C.inv.fishC === 2 && C.n.commonCook === 1, JSON.stringify(C.inv));
+  C.inv = { clay: 4, firewood: 2 }; r = F.craft(C, 'pot', 0.5, fixed(0), 100, 100, 0); t('みんなの炉で土器も焼ける', r.ok && C.inv.pot === 1);
+  C.inv = { pot: 1, nut: 8 }; r = F.boil(C, 100, 100, 0, true); t('みんなの炉で煮られる', r.ok && C.inv.stew === 2);
+  C.inv = { firewood: 3 }; r = F.stoke(C, 100, 100, 0); t('みんなの炉に薪を足すと評判が上がる', r.ok && r.commons && C.inv.firewood === 2 && C.standing >= 1.5 && C.n.give === 1, JSON.stringify(C));
+  C.inv = {}; t('薪がなければ足せない', !F.stoke(C, 100, 100, 0).ok);
+  t('火はセーブに入らない', F.save(C).commons === undefined);
+  F.setCommons(C, null); t('炉を外せる', !F.fireActive(C, 100, 100, 0));
+  // 評判の段階
+  const L = F.newState(); t('よそ者', F.standingInfo(L).label === 'よそ者'); L.standing = 10; t('顔見知り', F.standingInfo(L).level === 1); L.standing = 30; t('仲間', F.standingInfo(L).level === 2); L.standing = 60; t('頼られる人', F.standingInfo(L).level === 3);
+  L.standing = 50; F.tick(L, 10); t('評判は少しずつ薄れる', L.standing < 50 && L.standing > 49, L.standing);
+  // 集団に分ける
+  const G = F.newState(), g = { food: 10 }; G.inv = { stew: 5, fish: 2, stone: 3 };
+  t('野営地から遠いと分けられない', !F.giveToGroup(G, g, camp, 'stew', 5, 120, 100).ok);
+  t('食べ物でない物は不可', !F.giveToGroup(G, g, camp, 'stone', 1, 100, 100).ok);
+  r = F.giveToGroup(G, g, camp, 'stew', 5, 101, 100); t('煮物5個＝約0.72kgが蓄えへ', r.ok && r.n === 5 && Math.abs(g.food - (10 + 5 * 260 / 1800)) < 1e-9 && !G.inv.stew && G.standing > 2 && G.n.give === 1, JSON.stringify([g, G.standing]));
+  r = F.giveToGroup(G, g, camp, 'fish', 2, 100, 100); t('生の魚は価値が6割', Math.abs(r.kg - 2 * 250 * 0.6 / 1800) < 1e-9);
+  t('持っていない物は不可', !F.giveToGroup(G, g, camp, 'nut', 1, 100, 100).ok);
+  t('集団がないと不可', !F.giveToGroup(G, null, camp, 'fish', 1, 100, 100).ok);
+  // 配給
+  const R = F.newState(), gr = { food: 5 }; R.kcal = 500; R.standing = 20;
+  t('野営地でないともらえない', !F.ration(R, gr, camp, 10, 130, 100).ok);
+  r = F.ration(R, gr, camp, 10, 100, 100); t('配給をもらう', r.ok && R.kcal === 1900 && Math.abs(gr.food - (5 - 1400 / 1800)) < 1e-9 && R.standing === 18 && R.n.ration === 1, JSON.stringify(R));
+  R.kcal = 500; t('2日に1度', !F.ration(R, gr, camp, 11, 100, 100).ok && /2日/.test(F.ration(R, gr, camp, 11, 100, 100).why)); t('2日後はもらえる', F.ration(R, gr, camp, 12, 100, 100).ok);
+  const R2 = F.newState(); R2.kcal = 2000; R2.standing = 50; t('空腹でないと不要', /空いていない/.test(F.ration(R2, { food: 9 }, camp, 5, 100, 100).why));
+  const R3 = F.newState(); R3.kcal = 300; R3.standing = 3; t('評判が低いともらえない', /認められていない/.test(F.ration(R3, { food: 9 }, camp, 5, 100, 100).why));
+  const R4 = F.newState(); R4.kcal = 300; R4.standing = 30; t('蓄えが無いともらえない', /蓄え/.test(F.ration(R4, { food: 0.2 }, camp, 5, 100, 100).why) && R4.kcal === 300);
+  // 近くの人に分ける・教わる・話す（実際の住民の仕組みで）
+  const P = new Npc.Population(1, 3, 100); P.day = 360 * 100;
+  const me = P.addFounder(1, 30), a = P.addFounder(1, 40); P._setJob(a, 1); P.skills[a * NS + 0] = 120; P.skills[me * NS + 0] = 10; P.skills[me * NS + 1] = 0;
+  const S = F.newState(); S.inv = { fruit: 6, stew: 2, fish: 2, firewood: 1 };
+  const b0 = P.bondOf(a, me); t('最初は関係が無い', b0 === null || (b0[0] === 128 && b0[1] === 128));
+  r = F.share(P, S, me, a, 'fruit'); const b1 = P.bondOf(a, me); t('果実を分けると信頼と好意が上がる', r.ok && b1[0] === 134 && b1[1] === 136 && S.inv.fruit === 5 && S.n.share === 1, JSON.stringify(b1));
+  r = F.share(P, S, me, a, 'fish'); const b2 = P.bondOf(a, me); t('生魚は6割の効き目', r.ok && b2[0] === 134 + 4 && b2[1] === 136 + 5, JSON.stringify(b2));
+  t('食べ物でない物は渡せない', !F.share(P, S, me, a, 'firewood').ok); t('自分には渡せない', !F.share(P, S, me, me, 'fruit').ok); t('持っていない物は渡せない', !F.share(P, S, me, a, 'nut').ok);
+  t('あなたから相手への好意も少し上がる', P.bondOf(me, a)[1] === 128 + 6);
+  // 関係の枠がすべて埋まっている相手にも分けられる
+  { const P2 = new Npc.Population(2, 3, 100); P2.day = 360 * 100; const me2 = P2.addFounder(1, 30), a2 = P2.addFounder(1, 40); const K = Math.round(P2.relId.length / P2.cap); const others = [];
+    for (let k = 0; k < K; k++) { const o = P2.addFounder(1, 25 + k); others.push(o); P2.relId[a2 * K + k] = o; const v = (a2 * K + k) * 3; P2.relV[v] = 200; P2.relV[v + 1] = 40 + k * 10; P2.relV[v + 2] = 180; }
+    const S2 = F.newState(); S2.inv = { fruit: 2 }; const r2 = F.share(P2, S2, me2, a2, 'fruit'); const bb = P2.bondOf(a2, me2);
+    t('枠が埋まっていても、あなたとの関係は作れる', r2.ok && bb && bb[0] === 134 && bb[1] === 136, JSON.stringify([r2, bb])); }
+  r = F.learn(P, S, me, a, 100, NS, JOBS); t('まだ打ち解けていないと教われない', !r.ok && /打ち解けて/.test(r.why), JSON.stringify(r));
+  for (let i = 0; i < 3; i++) { S.inv.stew = 5; F.share(P, S, me, a, 'stew'); }
+  t('信頼が140を超える', P.bondOf(a, me)[0] >= 140, JSON.stringify(P.bondOf(a, me)));
+  r = F.learn(P, S, me, a, 100, NS, JOBS); t('教わると技能が上がる', r.ok && r.after > r.before && r.name === '採集' && S.n.learn === 1, JSON.stringify(r));
+  r = F.learn(P, S, me, a, 102, NS, JOBS); t('5日に1度', !r.ok && /日後/.test(r.why)); r = F.learn(P, S, me, a, 106, NS, JOBS); t('5日後はまた', r.ok || /もう教わること/.test(r.why));
+  P.skills[me * NS + 0] = 118; P.skills[a * NS + 0] = 120; t('相手が詳しくないと教わる物がない', /教わることがない/.test(F.learn(P, S, me, a, 200, NS, JOBS).why));
+  P._setJob(a, 0); t('仕事をしていない人からは教われない', !F.learn(P, S, me, a, 300, NS, JOBS).ok);
+  // 話す
+  const T = F.newState(); let tk = F.talk(T, { job: '採集者', fed: 0.4, relation: '' }, 50, a); t('話すと言葉が返る（食べ物が足りない）', tk.ok && /足りない|減ってきた/.test(tk.text) && /木の実/.test(tk.text) && /よそ者|見かけない/.test(tk.text) || /見かけない/.test(tk.text), tk.text);
+  t('話すと数える（同じ日は1回）', T.n.talk === 1); F.talk(T, { job: '狩人', fed: 1 }, 50.5, a); t('同じ日に何度話しても1回', T.n.talk === 1); F.talk(T, { job: '狩人', fed: 1 }, 51, a); t('翌日は数える', T.n.talk === 2);
+  t('同じ人・同じ時期は同じ言葉', F.talk(F.newState(), { job: '漁師', fed: 0.8 }, 20, 5).text === F.talk(F.newState(), { job: '漁師', fed: 0.8 }, 21, 5).text);
+  T.standing = 40; t('仲間には親しげ', /仲間だ/.test(F.talk(T, { job: '', fed: 1, relation: '親' }, 70, 9).text));
+  // 保存
+  const V = F.newState(); V.standing = 33; V.given = 5000; V.rationAt = 12; V.lessons = { 7: 100 }; V.talkDay = { 7: 50 }; V.n = { talk: 2 };
+  const W = F.load(JSON.parse(JSON.stringify(F.save(V)))); t('評判・配給日・教わった記録を保存', W.standing === 33 && W.given === 5000 && W.rationAt === 12 && W.lessons[7] === 100 && W.talkDay[7] === 50);
+  const X = F.load({ standing: 'x', lessons: { 3: 'y' } }); t('壊れた保存でも既定値', X.standing === 0 && Object.keys(X.lessons).length === 0);
+  t('古い保存（つながりなし）', F.load({ inv: {} }).standing === 0 && F.load({ inv: {} }).rationAt === -99);
 }
 console.log(ng ? 'FAIL ' + ng + ' / ' + (ok + ng) : 'OK ' + ok + ' 件通過');
 process.exit(ng ? 1 : 0);
