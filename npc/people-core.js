@@ -175,7 +175,7 @@ function peWorld(world, plantFood) {
     world, plantFood, cc, n, cw, ch, step, W, H, riverStart: cnt, riverPt: pts, kmBlock, cellKm2,
     site: new Float32Array(n).fill(-1),           // セルの暮らしやすさ（-1 は未計算）
     tick: 0, stamp: new Int32Array(n), plantLeft: new Float32Array(n), fishLeft: new Float32Array(n),
-    dens: new Float32Array(n), tmp5: new Float32Array(5),
+    dens: new Float32Array(n), densBy: {}, tmp5: new Float32Array(5),
   };
   return peCache;
 }
@@ -196,8 +196,8 @@ function peSiteValue(S, world, c) {
     }
     const rc = world.resources.cell;
     const fish = (rc.fishFresh[c] + rc.fishSea[c]) * 1000 * PE.FISH_SHARE / S.cellKm2;
-    const deer = world.fauna.species.deer ? world.fauna.species.deer.suit[c] / 255 : 0;
-    v = (sum + mn * 4) * PE.GATHER_KG_PER_UNIT + fish + deer * 20;
+    let game = 0; for (const sid in world.fauna.species) game += world.fauna.species[sid].suit[c] / 255 * 12;   // 獲物になる野生動物（鹿・牛・ヒツジとヤギ・イノシシ）の生息しやすさ
+    v = (sum + mn * 4) * PE.GATHER_KG_PER_UNIT + fish + game;
     // 寒さ：年平均気温が低いほど暮らしにくい。高地も少し
     const T = cc.tAnnual[c] / 10;
     v *= T < -8 ? 0.15 : T < 4 ? 0.15 + 0.85 * (T + 8) / 12 : 1;
@@ -802,18 +802,21 @@ function peNeed(g) { return g.lastFood ? g.lastFood.need : 0; }
 
 // ---------------------------------------------------------------- 1か月の計算の下準備と、集団ごとの「期待される収穫と働き手の割り振り」
 function peMonthSetup(people, ctx, S) {
-  const world = ctx.world, FA = ctx.FA, deer = ctx.fauna && FA && ctx.fauna.species && ctx.fauna.species.deer;
-  if (deer) FA.faunaDensity(ctx.fauna, 'deer', S.dens); else S.dens.fill(0);
-  const hunt = FA && FA.ANIMAL_SPECIES && FA.ANIMAL_SPECIES.deer ? FA.ANIMAL_SPECIES.deer.hunt : null;
-  return { hunt: deer ? hunt : null, huntCtx: { month: ctx.month, env: ctx.env || world.fauna.env, cc: ctx.cc || world.climate.cell } };
+  const world = ctx.world, FA = ctx.FA, F = ctx.fauna, species = [];
+  if (FA && F && F.species) for (const sid in F.species) {   // 獲物：その月の各種の密度（頭/km²）
+    const sp = FA.ANIMAL_SPECIES[sid]; if (!sp) continue;
+    const arr = S.densBy[sid] || (S.densBy[sid] = new Float32Array(S.n)); FA.faunaDensity(F, sid, arr);
+    species.push({ sid, hunt: sp.hunt, meat: sp.yield.meat, dens: arr });
+  }
+  return { species, huntCtx: { month: ctx.month, env: ctx.env || world.fauna.env, cc: ctx.cc || world.climate.cell } };
 }
 // 生活圏の植物・魚（他の集団と分け合う残り）を数え、働き手 workers 人が方針に沿って仕事を選んだときの割り振り L と、仕事ごとの収穫の関数を返す
 // know：技能（0〜1）。PE_TC/PE_TS（生活圏のセル）は、この後の収穫の差し引きにも使うので、呼んだ直後にだけ有効
 function peGroupPlan(people, g, ctx, S, sc, workers, knowG, knowF, knowH) {
-  const world = ctx.world, cc = S.cc, n = S.n, month = ctx.month, res = ctx.res || world.resources, env = sc.huntCtx.env, hunt = sc.hunt;
+  const world = ctx.world, cc = S.cc, n = S.n, month = ctx.month, res = ctx.res || world.resources, env = sc.huntCtx.env;
   const travel = g.moveTo ? PE.MOVE_FOOD : 1;
   const nc = peTerritory(S, g), out = S.tmp5, PW = PE.PLANT_W, rcell = res.cell;
-  let availG = 0, availF = 0, bestCell = -1, bestD = 0;
+  let availG = 0, availF = 0; const sp = sc.species.map(x => Object.assign({ bestCell: -1, bestD: 0 }, x));
   for (let i = 0; i < nc; i++) {
     const c = PE_TC[i];
     if (S.stamp[c] !== S.tick) {
@@ -825,22 +828,26 @@ function peGroupPlan(people, g, ctx, S, sc, workers, knowG, knowF, knowH) {
     }
     availG += S.plantLeft[c] * PE_TS[i];
     availF += S.fishLeft[c] * PE_TS[i];
-    if (S.dens[c] > bestD) { bestD = S.dens[c]; bestCell = c; }
+    for (const x of sp) if (x.dens[c] > x.bestD) { x.bestD = x.dens[c]; x.bestCell = c; }
   }
   const kH = PE.HUNT_SKILL[0] + PE.HUNT_SKILL[1] * knowH, days = PE.WORK_DAYS;
   const rateG = PE.GATHER_RATE * (PE.GATHER_SKILL[0] + PE.GATHER_SKILL[1] * knowG) * travel;
   const rateF = PE.FISH_RATE * (PE.FISH_SKILL[0] + PE.FISH_SKILL[1] * knowF) * travel;
   const sat = (E, A) => A > 0 ? A * (1 - Math.exp(-E / A)) : 0;
-  let huntK = 0;
-  if (hunt && bestCell >= 0) {
-    const fo = env.forest[bestCell] / 255, rug = env.rugged[bestCell] / 255;
-    const Tb = cc.tMean[month * n + bestCell] / 10;
-    const season = Tb < 5 ? 1.2 : Tb > 18 ? 0.85 : 1;
-    const terrain = (1 - 0.25 * fo) * (1 - 0.4 * peClamp01(rug * 1.6)) * (1 + 0.1 * (env.grass[bestCell] / 255));
-    huntK = hunt.rate * season * (hunt.time[PE.HUNT_TIME] || 1) * terrain * bestD / (bestD + hunt.halfDensity) * kH * days * travel;
+  // 獲物ごとの、期待される収穫（1か月の捕獲数 × 1頭あたりの肉）。生活圏にいる種の中で、一番得な種を狩る
+  for (const x of sp) {
+    x.huntK = 0;
+    if (x.bestCell >= 0) {
+      const c = x.bestCell, fo = env.forest[c] / 255, rug = env.rugged[c] / 255, Tb = cc.tMean[month * n + c] / 10, season = Tb < 5 ? 1.2 : Tb > 18 ? 0.85 : 1;
+      const terrain = (1 - 0.25 * fo) * (1 - 0.4 * peClamp01(rug * 1.6)) * (1 + 0.1 * (env.grass[c] / 255));
+      x.huntK = x.hunt.rate * season * (x.hunt.time[PE.HUNT_TIME] || 1) * terrain * x.bestD / (x.bestD + x.hunt.halfDensity) * kH * days * travel;
+    }
+    x.huntEff = (h) => { if (h <= 0) return 0; const p = Math.min(PE.HUNT_PARTIES, Math.max(1, Math.ceil(h / PE.HUNT_PARTY))); return p * Math.pow(h / p, x.hunt.crowd || 0.7); };
+    x.yield = (h) => x.huntK * x.huntEff(h) * x.meat;
   }
-  const huntEff = (h) => { if (h <= 0) return 0; const p = Math.min(PE.HUNT_PARTIES, Math.max(1, Math.ceil(h / PE.HUNT_PARTY))); return p * Math.pow(h / p, hunt ? hunt.crowd : 0.7); };
-  const yH = (h) => huntK * huntEff(h) * 30, yG = (h) => sat(h * days * rateG, availG), yF = (h) => sat(h * days * rateF, availF);
+  const bestSpecies = (h) => { let b = null, bv = 0; for (const x of sp) { const v = x.yield(h); if (v > bv) { bv = v; b = x; } } return b; };
+  const yH = (h) => { const b = bestSpecies(h); return b ? b.yield(h) : 0; };
+  const yG = (h) => sat(h * days * rateG, availG), yF = (h) => sat(h * days * rateF, availF);
   const L = { hunt: 0, gather: 0, fish: 0 }, fn = { hunt: (h) => yH(h) * PE.MEAT_VALUE, gather: yG, fish: yF };
   let rest = workers;
   if (g.policy && g.policy !== 'auto' && L[g.policy] !== undefined) { L[g.policy] = workers * PE.POLICY_SHARE; rest -= L[g.policy]; }
@@ -851,7 +858,7 @@ function peGroupPlan(people, g, ctx, S, sc, workers, knowG, knowF, knowH) {
     for (const k of ['gather', 'fish', 'hunt']) { const v = fn[k](L[k] + d) - fn[k](L[k]); if (v > bv) { bv = v; bk = k; } }
     L[bk] += d; rest -= d;
   }
-  return { L, yH, yG, yF, availG, availF, bestCell, nc, kH, hunt, huntEff, travel };
+  return { L, yH, yG, yF, availG, availF, nc, kH, bestSpecies, travel };
 }
 // 仕事の必要度：食料を得る仕事は、最適な割り振りに合わせる（残りの 15% は道具・建築・運搬・治療・警備）
 function peSetDemand(people, g, pl) {
@@ -1025,23 +1032,25 @@ function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
   const kG = know(1), kH = know(2), kF = know(3);
   const home = peCellOf(S, g.x, g.y);
   const T = cc.tMean[month * n + home] / 10 + (ctx.tOff || 0);
-  const pl = peGroupPlan(people, g, ctx, S, sc, workers, kG, kF, kH), hunt = sc.hunt, huntCtx = sc.huntCtx;
+  const pl = peGroupPlan(people, g, ctx, S, sc, workers, kG, kF, kH), huntCtx = sc.huntCtx;
   peSetDemand(people, g, pl);   // 仕事の必要度は、期待される収穫から（人々は少しずつ、足りない仕事へ移る）
   // ---- 実際の働き手：仕事（採集者・狩人・漁師）に就いている人。仕事に就いていない10〜13歳や、他の仕事の人は一部が採集を手伝う
   const labG = st.lab[id * NJOB + 1], labH = st.lab[id * NJOB + 2], labF = st.lab[id * NJOB + 3];
   const helpers = Math.max(0, workers - labG - labH - labF);
   const L = { hunt: labH, gather: labG + helpers * PE.HELPER_SHARE, fish: labF };
   g.labor.hunt = L.hunt; g.labor.gather = L.gather; g.labor.fish = L.fish;
-  const nc = pl.nc, availG = pl.availG, availF = pl.availF, bestCell = pl.bestCell;
+  const nc = pl.nc, availG = pl.availG, availF = pl.availF;
   const gotG = pl.yG(L.gather), gotF = pl.yF(L.fish);
   if (availG > 0) for (let i = 0; i < nc; i++) S.plantLeft[PE_TC[i]] *= 1 - gotG / availG;
   if (availF > 0) for (let i = 0; i < nc; i++) S.fishLeft[PE_TC[i]] *= 1 - gotF / availF;
   let gotH = 0; g.kills = 0;
-  if (hunt && bestCell >= 0 && L.hunt >= 1) {
-    const eff = pl.huntEff(L.hunt), hunters = Math.pow(eff, 1 / (hunt.crowd || 0.7));
-    const party = { owner: 'grp:' + g.id, hunters, skill: pl.kH * pl.travel, time: PE.HUNT_TIME, cell: bestCell };
-    const r = ctx.FA.faunaHunt(ctx.fauna, huntCtx, 'deer', party, PE.WORK_DAYS, rng);
-    gotH = r.meat; g.kills = r.kills;
+  const hs = L.hunt >= 1 ? pl.bestSpecies(L.hunt) : null;
+  if (hs) {
+    const eff = hs.huntEff(L.hunt), hunters = Math.pow(eff, 1 / (hs.hunt.crowd || 0.7));
+    const party = { owner: 'grp:' + g.id, hunters, skill: pl.kH * pl.travel, time: PE.HUNT_TIME, cell: hs.bestCell };
+    const r = ctx.FA.faunaHunt(ctx.fauna, huntCtx, hs.sid, party, PE.WORK_DAYS, rng);
+    gotH = r.meat; g.kills = r.kills; g.huntSp = hs.sid;
+    if (r.meat > 0) { g.meatBy = g.meatBy || {}; g.meatBy[hs.sid] = (g.meatBy[hs.sid] || 0) + r.meat; }
   }
   const got = gotH + gotG + gotF;
   // ---- 消費・保存

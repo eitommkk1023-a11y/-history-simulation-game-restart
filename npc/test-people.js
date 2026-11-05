@@ -35,3 +35,9 @@ const sv = P.peopleSave(people); let bytes = 0; for (const k in sv) if (ArrayBuf
   console.log(`結婚している女性（15〜49歳）${(100 * m / w).toFixed(0)}%`, Object.entries(byAge).map(([b, [x, y]]) => b + ':' + (100 * x / y).toFixed(0)).join(' '));
   let men = 0, womenAdult = 0; for (let i = 0; i < N0.n; i++) { if (N0.death[i] !== 0x7fffffff) continue; const a = N0.age(i); if (a < 16 || a >= 60) continue; if (N0.sex[i] === 1) men++; else womenAdult++; } console.log(`16〜59歳の男 ${men} 女 ${womenAdult}`);
 }
+{ // 獲物ごとの狩猟（肉の量）と、野生動物の増減
+  const meat = {}; for (const g of people.groups) if (g.meatBy) for (const k in g.meatBy) meat[k] = (meat[k] || 0) + g.meatBy[k];
+  const tot = Object.values(meat).reduce((a, b) => a + b, 0) || 1; console.log('狩猟で得た肉（種ごと、累計）：' + Object.entries(meat).map(([k, v]) => `${k} ${Math.round(v / 1000)}t（${(100 * v / tot).toFixed(0)}%）`).join('、'));
+  const sp = {}; for (const k in fauna.species) { const x = G.faunaSummary(fauna, k), y = G.faunaSummary(world.fauna, k); sp[k] = `${Math.round(y.total / 1000)}千→${Math.round(x.total / 1000)}千（狩猟で ${Math.round(x.deaths.hunting)}頭）`; } console.log('野生動物の増減：' + JSON.stringify(sp));
+  let hs = {}; for (const g of people.groups) if (g.alive && g.huntSp) hs[g.huntSp] = (hs[g.huntSp] || 0) + 1; console.log('いま狩っている獲物（集団の数）：' + JSON.stringify(hs));
+}
