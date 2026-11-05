@@ -259,10 +259,10 @@ t('不毛地は全部ほぼ0', Object.values(F.availability(desert)).every(v => 
 {
   const fixed = (v) => () => v;
   const G = F.newState();
-  let g = F.goals(G); t('最初の目標は食べ物集め', !g.all && g.id === 'food' && g.have === 0 && g.need === 5 && g.done === 0 && g.total === 16, JSON.stringify(g));
+  let g = F.goals(G); t('最初の目標は食べ物集め', !g.all && g.id === 'food' && g.have === 0 && g.need === 5 && g.done === 0 && g.total === 17, JSON.stringify(g));
   G.total = { nut: 3, fish: 1 }; g = F.goals(G); t('進み具合が数えられる', g.id === 'food' && g.have === 4);
-  G.total = { nut: 3, fish: 2, firewood: 4 }; g = F.goals(G); t('食べ物が済むと次は薪', g.id === 'wood' && g.have === 4 && g.done === 1);
-  G.total = { nut: 9, firewood: 12 }; g = F.goals(G); t('薪が済むと火', g.id === 'fire' && g.done === 2);
+  G.total = { nut: 3, fish: 2, firewood: 4 }; g = F.goals(G); t('食べ物が済むと次は水', g.id === 'drink' && g.done === 1); G.n = { drink: 1 }; g = F.goals(G); t('水が済むと次は薪', g.id === 'wood' && g.have === 4 && g.done === 2);
+  G.total = { nut: 9, firewood: 12 }; g = F.goals(G); t('薪が済むと火', g.id === 'fire' && g.done === 3);
   // 火を起こすと数える
   const S = F.newState(); S.inv = { firewood: 2, fiber: 1 }; F.makeFire(S, 0, 0, 0, 1, fixed(0), false); t('火を起こすと数える', S.n.fire === 1);
   const S2 = F.newState(); S2.inv = { firewood: 2, fiber: 1 }; F.makeFire(S2, 0, 0, 0, 1, fixed(0.99), false); t('失敗は数えない', !S2.n.fire);
@@ -274,8 +274,8 @@ t('不毛地は全部ほぼ0', Object.values(F.availability(desert)).every(v => 
   const H = F.newState(); H.inv = { firewood: 10, fiber: 12, rope: 2, clay: 4 }; F.buildHome(H, 0, 0, 0, 1, 1, true); t('家を建てると数える', H.n.home === 1);
   F.sleep(H, 0, 0, 1); t('建築中は家で眠った数に入らない', !H.n.sleepHome); F.sleep(H, 0, 0, 5); t('家で眠ると数える', H.n.sleepHome === 1);
   // 全部達成
-  const A = F.newState(); A.total = { nut: 5, firewood: 10, rope: 1, clay: 4, pot: 1, nutL: 1, stew: 1 }; A.n = { fire: 1, cooked: 1, home: 1, sleepHome: 1, talk: 1, share: 1, commonCook: 1, give: 1, learn: 1 };
-  g = F.goals(A); t('全部達成', g.all && g.done === 16 && /身につけた/.test(g.text), JSON.stringify(g));
+  const A = F.newState(); A.total = { nut: 5, firewood: 10, rope: 1, clay: 4, pot: 1, nutL: 1, stew: 1 }; A.n = { drink: 1, fire: 1, cooked: 1, home: 1, sleepHome: 1, talk: 1, share: 1, commonCook: 1, give: 1, learn: 1 };
+  g = F.goals(A); t('全部達成', g.all && g.done === 17 && /身につけた/.test(g.text), JSON.stringify(g));
   // 保存
   const L = F.load(JSON.parse(JSON.stringify(F.save(A)))); t('カウンターも保存', JSON.stringify(L.n) === JSON.stringify(A.n) && F.goals(L).all);
   t('古い保存でも目標は動く', F.goals(F.load({ inv: {} })).id === 'food');
@@ -349,6 +349,53 @@ t('不毛地は全部ほぼ0', Object.values(F.availability(desert)).every(v => 
   const W = F.load(JSON.parse(JSON.stringify(F.save(V)))); t('評判・配給日・教わった記録を保存', W.standing === 33 && W.given === 5000 && W.rationAt === 12 && W.lessons[7] === 100 && W.talkDay[7] === 50);
   const X = F.load({ standing: 'x', lessons: { 3: 'y' } }); t('壊れた保存でも既定値', X.standing === 0 && Object.keys(X.lessons).length === 0);
   t('古い保存（つながりなし）', F.load({ inv: {} }).standing === 0 && F.load({ inv: {} }).rationAt === -99);
+}
+
+// ---------------------------------------------------------------- 体力・スタミナ・水分
+{
+  const fixed = (v) => () => v;
+  const N = F.newState();
+  t('初期値', N.hp === 100 && N.sp === 100 && N.water === 80 && !N.exhausted);
+  // 水分は1日で30減る
+  F.tick(N, 1); t('水分は1日で30減る', N.water === 50 && N.hp === 100, JSON.stringify([N.water, N.hp]));
+  F.tick(N, 2); t('2日で0へ', N.water === 20); F.tick(N, 3); t('0未満にならない', N.water === 0);
+  // 体力：渇くと減る
+  const H = F.newState(); H.kcal = 3000; H.water = 0; F.tick(H, 1); t('渇くと体力が減る（-12）', H.hp === 88, H.hp);
+  const H2 = F.newState(); H2.kcal = 0; H2.water = 100; F.tick(H2, 0.5); H2.t = 0; H2.kcal = 0; H2.water = 100; H2.hp = 100; F.tick(H2, 1); t('飢えると体力が減る', H2.hp < 100, H2.hp);
+  const H3 = F.newState(); H3.hp = 50; H3.kcal = 3000; H3.water = 100; F.tick(H3, 1); t('満たされていれば体力が戻る', H3.hp > 50, H3.hp);
+  const H4 = F.newState(); H4.hp = 50; H4.kcal = 100; H4.water = 100; F.tick(H4, 1); t('飢えていると戻らない', H4.hp <= 50);
+  const H5 = F.newState(); H5.hp = 5; H5.kcal = 0; H5.water = 0; F.tick(H5, 20); t('体力は1未満にならない（死なない）', H5.hp === 1, H5.hp);
+  const H6 = F.newState(); H6.kcal = 3000; H6.water = 100; F.setEnv(H6, { temp: -10, sheltered: false }); F.tick(H6, 1); t('寒い外では体力が減る', H6.hp < 100, H6.hp);
+  const H7 = F.newState(); H7.kcal = 3000; H7.water = 100; H7.hp = 80; F.setEnv(H7, { temp: -10, sheltered: true }); F.tick(H7, 1); t('屋根や火のそばなら寒さを防げる', H7.hp > 80, H7.hp);
+  const H8 = F.newState(); H8.kcal = 3000; H8.water = 100; H8.hp = 80; F.setEnv(H8, { temp: 20, sheltered: false }); F.tick(H8, 1); t('暖かい日は影響なし', H8.hp > 80);
+  t('環境は保存しない', F.save(H6).env === undefined);
+  // 水を飲む
+  const D = F.newState(); D.water = 30;
+  t('真水がなければ飲めない', !F.drink(D, false).ok && /海の水/.test(F.drink(D, false).why));
+  let r = F.drink(D, true); t('水を飲むと+45', r.ok && D.water === 75 && r.gain === 45 && D.n.drink === 1, JSON.stringify(D));
+  D.water = 99; t('満たされていると飲まない', !F.drink(D, true).ok); D.water = 70; F.drink(D, true); t('100を超えない', D.water === 100);
+  // 食べ物の水分
+  const E = F.newState(); E.kcal = 100; E.water = 10; E.inv = { fruit: 1, stew: 1, fishC: 1 }; F.eat(E, 'fruit', fixed(0.9), 0); F.eat(E, 'stew', fixed(0.9), 0); F.eat(E, 'fishC', fixed(0.9), 0); t('果実と煮物で水分がとれる', E.water === 10 + 8 + 18, E.water);
+  // スタミナ
+  const S = F.newState(); let o = F.staminaStep(S, 1, { sprinting: true, moving: true }); t('ダッシュで1秒に6減る', S.sp === 94 && !o.lockSprint, S.sp);
+  for (let i = 0; i < 40 && !S.exhausted; i++) o = F.staminaStep(S, 1, { sprinting: true, moving: true }); t('尽きる（0・疲れ切り）', S.sp === 0 && S.exhausted && o.lockSprint, JSON.stringify(S.sp));
+  F.staminaStep(S, 1, { sprinting: true, moving: true }); t('疲れ切り中はダッシュしても減らない（回復側）', S.sp > 0);
+  for (let i = 0; i < 4; i++) o = F.staminaStep(S, 1, { sprinting: false, moving: false }); t('休むと戻り、25を超えるとダッシュできる', S.sp >= 25 && !S.exhausted && !o.lockSprint, JSON.stringify([S.sp, S.exhausted]));
+  const W = F.newState(); W.sp = 20; F.staminaStep(W, 1, { moving: true }); t('歩きながらも少し戻る', W.sp === 22); F.staminaStep(W, 1, { moving: false }); t('止まるともっと戻る', W.sp === 29);
+  const C = F.newState(); C.hp = 20; C.water = 5; C.kcal = 100; t('弱っていると上限が下がる', F.staminaCap(C) < 40, F.staminaCap(C)); C.sp = 100; F.staminaStep(C, 0.1, {}); t('上限を超えない', C.sp <= F.staminaCap(C) + 1e-9);
+  t('体力が10以下だとダッシュ不可', F.staminaStep(Object.assign(F.newState(), { hp: 8 }), 0.1, {}).lockSprint);
+  const J = F.newState(); F.jumpCost(J); t('ジャンプで8減る', J.sp === 92); J.sp = 5; t('スタミナ8未満はジャンプ不可', F.staminaStep(J, 0, {}).lockJump); F.jumpCost(J); t('0で疲れ切り', J.sp === 0 && J.exhausted);
+  const R = F.newState(); R.sp = 10; R.exhausted = true; R.hp = 50; F.rest(R, 20); t('休むと体力とスタミナが戻る（上限は体力で決まる）', R.hp === 70 && Math.abs(R.sp - F.staminaCap(R)) < 1e-9 && R.sp > 80 && !R.exhausted, JSON.stringify([R.hp, R.sp]));
+  // 眠る
+  const Z = F.newState(); Z.hp = 40; Z.sp = 10; Z.home = { bx: 0, by: 0, xM: 0, yM: 0, ready: 0 }; F.sleep(Z, 0, 0, 5); t('家で眠ると体力+25', Z.hp === 65 && Z.sp > 80, JSON.stringify([Z.hp, Z.sp]));
+  const Z2 = F.newState(); Z2.hp = 40; Z2.fire = { bx: 0, by: 0, until: 9 }; F.sleep(Z2, 0, 0, 5); t('野宿は体力+10', Z2.hp === 50);
+  // 採取への影響
+  t('体力が低いと見つかりにくい', F.vigor(Object.assign(F.newState(), { hp: 20 }), 0) < F.vigor(F.newState(), 0)); t('瀕死はさらに低い', F.vigor(Object.assign(F.newState(), { hp: 5 }), 0) < F.vigor(Object.assign(F.newState(), { hp: 20 }), 0));
+  // 一覧と保存
+  const I = F.vitalsInfo(Object.assign(F.newState(), { hp: 8, water: 10, kcal: 1500 })); t('状態', I.dying && I.thirsty && I.food === 50);
+  const V = F.newState(); V.hp = 33; V.sp = 12; V.water = 7; V.exhausted = true; const L = F.load(JSON.parse(JSON.stringify(F.save(V)))); t('体力・スタミナ・水分・疲れ切りを保存', L.hp === 33 && L.sp === 12 && L.water === 7 && L.exhausted === true);
+  const B = F.load({ hp: 'x', sp: -5, water: 'y' }); t('壊れた保存でも既定値', B.hp === 100 && B.sp === 0 && B.water === 80);
+  const O = F.load({ inv: {} }); t('古い保存（体力なし）', O.hp === 100 && O.sp === 100 && O.water === 80 && !O.exhausted);
 }
 console.log(ng ? 'FAIL ' + ng + ' / ' + (ok + ng) : 'OK ' + ok + ' 件通過');
 process.exit(ng ? 1 : 0);

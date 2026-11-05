@@ -49,7 +49,7 @@
 
   // 体と暮らしの状態：kcal＝おなかの蓄え、t＝最後に時間を反映した日、sickUntil＝体調不良が続く日、fire＝焚き火、soak＝水にさらした木の実
   const KCAL_MAX = 3000, KCAL_DAY = 2000, KCAL_START = 2200;
-  function newState() { return { inv: {}, depl: {}, total: {}, wear: {}, home: null, store: {}, n: {}, standing: 0, given: 0, rationAt: -99, lessons: {}, talkDay: {}, seq: 0, kcal: KCAL_START, t: 0, sickUntil: 0, fire: null, soak: null }; }
+  function newState() { return { inv: {}, depl: {}, total: {}, wear: {}, home: null, store: {}, n: {}, hp: 100, sp: 100, water: 80, exhausted: false, standing: 0, given: 0, rationAt: -99, lessons: {}, talkDay: {}, seq: 0, kcal: KCAL_START, t: 0, sickUntil: 0, fire: null, soak: null }; }
   function count(st, id) { return st.inv[id] || 0; }
 
   // 場所の状況から、拾えるものの「豊かさ」を求める（0〜）
@@ -135,11 +135,54 @@
     return ITEMS.filter(it => st.inv[it.id]).map(it => ({ id: it.id, name: it.name, n: st.inv[it.id], bulk: st.inv[it.id] * it.bulk, raw: !!it.raw }));
   }
 
+  // ---------------------------------------------------------------- 体力・スタミナ・水分
+  function rest(st, hp) { st.hp = Math.min(HP_MAX, (st.hp == null ? 100 : st.hp) + hp); st.sp = staminaCap(st); st.exhausted = false; }
+  // スタミナの上限：体力が低い・喉が渇いている・飢えていると下がる
+  function staminaCap(st) {
+    const hp = st.hp == null ? 100 : st.hp, wt = st.water == null ? 80 : st.water;
+    return Math.max(10, SP_MAX * (0.55 + 0.45 * hp / HP_MAX) * (wt < 15 ? 0.6 : 1) * (st.kcal < 250 ? 0.6 : 1));
+  }
+  // 実時間で動く：ダッシュ中は減り、休むと戻る。尽きたら、25まで戻るまでダッシュできない
+  const SP_DASH = 6, SP_REST = 7, SP_WALK = 2, SP_RECOVER = 25;
+  function staminaStep(st, dt, mv) {
+    mv = mv || {}; if (st.sp == null) st.sp = SP_MAX;
+    const cap = staminaCap(st), dash = !!(mv.sprinting && mv.moving && !st.exhausted);
+    if (dash) { st.sp -= SP_DASH * dt; st.water = Math.max(0, (st.water == null ? 80 : st.water) - 0.25 * dt); }
+    else st.sp += (mv.moving ? SP_WALK : SP_REST) * dt;
+    if (st.sp > cap) st.sp = cap;
+    if (st.sp <= 0) { st.sp = 0; st.exhausted = true; } else if (st.exhausted && st.sp >= SP_RECOVER) st.exhausted = false;
+    return { lockSprint: !!st.exhausted || (st.hp != null && st.hp <= 10), lockJump: st.sp < JUMP_COST };
+  }
+  const JUMP_COST = 8;
+  function jumpCost(st) { st.sp = Math.max(0, (st.sp == null ? SP_MAX : st.sp) - JUMP_COST); if (st.sp <= 0) st.exhausted = true; }
+  // 水を飲む：川や湖のそば（真水）で。海の水は飲めない
+  function drink(st, freshWater) {
+    if (!freshWater) return { ok: false, why: '飲める水がない（川や湖のそばで。海の水は飲めない）' };
+    const w = st.water == null ? 80 : st.water; if (w >= 98) return { ok: false, why: 'いまは喉が渇いていない' };
+    st.water = Math.min(WATER_MAX, w + 45); bump(st, 'drink'); return { ok: true, gain: Math.round(st.water - w) };
+  }
+  function vitalsInfo(st) {
+    const hp = st.hp == null ? 100 : st.hp, sp = st.sp == null ? 100 : st.sp, wt = st.water == null ? 80 : st.water;
+    return { hp, sp, water: wt, food: 100 * st.kcal / KCAL_MAX, spCap: staminaCap(st), exhausted: !!st.exhausted, dying: hp <= 10, thirsty: wt < 25 };
+  }
+
   // ---------------------------------------------------------------- 食べる・火・調理
+  const HP_MAX = 100, SP_MAX = 100, WATER_MAX = 100, WATER_DAY = 30;
+  // 周りの様子（気温・屋根や火のそばか）。画面側が毎回設定する（保存しない）
+  function setEnv(st, e) { st.env = e && Number.isFinite(e.temp) ? { temp: e.temp, sheltered: !!e.sheltered } : null; }
   // 時間：day は日数（ゲームの時計）。時計が進んだ分だけおなかが減る
   function tick(st, day) {
     if (day < st.t) { st.t = day; return; }           // 時計が戻った（別の記録を読み込んだ等）
-    const d = day - st.t; if (d > 0) { st.kcal = Math.max(0, st.kcal - d * KCAL_DAY); st.standing = Math.max(0, (st.standing || 0) - d * 0.04); st.t = day; }
+    const d = day - st.t;
+    if (d > 0) {
+      st.kcal = Math.max(0, st.kcal - d * KCAL_DAY); st.standing = Math.max(0, (st.standing || 0) - d * 0.04); st.t = day;
+      st.water = Math.max(0, (st.water == null ? 80 : st.water) - d * WATER_DAY);
+      // 体力：飢え・渇き・病気・寒さで減り、満たされていれば少しずつ戻る
+      const env = st.env || {}, cold = env.temp != null && env.temp < 0 && !env.sheltered ? Math.min(8, -env.temp * 0.4) : 0;
+      const loss = (st.water <= 0 ? 12 : 0) + (st.kcal <= 0 ? 8 : 0) + (day < st.sickUntil ? 3 : 0) + cold;
+      const regen = loss === 0 && st.kcal > 900 && st.water > 30 ? 5 : 0;
+      st.hp = Math.max(1, Math.min(HP_MAX, (st.hp == null ? 100 : st.hp) + (regen - loss) * Math.min(d, 30)));
+    }
   }
   function hunger(st) {
     const k = st.kcal;
@@ -147,11 +190,12 @@
   }
   function sick(st, day) { return day < st.sickUntil; }
   // 採取に効く元気さ（空腹・体調不良で下がる）
-  function vigor(st, day) { return hunger(st).vigor * (sick(st, day) ? 0.75 : 1); }
+  function vigor(st, day) { const hp = st.hp == null ? 100 : st.hp, wt = st.water == null ? 80 : st.water; return hunger(st).vigor * (sick(st, day) ? 0.75 : 1) * (hp < 10 ? 0.5 : hp < 30 ? 0.7 : 1) * (wt < 15 ? 0.85 : 1); }
 
   // 生で食べたときの扱い：kcal の割合、体調を崩す確率。木の実（ドングリ）は渋くてそのままでは食べられない
   const RAW = { nut: null, root: { f: 0.5, bad: 0.3 }, shell: { f: 0.6, bad: 0.4 }, fish: { f: 0.6, bad: 0.4 } };
   const EAT_FULL = 3000;
+  const WATER_GAIN = { fruit: 8, bud: 4, shell: 2, stew: 18, shellC: 2 };      // 食べ物からとれる水分
   // 食べる：1個ずつ。返り値 { ok, why?, kcal?, sick? }
   function eat(st, id, rng, day) {
     const it = ITEMS[IDX[id]]; if (!it || it.group !== 'food') return { ok: false, why: '食べ物ではない' };
@@ -161,7 +205,7 @@
     if (it.raw) { const r = RAW[id]; if (!r) return { ok: false, why: it.name + 'は渋くてそのままでは食べられない（水にさらして焼く）' }; f = r.f; bad = r.bad; }
     const gain = it.kcal * f;
     st.kcal = Math.min(EAT_FULL, st.kcal + gain);
-    drop(st, id, 1);
+    drop(st, id, 1); if (WATER_GAIN[id]) st.water = Math.min(WATER_MAX, (st.water == null ? 80 : st.water) + WATER_GAIN[id]);
     if (!it.raw && id !== 'fruit' && id !== 'bud' && id !== 'seed') bump(st, 'cooked');
     let ill = false;
     if (bad && rng() < bad) { st.sickUntil = Math.max(st.sickUntil, day + 2); ill = true; }
@@ -316,8 +360,8 @@
   function storeList(st) { return ITEMS.filter(it => st.store[it.id]).map(it => ({ id: it.id, name: it.name, n: st.store[it.id] })); }
   // 眠る：家で眠ると体調不良が治る。家が無くても、焚き火のそばなら野宿できる（体調は戻らない）。1日進める処理は呼び出し側
   function sleep(st, bx, by, day) {
-    if (homeStatus(st, day) === 'built' && nearHome(st, bx, by)) { st.sickUntil = Math.min(st.sickUntil, day); bump(st, 'sleepHome'); return { ok: true, home: true }; }
-    if (fireActive(st, bx, by, day)) return { ok: true, home: false };
+    if (homeStatus(st, day) === 'built' && nearHome(st, bx, by)) { st.sickUntil = Math.min(st.sickUntil, day); bump(st, 'sleepHome'); rest(st, 25); return { ok: true, home: true }; }
+    if (fireActive(st, bx, by, day)) { rest(st, 10); return { ok: true, home: false }; }
     return { ok: false, why: '眠れる場所がない（家のそば、または焚き火のそばで）' };
   }
 
@@ -326,6 +370,7 @@
   const FOOD_RAW = ['nut', 'fruit', 'bud', 'root', 'seed', 'shell', 'fish'];
   const GOALS = [
     { id: 'food',   text: '食べ物を集める',            need: 5,  have: st => FOOD_RAW.reduce((a, k) => a + (st.total[k] || 0), 0) },
+    { id: 'drink',  text: '川や湖の水を飲む',           need: 1,  have: st => (st.n || {}).drink || 0 },
     { id: 'wood',   text: '薪を集める',                need: 10, have: st => st.total.firewood || 0 },
     { id: 'fire',   text: '火を起こす',                need: 1,  have: st => (st.n || {}).fire || 0 },
     { id: 'cook',   text: '焼いた物・煮た物を食べる',   need: 1,  have: st => (st.n || {}).cooked || 0 },
@@ -432,7 +477,7 @@
     return { ok: true, text: lines.join('') };
   }
 
-  function save(st) { const o = JSON.parse(JSON.stringify(st)); delete o.commons; return o; }
+  function save(st) { const o = JSON.parse(JSON.stringify(st)); delete o.commons; delete o.env; return o; }
   function load(o) {
     const st = newState();
     if (o && typeof o === 'object') {
@@ -444,6 +489,10 @@
       const hm = o.home; if (hm && Number.isFinite(hm.bx) && Number.isFinite(hm.by) && Number.isFinite(hm.ready)) st.home = { bx: hm.bx, by: hm.by, xM: Number.isFinite(hm.xM) ? hm.xM : null, yM: Number.isFinite(hm.yM) ? hm.yM : null, ready: hm.ready };
       for (const id in (o.store || {})) if (IDX[id] != null && o.store[id] > 0) st.store[id] = o.store[id] | 0;
       for (const k in (o.n || {})) if (Number.isFinite(o.n[k]) && o.n[k] > 0) st.n[k] = o.n[k] | 0;
+      if (Number.isFinite(o.hp)) st.hp = Math.max(1, Math.min(HP_MAX, o.hp));
+      if (Number.isFinite(o.sp)) st.sp = Math.max(0, Math.min(SP_MAX, o.sp));
+      if (Number.isFinite(o.water)) st.water = Math.max(0, Math.min(WATER_MAX, o.water));
+      if (o.exhausted === true) st.exhausted = true;
       if (Number.isFinite(o.standing)) st.standing = Math.max(0, Math.min(100, o.standing));
       if (Number.isFinite(o.given)) st.given = Math.max(0, o.given); if (Number.isFinite(o.rationAt)) st.rationAt = o.rationAt;
       for (const k in (o.lessons || {})) if (Number.isFinite(o.lessons[k])) st.lessons[k] = o.lessons[k];
@@ -462,6 +511,6 @@
     return function () { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   }
 
-  const api = { setCommons, atCommons, ownFireActive, standingInfo, gainStanding, giveToGroup, ration, share, learn, talk, nearCamp, KCAL_PER_KG, goals, GOALS, slotsOf, HOME_NEED, HOME_DAYS, HOME_REACH, STORE_SLOTS, homeStatus, nearHome, homeNeedText, buildHome, demolishHome, storePut, storeTake, storeList, storeRoom, sleep, SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
+  const api = { setEnv, rest, staminaCap, staminaStep, jumpCost, drink, vitalsInfo, HP_MAX, SP_MAX, WATER_MAX, setCommons, atCommons, ownFireActive, standingInfo, gainStanding, giveToGroup, ration, share, learn, talk, nearCamp, KCAL_PER_KG, goals, GOALS, slotsOf, HOME_NEED, HOME_DAYS, HOME_REACH, STORE_SLOTS, homeStatus, nearHome, homeNeedText, buildHome, demolishHome, storePut, storeTake, storeList, storeRoom, sleep, SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohForage = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
