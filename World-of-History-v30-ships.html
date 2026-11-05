@@ -15453,10 +15453,17 @@ const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_p
     if (globalThis.__wohFirstPerson) { // first-person view (V key): eye height above the deck, looking along yaw/pitch (same formula as the game)
       const eye = w.clone(); eye.y += 1.58; const cpch = Math.cos(v.pitch);
       cam.position.copy(eye); cam.lookAt(eye.x - cpch * Math.sin(v.yaw), eye.y - Math.sin(v.pitch), eye.z - cpch * Math.cos(v.yaw));
-      return;
+      ceilingFor(meshes.get(boarded), cam); return;
     }
     const r = globalThis.__wohCamDist || 4, target = w.clone(); target.y += 1.2; // the game's own orbit around the player
     cam.position.set(target.x + r * Math.cos(v.pitch) * Math.sin(v.yaw), target.y + r * Math.sin(v.pitch), target.z + r * Math.cos(v.pitch) * Math.cos(v.yaw)); cam.lookAt(target);
+    ceilingFor(meshes.get(boarded), cam);
+  }
+  /** Below deck the upper deck is cut away only while the camera is above it; a camera inside the hull (first person, low orbit) sees the deck as a ceiling. */
+  function ceilingFor(m, cam) {
+    if (m.cutY == null) return;
+    const local = m.group.worldToLocal(cam.position.clone());
+    if (local.y < m.cutY) { m.cutPlane.normal.set(0, -1, 0); m.cutPlane.constant = 1e6; }
   }
 
   function toast(text) { ui.toast.textContent = text; ui.toast.style.opacity = 1; clearTimeout(toast.t); toast.t = setTimeout(() => { ui.toast.style.opacity = 0; }, 3500); }
