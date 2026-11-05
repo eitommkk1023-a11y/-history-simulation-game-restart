@@ -293,6 +293,7 @@
   <div class="row"><span class="k">鹿</span><span class="v" id="iDeer">-</span></div>
   <div class="row"><span class="k">人口</span><span class="v" id="iPeople">-</span></div>
   <div class="row"><span class="k">自分の民族</span><span class="v" id="iMine">-</span></div>
+  <div class="row"><span class="k">あなたの集団</span><span class="v" id="iCamp">-</span></div>
   <div class="row"><span class="k">あなた</span><span class="v" id="iYou">-</span></div>
   <div class="row"><span class="k">首長</span><span class="v" id="iLeader">-</span></div>
   <div class="row"><span class="k">提案</span><span class="v"><select id="iProp" style="max-width:150px;font-size:12px;background:#0e1a2a;color:#e8f0f8;border:1px solid #ffffff30;border-radius:6px;padding:2px 4px;touch-action:manipulation"></select> <button id="iPropGo" style="font-size:12px;padding:2px 8px;border-radius:6px;border:1px solid #ffffff40;background:#183d5c;color:#e8f0f8;touch-action:manipulation">提案する</button><div id="iPropMsg" style="font-size:11px;opacity:.9;margin-top:2px"></div></span></div>
@@ -5644,7 +5645,13 @@ const PE = {
   RIVER_STEP: 3,                                  // 川の点を何点おきに候補にするか［仮］
   HELPER_SHARE: 0.35,                             // 仕事に就いていない10〜13歳・兼任の人が、採集に回る割合［仮］
   KNOW_DEFAULT: 0.15,                             // その仕事の人がいないときの技能（0〜1）［仮］
-  FERT_ADJ: 1.5,                                  // 年齢別出生率（全女性の平均）を、結婚している女性だけに当てるための補正［仮］
+  FERT_ADJ: 1.5,
+  // 定住：0野営地（移動）→1半定住→2村。同じ場所に安定してとどまり、食料が豊かな場所で村になる［仮］
+  SETTLE1_MONTHS: 60, SETTLE2_MONTHS: 120,     // 半定住・村になるまでの、同じ場所での安定した月数
+  SETTLE2_POP: 50, SETTLE2_FED: 0.97, SETTLE2_P: 0.03,   // 村になる条件（人口・食料の充足）と確率（1か月）
+  SETTLE_SITE_PCT: 0.65,                        // 暮らしやすさが、集団の配置の場所の上位35%なら「豊かな場所」
+  VILLAGE_STORE: 0.25,                          // 定住の段階ごとに、蓄えられる量が増える割合
+  VILLAGE_HUNGER: 3,                            // 村は、食料不足がこの月数ぶん長く続かないと、捨てて移住しない                                  // 年齢別出生率（全女性の平均）を、結婚している女性だけに当てるための補正［仮］
   FOOD_INIT: [1, 2],                              // 初期の蓄え（必要量の何か月分）［仮］
   // ---- 生活圏（半径＝R_BASE＋R_PER_SQRT×√人口、R_MIN〜R_MAX ブロック）［仮］
   R_BASE: 3, R_PER_SQRT: 0.4, R_MIN: 4, R_MAX: 9,
@@ -6365,6 +6372,11 @@ function peopleGenerate(seed, W) {
   for (let r = 0; r < 36; r++) for (let i = 0; i < npc.n; i++) if (npc.death[i] === ALIVE && npc.age(i) >= 10) npc._interact(i);   // それまでの暮らしでできた人間関係
   peStats(people);
   peLeaders(people, [], () => false, true, false, true);
+  { // 初期の定住：豊かな場所の集団は、すでに村（縄文のように、はじめから暮らしのある社会）
+    const vals = people.groups.map(g => ({ g, v: peSiteValue(S, world, peCellOf(S, g.x, g.y)) })).sort((a, b) => b.v - a.v);
+    const hi = vals[Math.floor(vals.length * (1 - PE.SETTLE_SITE_PCT))] ? vals[Math.floor(vals.length * (1 - PE.SETTLE_SITE_PCT))].v : 0; people.siteHi = hi; const mid = vals[Math.floor(vals.length * 0.6)] ? vals[Math.floor(vals.length * 0.6)].v : 0; people.siteMid = mid;   // 暮らしやすさが上位60%に入らない場所は、移動して暮らす（野営地のまま）
+    vals.forEach(({ g, v }, k) => { const r = k / vals.length; if (r < 0.35 && g.pop >= 40) { g.settle = 2; g.stay = PE.SETTLE2_MONTHS; } else if (r < 0.6) { g.settle = 1; g.stay = PE.SETTLE1_MONTHS; } });
+  }
   peNeighbors(people);
   peopleCreatePlayer(people, sd);
   return people;
@@ -6375,7 +6387,7 @@ function peNewGroup(people, ethId, x, y) {
     id, ethId, alive: true, nameKey: 'grp:' + id, x, y, homeX: x, homeY: y, radius: PE.R_MIN, food: 0, policy: 'auto', moveTo: null,
     labor: { hunt: 0, gather: 0, fish: 0 }, lastFood: { need: 0, got: 0, hunt: 0, gather: 0, fish: 0 },
     hunger: 0, born: 0, died: { natural: 0, starvation: 0, cold: 0, disease: 0 },
-    fed: 1, epi: 0, kills: 0, pop: 0, c6: [0, 0, 0, 0, 0, 0], leader: -1, council: [], leaderSince: 0, cult: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0], iso: 0,
+    fed: 1, epi: 0, kills: 0, pop: 0, c6: [0, 0, 0, 0, 0, 0], leader: -1, council: [], leaderSince: 0, settle: 0, stay: 0, cult: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0], iso: 0,
   };
   people.groups.push(g);
   if (people.npc) { peEnsureGroups(people); people.npc.groupEth[id] = ethId; }
@@ -6585,7 +6597,7 @@ function peTravel(people, g, S, world, ev, rel) {
     // 着いた所の近くの川沿いに野営する（プレイヤーが川から離れた所を指定した場合）
     const k = peNearestRiver(S, t.x, t.y, PE.RIVER_SNAP);
     if (k >= 0) { const r = peDryNear(S, world, world.riverPts[k * 3], world.riverPts[k * 3 + 1]); if (!peSeaBetween(S, world, t.x, t.y, r.x, r.y)) { t.x = r.x; t.y = r.y; } }
-    g.x = t.x; g.y = t.y; g.homeX = t.x; g.homeY = t.y; g.moveTo = null; g.hunger = 0;
+    g.x = t.x; g.y = t.y; g.homeX = t.x; g.homeY = t.y; g.moveTo = null; g.hunger = 0; g.settle = 0; g.stay = 0;
     ev.push({ type: 'arrive', imp: 0, relevant: rel(g.ethId), group: g.id, eth: g.ethId, x: g.x, y: g.y, by: t.by || 'ai' });
     return;
   }
@@ -6632,7 +6644,7 @@ function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
   const have = g.food + got;
   const ratio = need > 0 ? Math.min(1, have / need) : 1;
   const spoil = PE.SPOIL[0] + PE.SPOIL[1] * peClamp01(T / 25);
-  g.food = Math.min(need * PE.STORE_MONTHS, Math.max(0, have - need) * (1 - spoil));
+  g.food = Math.min(need * PE.STORE_MONTHS * (1 + PE.VILLAGE_STORE * (g.settle || 0)), Math.max(0, have - need) * (1 - spoil));   // 定住するほど、たくさん蓄えられる
   g.lastFood.need = need; g.lastFood.got = got; g.lastFood.hunt = gotH; g.lastFood.gather = gotG; g.lastFood.fish = gotF;
   g.fed += (ratio - g.fed) / 12;
   if (ratio < PE.HUNGER_FOOD) {
@@ -6654,14 +6666,17 @@ function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
   hz.hungerDis[id] = 1 + (1 - ratio);
   // ---- 移動
   g.radius = peRadius(pop);
+  peSettleStep(people, g, S, world, ev, rel, home, people.ethSpeed || 1);
   if (g.moveTo) peTravel(people, g, S, world, ev, rel);
-  else if (g.hunger >= PE.MIG_HUNGER) {
+  else if (g.hunger >= PE.MIG_HUNGER + (g.settle === 2 ? PE.VILLAGE_HUNGER : 0)) {
     const d = peFindSite(people, g, S, world, rng, PE.MIG_RANGE, peSiteValue(S, world, home) * PE.MIG_BETTER);
     if (d) {
       g.moveTo = { x: d.x, y: d.y, by: 'ai' };
+      if (g.settle === 2) { ev.push({ type: 'abandon', imp: 1, relevant: rel(g.ethId) || (people.player && P.group[people.player.id] === g.id), group: g.id, eth: g.ethId, x: g.x, y: g.y }); }
+      g.settle = 0; g.stay = 0;
       ev.push({ type: 'migrate', imp: 1, relevant: rel(g.ethId), group: g.id, eth: g.ethId, x: g.x, y: g.y, toX: d.x, toY: d.y });
     } else g.hunger = Math.floor(PE.MIG_HUNGER / 2);
-  } else if (rng() < PE.CAMP_MOVE_P) {
+  } else if (rng() < PE.CAMP_MOVE_P * (g.settle === 2 ? 0 : g.settle === 1 ? 0.4 : 1)) {
     const dir = PE_DIR8[Math.floor(rng() * 8)], dist = g.radius * (0.3 + 0.6 * rng());
     const tx = g.homeX + dir[0] * dist, ty = g.homeY + dir[1] * dist;
     const k = peNearestRiver(S, tx, ty, g.radius);
@@ -6674,6 +6689,17 @@ function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
   }
 }
 
+// 定住の進み：同じ場所に安定してとどまった月数。野営地→半定住→村（村は、食料が豊かな場所で確率的に）
+function peSettleStep(people, g, S, world, ev, rel, home, speed) {
+  if (g.moveTo || g.hunger >= 3) { if (g.moveTo) { g.stay = 0; } return; }
+  if (g.fed > 0.9) g.stay = (g.stay || 0) + 1;
+  const need1 = PE.SETTLE1_MONTHS / speed, need2 = PE.SETTLE2_MONTHS / speed, P = people.npc;
+  if (g.settle === 0 && g.stay >= need1 && g.pop >= 30 && peSiteValue(S, world, home) >= (people.siteMid || 0)) g.settle = 1;
+  if (g.settle === 1 && g.stay >= need2 && g.pop >= PE.SETTLE2_POP && g.fed >= PE.SETTLE2_FED && peSiteValue(S, world, home) >= (people.siteHi || 0) && P.random() < Math.min(0.5, PE.SETTLE2_P * speed)) {
+    g.settle = 2; const mine = people.player && people.player.id >= 0 && P.group[people.player.id] === g.id;
+    ev.push({ type: 'settle', imp: mine ? 2 : 1, relevant: mine || rel(g.ethId), group: g.id, eth: g.ethId, x: g.x, y: g.y });
+  }
+}
 // 分裂：同じ民族の新しい集団が、近くの別の川沿いへ。家族（夫婦と子ども）ごと移る
 function peSplit(people, g, S, world, rng, ev, rel) {
   const d = peFindSite(people, g, S, world, rng, PE.SPLIT_RANGE, 0);
@@ -6775,10 +6801,17 @@ function role(P, i) {
   const j = P.job[i]; if (!j) return 'home';
   return j === 1 || j === 9 || j === 10 ? 'wander' : j === 2 || j === 3 ? 'away' : j === 8 ? 'guard' : 'camp';
 }
+// 世帯の家の位置（野営地の中心から、メートル）。住民は、この家の近くで夜を過ごす
+function homeBase(P, hh) { const ha = rnd(P.seed, hh, 1) * Math.PI * 2, hr = 7 + rnd(P.seed, hh, 2) * 36; return { x: Math.cos(ha) * hr, z: Math.sin(ha) * hr, rot: rnd(P.seed, hh, 8) * Math.PI * 2 }; }
+// 近くの集団ごとの世帯：groupSet に入る集団の、生きている人から数える。Map(集団 → Map(世帯 → 人数))
+function viewHouseholds(people, groupSet) {
+  const P = people.npc, out = new Map(); for (const g of groupSet) out.set(g, new Map());
+  for (let i = 0; i < P.n; i++) { if (P.death[i] !== ALIVE) continue; const m = out.get(P.group[i]); if (!m) continue; const hh = P.house[i] !== NONE ? P.house[i] : i; m.set(hh, (m.get(hh) || 0) + 1); }
+  return out;
+}
 function rawPos(P, i, t) {
   const seed = P.seed, hh = P.house[i] !== NONE ? P.house[i] : i;
-  const ha = rnd(seed, hh, 1) * Math.PI * 2, hr = 6 + rnd(seed, hh, 2) * 34;
-  const hx = Math.cos(ha) * hr + (rnd(seed, i, 3) - 0.5) * 6, hz = Math.sin(ha) * hr + (rnd(seed, i, 4) - 0.5) * 6;
+  const hb = homeBase(P, hh), hx = hb.x + (rnd(seed, i, 3) - 0.5) * 6, hz = hb.z + (rnd(seed, i, 4) - 0.5) * 6;
   const r = role(P, i), s = workPhase(t), ph = rnd(seed, i, 5) * Math.PI * 2, aw = rnd(seed, i, 6) * Math.PI * 2, rw = rnd(seed, i, 7), T = Math.PI * 2;
   let wx = hx, wz = hz, dx = 0, dz = 0;
   if (r === 'home') { dx = 4 * Math.sin(T * t * 10 + ph); dz = 4 * Math.cos(T * t * 8 + ph); return { x: hx + dx, z: hz + dz, role: r }; }
@@ -6839,7 +6872,7 @@ function viewDescribe(people, id) {
   const e = people.ethnicities[(P.eth[id] || P.groupEth[P.group[id]]) - 1];
   return { id, age: a, sex: P.sex[id] === 1 ? '男' : '女', job, relation: relation(people, id), skills: sk.slice(0, 3).map(([n, v]) => n + ' ' + v), eth: e ? e.id : 0, married: P.spouse[id] !== NONE, leader: !!(people.groups[P.group[id] - 1] && people.groups[P.group[id] - 1].leader === id), council: !!(people.groups[P.group[id] - 1] && (people.groups[P.group[id] - 1].council || []).includes(id)), bond: bondText(bond(people, id)), isYou: !!people.player && people.player.id === id };
 }
-const api = { bond, bondText, DAY_SEC, workPhase, role, viewPosition, viewCandidates, viewColor, viewScale, relation, viewDescribe };
+const api = { homeBase, viewHouseholds, bond, bondText, DAY_SEC, workPhase, role, viewPosition, viewCandidates, viewColor, viewScale, relation, viewDescribe };
 if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohNpcView = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
@@ -8421,7 +8454,8 @@ function peopleNamesSetup(restoreLangs) {
   if (!restoreLangs || !people.languages || !people.languages.length) peopleLanguages(people, sd);
   peNameCache.clear();
   peopleNames(people, sd);
-  if (!restoreLangs) peopleRenamePlaces(people, sd);   // 地名の付け直しは新しい世界のときだけ（読み込みでは、保存した付け直しを戻す）
+  if (!restoreLangs) peopleRenamePlaces(people, sd);
+  peopleVillageSync();   // 地名の付け直しは新しい世界のときだけ（読み込みでは、保存した付け直しを戻す）
   if (typeof labelsUpdate === 'function') labelsUpdate();
 }
 // ---- 人々（民族・集団・住民：WohPeople / WohNpc）
@@ -8434,7 +8468,7 @@ function peopleNew() {
   people = null;
   if (!world || !world.riverPts) return;
   people = WohPeople.peopleGenerate(seedToInt(currentSeed), { world, plantFood: peoplePlant, fauna, FA, month: 0 });
-  peopleNamesSetup(false); peNamedGroups = people.groups.length;
+  peopleNamesSetup(false); peNamedGroups = people.groups.length; peopleVillageSync();
 }
 // 情報パネルの人口の表示（毎月・世界ができたとき・読み込んだとき）
 const PE_PROP_REASON = { noPlayer: '人物がいない', unknown: '提案が分からない', noGroup: '集団がない', minor: 'まだ成人していないので提案できない', cooldown: null, moving: '集団は移動中', noWorld: '世界の準備中', noRiver: '近くに川がない（移住先は川沿い）', sea: '海を越える所へは行けない', near: 'いまの場所に近すぎる', same: 'すでにその方針', alone: '提案を聞く大人がいない' };
@@ -8470,11 +8504,42 @@ function peopleInfoUpdate() {
   if (!people) { a.textContent = '-'; b.textContent = '-'; if (c) c.textContent = '-'; return; }
   const y = WohPeople.peopleYou(people), ld = document.getElementById('iLeader');
   if (ld) { if (!y || y.leader < 0) ld.textContent = '-'; else { const d = WohNpcView.viewDescribe(people, y.leader), e = people.ethnicities[d.eth - 1]; ld.textContent = `${d.isYou ? 'あなた' : `${personName(d.id)}（${d.job}・${d.sex}・${d.age}歳）`}（${e ? WohPeople.LEADERSHIP[e.leadership] : ''}）`; } }
+  { const cp = document.getElementById('iCamp'); if (cp) { const gp = y ? people.groups[people.npc.group[people.player.id] - 1] : null;
+    if (!gp) cp.textContent = '-'; else { const hs = WohNpcView.viewHouseholds(people, new Set([gp.id])).get(gp.id); cp.textContent = `${peGrpName(gp.id)}・${PE_SETTLE_LABEL[gp.settle || 0]}・${hs ? hs.size : 0}世帯・${Math.round(gp.pop)}人`; } } }
   if (c) c.textContent = !y ? '-' : y.over ? '一族が絶えた（ゲームオーバー）' : `${personName(y.id)}・${y.sex}・${y.age}歳・第${y.gen}代・${y.rule}・${y.spouse ? '配偶者あり・' : ''}子${y.kids}人${y.minor ? '・未成年（後見つき）' : ''}`;
   const s = WohPeople.peopleSummary(people); a.textContent = `${Math.round(s.total).toLocaleString('ja-JP')}人・${s.groups}集団・${s.ethnicities}民族`;
   let mine = 0, mg = 0; for (const g of people.groups) if (g.alive && g.ethId === people.playerEth) { mine += g.pop; mg++; }
   const pe0 = people.ethnicities[people.playerEth - 1];
   b.textContent = mg ? `${peEthName(people.playerEth)}${peEthOrigin(pe0)}（${mg}集団・${Math.round(mine).toLocaleString('ja-JP')}人）` : `${peEthName(people.playerEth)}（絶えた）`;
+}
+// 村になった集団の名前を、地図（俯瞰）に出す：「⌂ ○○村」を民族の色で。野営地・半定住の集団の名前は出さない
+const PE_SETTLE_LABEL = ['野営地（移動して暮らす）', '半定住', '村'];
+// 俯瞰の地図の集団の目印：民族の色の点（村は大きめ）。毎月、位置を更新する
+const pePts = { v: null, c: null };
+function peopleMarksSync() {
+  if (!people || !world || typeof scene === 'undefined' || !meshHeights) return;
+  const mk = (size) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(900), 3)); g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(900), 3));
+    const p = new THREE.Points(g, new THREE.PointsMaterial({ size, sizeAttenuation: false, vertexColors: true, depthTest: false, transparent: true })); p.frustumCulled = false; p.renderOrder = 20; scene.add(p); return p; };
+  if (!pePts.v) { pePts.v = mk(11); pePts.c = mk(6); }
+  const fill = (pts, list) => { const pos = pts.geometry.attributes.position.array, col = pts.geometry.attributes.color.array; let k = 0;
+    for (const g of list) { if (k >= 300) break; const X = toWorldX(g.x), Z = toWorldZ(g.y), e = people.ethnicities[g.ethId - 1], c = e && e.color ? e.color : [220, 220, 220];
+      pos[k * 3] = X; pos[k * 3 + 1] = Math.max(0, meshHeightAtWorld(X, Z)) + 2; pos[k * 3 + 2] = Z; col[k * 3] = Math.min(1, c[0] / 255 + .25); col[k * 3 + 1] = Math.min(1, c[1] / 255 + .25); col[k * 3 + 2] = Math.min(1, c[2] / 255 + .25); k++; }
+    pts.geometry.setDrawRange(0, k); pts.geometry.attributes.position.needsUpdate = true; pts.geometry.attributes.color.needsUpdate = true; };
+  const live = people.groups.filter(g => g.alive);
+  fill(pePts.v, live.filter(g => g.settle === 2)); fill(pePts.c, live.filter(g => g.settle !== 2));
+  if (typeof requestRender === 'function') requestRender();
+}
+function peopleVillageSync() {
+  if (!people) return; let changed = false;
+  try { peopleMarksSync(); } catch (e) { /* 目印は無くてもよい */ }
+  for (const g of people.groups) {
+    const e = names.byKey.get(g.nameKey); if (!e) continue;
+    const eth = people.ethnicities[g.ethId - 1], c = eth && eth.color ? `rgb(${Math.min(255, eth.color[0] + 60)},${Math.min(255, eth.color[1] + 60)},${Math.min(255, eth.color[2] + 60)})` : '';
+    const village = g.alive && g.settle === 2;
+    if (village) { if (e.hide || e.kind !== 'village' || e.color !== c) changed = true; e.hide = false; e.kind = 'village'; e.prio = 1; e.suffix = '村'; e.sym = '⌂ '; e.color = c; e.x = Math.round(g.x); e.y = Math.round(g.y); }
+    else { if (!e.hide) changed = true; e.hide = true; e.kind = 'group'; e.prio = 0; e.suffix = 'の民'; e.sym = ''; }
+  }
+  if (changed) { names.sorted = null; if (typeof labelsUpdate === 'function') labelsUpdate(); }
 }
 function peEthName(id) { const e = people && people.ethnicities[id - 1]; const n = e ? peopleEthName(e) : ''; return n || ('第' + id + '民族'); }
 function peGrpName(id) { const g = people && people.groups[id - 1]; const n = g ? peopleGroupName(g) : ''; return n || ('集団' + id); }
@@ -8489,6 +8554,8 @@ const PE_EVENT_TEXT = {
   ethExtinct: e => `${peEthName(e.eth)}が絶えた`,
   contact: e => `${peEthName(e.eth)}と${peEthName(e.eth2)}が初めて出会った`,
   leaderChange: e => e.you ? `あなたが${peGrpName(e.group)}の首長になった` : `${peEthName(e.eth)}の${peGrpName(e.group)}で首長が${personName(e.to)}に代わった`,
+  settle: e => `${peEthName(e.eth)}の${peGrpName(e.group)}が、この地に落ち着いて暮らすようになった（村になった）`,
+  abandon: e => `${peEthName(e.eth)}の${peGrpName(e.group)}は、食料が尽きて村を捨てた`,
   ethSplit: e => `${peEthName(e.parent)}の${e.groups.map(peGrpName).join('・')}が、離れて${e.iso}年たち、${peEthName(e.eth)}として独り立ちした`,
   ethMerge: e => `${peEthName(e.parents[0])}と${peEthName(e.parents[1])}が結びつき、一つの民族${peEthName(e.eth)}になった`,
   ethAbsorb: e => `${peEthName(e.small)}は${peEthName(e.eth)}に吸収された`,
@@ -8501,6 +8568,7 @@ function peopleMonthTick(month) {
   if (!people || !world) return;
   const ev = WohPeople.peopleMonthly(people, peopleCtx(month));
   if (people.groups.length !== peNamedGroups) { peNamedGroups = people.groups.length; peopleNames(people, seedToInt(currentSeed)); }   // 分裂でできた集団に名前を付ける
+  peopleVillageSync();
   peopleInfoUpdate();
   if (ev.some(e => e.type === 'playerSucceed' || e.type === 'playerNewLine')) globalThis.__wohAvatar?.toPlayer?.();   // 跡継ぎの野営地へ
   for (const e of ev) if (e.type === 'ethSplit' || e.type === 'ethMerge') peopleEthCreated(e);
@@ -9072,7 +9140,7 @@ function nameOf(e) { return (e.user || e.auto) + e.suffix; }
 
 // 地名の種類：表示の後ろに付ける字、表示の優先度（3：いつも 2：中くらいまで 1：近め 0：近づいた時）
 const PLACE_KIND = {
-  ethnicity: ['族', 0], group: ['の民', 0],
+  ethnicity: ['族', 0], group: ['の民', 0], village: ['村', 1],
   continent: ['大陸', 3], island: ['島', 1], archipelago: ['諸島', 2], ocean: ['洋', 3], sea: ['海', 2], bay: ['湾', 1],
   river: ['川', 1], bigRiver: ['川', 2], lake: ['湖', 1], bigLake: ['湖', 2], saltLakeN: ['塩湖', 1], volcano: ['山', 1], range: ['山脈', 2],
   desert: ['砂漠', 2], forest: ['の森', 2], plain: ['平原', 2],
@@ -9270,12 +9338,13 @@ function labelsUpdate() {
     // 優先度の高い順に置く
     const list = names.sorted || (names.sorted = names.list.slice().sort((a, b) => b.prio - a.prio));
     for (const e of list) {
+      if (e.hide) continue;   // 民族名・集団名（村でないもの）は地図に出さない
       if (cam.dist > LABEL_DIST[e.prio]) continue;
       const X = toWorldX(e.x), Z = toWorldZ(e.y);
       _lv.set(X, Math.max(0, meshHeightAtWorld(X, Z)) + 1, Z).project(camera);
       if (_lv.z > 1 || _lv.x < -1.05 || _lv.x > 1.05 || _lv.y < -1.05 || _lv.y > 1.05) continue;
       const sx = (_lv.x + 1) / 2 * Wd, sy = (1 - _lv.y) / 2 * Hd;
-      const text = nameOf(e), wpx = text.length * (e.prio >= 2 ? 13 : 11) + 6, hpx = e.prio >= 2 ? 17 : 14;
+      const text = (e.sym || '') + nameOf(e), wpx = text.length * (e.prio >= 2 ? 13 : 11) + 6, hpx = e.prio >= 2 ? 17 : 14;
       const box = [sx - wpx / 2, sy - hpx - 6, sx + wpx / 2, sy - 6];
       if (boxes.some(b => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) continue;
       boxes.push(box);
@@ -9285,7 +9354,7 @@ function labelsUpdate() {
       if (el._t !== text) { el.textContent = text; el._t = text; }
       const cls = 'plabel k-' + e.kind + ' p' + e.prio;
       if (el._c !== cls) { el.className = cls; el._c = cls; }
-      el._e = e;
+      el._e = e; if (el._col !== (e.color || '')) { el.style.color = e.color || ''; el._col = e.color || ''; }
       el.style.transform = `translate(${Math.round(sx)}px, ${Math.round(sy - 6)}px) translate(-50%, -100%)`;
       el.style.display = '';
       used++;
@@ -10838,6 +10907,7 @@ function installGameHUD(){
  }
  function drawMini(view){const p=view.markerPoint,t=view.state.terrain,n=mapPoint(p.xM,p.yM,t.widthM,t.heightM),size=512/zoom,sx=zoom===1?0:Math.max(0,Math.min(512-size,n.x*512-size/2)),sy=zoom===1?0:Math.max(0,Math.min(512-size,n.y*512-size/2));
   context.setTransform(2,0,0,2,0,0);context.clearRect(0,0,132,132);context.drawImage(cache,sx,sy,size,size,18,18,96,96);
+  {const pe=window.__geo?.people;if(pe){context.save();context.beginPath();context.rect(18,18,96,96);context.clip();const me=pe.player&&pe.player.id>=0?pe.npc.group[pe.player.id]:0;for(const g of pe.groups){if(!g.alive)continue;const gx=18+(g.x/t.width*512-sx)/size*96,gy=18+(g.y/t.height*512-sy)/size*96;if(gx<16||gy<16||gx>116||gy>116)continue;const e=pe.ethnicities[g.ethId-1],c=e&&e.color?e.color:[255,255,255],r=g.settle===2?2.8:g.settle===1?2.2:1.7;context.fillStyle=`rgb(${c[0]},${c[1]},${c[2]})`;context.strokeStyle=g.id===me?'#ffffff':'#0b1018';context.lineWidth=g.id===me?1.5:.7;context.beginPath();if(g.settle===2)context.rect(gx-r,gy-r,2*r,2*r);else context.arc(gx,gy,r,0,6.283);context.fill();context.stroke();}context.restore();}}
   const x=18+(n.x*512-sx)/size*96,y=18+(n.y*512-sy)/size*96;view.camera.getWorldDirection(direction);const len=Math.hypot(direction.x,direction.z)||1,heading=compassDegrees(direction.x,direction.z),angle=Math.atan2(direction.x/len,-direction.z/len);
   context.save();context.beginPath();context.rect(18,18,96,96);context.clip();context.translate(x,y);context.rotate(angle);context.fillStyle='#70e4ff77';context.beginPath();context.moveTo(0,0);context.arc(0,0,28,-Math.PI/2-.4,-Math.PI/2+.4);context.closePath();context.fill();context.restore();
   context.save();context.translate(x,y);context.rotate(Math.PI-view.character.rotation.y);context.fillStyle='#ffe054';context.strokeStyle='#182128';context.lineWidth=1.3;context.beginPath();context.moveTo(0,-8);context.lineTo(5,6);context.lineTo(0,3);context.lineTo(-5,6);context.closePath();context.fill();context.stroke();context.restore();
@@ -11279,7 +11349,7 @@ function npcInit(){
   document.body.appendChild(npcCard);
   npcCard.querySelector('#npcCardX').addEventListener('click',()=>{npcSel=null;npcCard.style.display='none';if(npcRing)npcRing.visible=false;});
 }
-function npcHide(){if(npcParts){for(const m of Object.values(npcParts))m.visible=false;npcRing.visible=false;}}
+function npcHide(){if(npcParts){for(const m of Object.values(npcParts))m.visible=false;npcRing.visible=false;}dwHide();}
 function npcCardUpdate(pe,V){
   if(!npcCard)return;if(npcSel===null){npcCard.style.display='none';return;}
   const P=pe.npc;if(P.death[npcSel]!==0x7fffffff){npcCard.querySelector('#npcCardBody').textContent='（この人は亡くなった）';npcCard.style.display='block';return;}
@@ -11291,6 +11361,7 @@ function npcScan(pe,V){
   npcCamps.clear();
   for(const g of pe.groups){if(!g.alive)continue;const q=state.terrain.gridToMeters(g.x,g.y);if(Math.hypot(q.xM-markerPoint.xM,q.yM-markerPoint.yM)<NPC_GROUP_RANGE)npcCamps.set(g.id,q);}
   npcCands=npcCamps.size?V.viewCandidates(pe,new Set(npcCamps.keys()),600):[];
+  dwScan(pe,V);
   npcCardUpdate(pe,V);
 }
 function npcUpdate(pe,V,now){
@@ -11318,6 +11389,50 @@ function npcUpdate(pe,V,now){
   const s=npcSel!==null?npcList.find(e=>e.i===npcSel):null;
   if(s){npcRing.position.set(s.x,s.y+.05,s.z);npcRing.scale.setScalar(s.sc);npcRing.visible=true;}else npcRing.visible=false;
 }
+
+// ---- 集団の野営地・村：世帯ごとの家（野営はテント、定住は小屋、村は中央に広場の大きな家）と焚き火。位置は住民が夜に集まる家の位置（npc-view の世帯の家）と同じ
+const DW_MAX=220,DW_RANGE=420;
+let dwParts=null,dwFires=[],dwHomes=[];
+function dwInit(){
+  const mk=(geo,cap,mat)=>{const m=new THREE.InstancedMesh(geo,mat||new THREE.MeshLambertMaterial({color:0xffffff}),cap);m.instanceColor=new THREE.InstancedBufferAttribute(new Float32Array(cap*3),3);m.count=0;m.frustumCulled=false;m.visible=false;scene.add(m);return m;};
+  dwParts={tent:mk(new THREE.ConeGeometry(1.7,2.1,6).translate(0,1.05,0),DW_MAX),wall:mk(new THREE.CylinderGeometry(1.9,2.0,1.4,10).translate(0,.7,0),DW_MAX),roof:mk(new THREE.ConeGeometry(2.7,1.5,10).translate(0,2.15,0),DW_MAX),
+    stone:mk(new THREE.TorusGeometry(.7,.14,5,10).rotateX(Math.PI/2).translate(0,.14,0),80),flame:mk(new THREE.ConeGeometry(.35,.9,6).translate(0,.55,0),80,new THREE.MeshBasicMaterial({color:0xffffff}))};
+}
+function dwHide(){if(dwParts)for(const m of Object.values(dwParts))m.visible=false;}
+function dwScan(pe,V){
+  if(!dwParts)dwInit();
+  dwHomes=[];dwFires=[];const P=pe.npc,HH=V.viewHouseholds(pe,new Set(npcCamps.keys()));
+  for(const [gid,c] of npcCamps){
+    const g=pe.groups[gid-1];if(!g)continue;const lvl=g.settle||0,eth=pe.ethnicities[g.ethId-1],ec=eth&&eth.color?eth.color:[160,140,110];
+    const place=(xM,yM)=>{if(Math.hypot(xM-markerPoint.xM,yM-markerPoint.yM)>DW_RANGE)return null;const gd=groundAt(xM,yM);if(!gd||gd.waterDepthM>.3)return null;const q=state.terrain.toLocal(xM,yM,gd.elevationM,state.origin);return {x:q.x,y:q.y,z:q.z};};
+    const fire=place(c.xM,c.yM);if(fire&&dwFires.length<80)dwFires.push({...fire,ph:gid*1.7});
+    if(lvl===2){const hp=place(c.xM+6,c.yM+4);if(hp)dwHomes.push({...hp,rot:.6,sc:1.6,lvl:3,ec});}   // 村の広場の大きな家
+    const houses=HH.get(gid);if(!houses)continue;
+    for(const [hh,cnt] of houses){
+      if(dwHomes.length>=DW_MAX)break;const hb=V.homeBase(P,hh),p=place(c.xM+hb.x,c.yM+hb.z);if(!p)continue;
+      dwHomes.push({...p,rot:hb.rot,sc:(lvl===0?.72:lvl===1?.75:.85)*(.85+.07*Math.min(cnt,5)),lvl,ec});
+    }
+  }
+  dwApply();
+}
+function dwApply(){
+  const N=dwParts,q=new THREE.Quaternion(),s=new THREE.Vector3(),p=new THREE.Vector3(),m=new THREE.Matrix4(),col=new THREE.Color();
+  let nt=0,nw=0;
+  for(const d of dwHomes){
+    q.setFromAxisAngle(npcY,d.rot);p.set(d.x,d.y,d.z);s.set(d.sc,d.sc,d.sc);m.compose(p,q,s);const ec=new THREE.Color(d.ec[0]/255,d.ec[1]/255,d.ec[2]/255);
+    if(d.lvl===0){if(nt<DW_MAX){N.tent.setMatrixAt(nt,m);N.tent.setColorAt(nt,col.setHex(0xb59a6c).lerp(ec,.3));nt++;}}
+    else if(nw<DW_MAX){N.wall.setMatrixAt(nw,m);N.wall.setColorAt(nw,col.setHex(0xa8845c).lerp(ec,.12));N.roof.setMatrixAt(nw,m);N.roof.setColorAt(nw,col.setHex(d.lvl===3?0x6d5a2e:0x8a7640).lerp(ec,.1));nw++;}
+  }
+  N.tent.count=nt;N.wall.count=nw;N.roof.count=nw;
+  for(const k of ['tent','wall','roof']){N[k].instanceMatrix.needsUpdate=true;N[k].instanceColor.needsUpdate=true;N[k].visible=N[k].count>0;}
+  dwFlame(performance.now());
+}
+function dwFlame(now){
+  const N=dwParts;if(!N)return;const q=new THREE.Quaternion(),s=new THREE.Vector3(),p=new THREE.Vector3(),m=new THREE.Matrix4(),col=new THREE.Color();let k=0;
+  for(const f of dwFires){p.set(f.x,f.y,f.z);q.identity();s.set(1,1,1);m.compose(p,q,s);N.stone.setMatrixAt(k,m);N.stone.setColorAt(k,col.setHex(0x77746e));
+    const fl=.85+.3*Math.sin(now/130+f.ph)+.1*Math.sin(now/53+f.ph*2);s.set(1,fl,1);m.compose(p,q,s);N.flame.setMatrixAt(k,m);N.flame.setColorAt(k,col.setHex(fl>1.05?0xffc860:0xff9a30));k++;}
+  N.stone.count=k;N.flame.count=k;for(const kk of ['stone','flame']){N[kk].instanceMatrix.needsUpdate=true;N[kk].instanceColor.needsUpdate=true;N[kk].visible=k>0;}
+}
 function npcTick(dt){
   const pe=window.__geo?.people,V=globalThis.WohNpcView;
   if(!pe||!V||!state||!markerPoint||overview||document.hidden){npcHide();return false;}
@@ -11325,7 +11440,7 @@ function npcTick(dt){
   const now=performance.now();
   if(now-npcScanAt>1000){npcScanAt=now;npcScan(pe,V);}
   if(now-npcUpdAt<66)return false;npcUpdAt=now;
-  npcUpdate(pe,V,now);const redraw=npcList.length>0||npcPrevCount>0;npcPrevCount=npcList.length;return redraw;   // 描く人がいるときだけ再描画する
+  npcUpdate(pe,V,now);if(dwFires.length)dwFlame(now);const redraw=npcList.length>0||npcPrevCount>0||dwFires.length>0;npcPrevCount=npcList.length;return redraw;   // 描く人がいるときだけ再描画する
 }
 function npcScreens(){
   const rect=renderer.domElement.getBoundingClientRect();camera.updateMatrixWorld();

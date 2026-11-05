@@ -17,7 +17,13 @@ const PE = {
   RIVER_STEP: 3,                                  // 川の点を何点おきに候補にするか［仮］
   HELPER_SHARE: 0.35,                             // 仕事に就いていない10〜13歳・兼任の人が、採集に回る割合［仮］
   KNOW_DEFAULT: 0.15,                             // その仕事の人がいないときの技能（0〜1）［仮］
-  FERT_ADJ: 1.5,                                  // 年齢別出生率（全女性の平均）を、結婚している女性だけに当てるための補正［仮］
+  FERT_ADJ: 1.5,
+  // 定住：0野営地（移動）→1半定住→2村。同じ場所に安定してとどまり、食料が豊かな場所で村になる［仮］
+  SETTLE1_MONTHS: 60, SETTLE2_MONTHS: 120,     // 半定住・村になるまでの、同じ場所での安定した月数
+  SETTLE2_POP: 50, SETTLE2_FED: 0.97, SETTLE2_P: 0.03,   // 村になる条件（人口・食料の充足）と確率（1か月）
+  SETTLE_SITE_PCT: 0.65,                        // 暮らしやすさが、集団の配置の場所の上位35%なら「豊かな場所」
+  VILLAGE_STORE: 0.25,                          // 定住の段階ごとに、蓄えられる量が増える割合
+  VILLAGE_HUNGER: 3,                            // 村は、食料不足がこの月数ぶん長く続かないと、捨てて移住しない                                  // 年齢別出生率（全女性の平均）を、結婚している女性だけに当てるための補正［仮］
   FOOD_INIT: [1, 2],                              // 初期の蓄え（必要量の何か月分）［仮］
   // ---- 生活圏（半径＝R_BASE＋R_PER_SQRT×√人口、R_MIN〜R_MAX ブロック）［仮］
   R_BASE: 3, R_PER_SQRT: 0.4, R_MIN: 4, R_MAX: 9,
@@ -738,6 +744,11 @@ function peopleGenerate(seed, W) {
   for (let r = 0; r < 36; r++) for (let i = 0; i < npc.n; i++) if (npc.death[i] === ALIVE && npc.age(i) >= 10) npc._interact(i);   // それまでの暮らしでできた人間関係
   peStats(people);
   peLeaders(people, [], () => false, true, false, true);
+  { // 初期の定住：豊かな場所の集団は、すでに村（縄文のように、はじめから暮らしのある社会）
+    const vals = people.groups.map(g => ({ g, v: peSiteValue(S, world, peCellOf(S, g.x, g.y)) })).sort((a, b) => b.v - a.v);
+    const hi = vals[Math.floor(vals.length * (1 - PE.SETTLE_SITE_PCT))] ? vals[Math.floor(vals.length * (1 - PE.SETTLE_SITE_PCT))].v : 0; people.siteHi = hi; const mid = vals[Math.floor(vals.length * 0.6)] ? vals[Math.floor(vals.length * 0.6)].v : 0; people.siteMid = mid;   // 暮らしやすさが上位60%に入らない場所は、移動して暮らす（野営地のまま）
+    vals.forEach(({ g, v }, k) => { const r = k / vals.length; if (r < 0.35 && g.pop >= 40) { g.settle = 2; g.stay = PE.SETTLE2_MONTHS; } else if (r < 0.6) { g.settle = 1; g.stay = PE.SETTLE1_MONTHS; } });
+  }
   peNeighbors(people);
   peopleCreatePlayer(people, sd);
   return people;
@@ -748,7 +759,7 @@ function peNewGroup(people, ethId, x, y) {
     id, ethId, alive: true, nameKey: 'grp:' + id, x, y, homeX: x, homeY: y, radius: PE.R_MIN, food: 0, policy: 'auto', moveTo: null,
     labor: { hunt: 0, gather: 0, fish: 0 }, lastFood: { need: 0, got: 0, hunt: 0, gather: 0, fish: 0 },
     hunger: 0, born: 0, died: { natural: 0, starvation: 0, cold: 0, disease: 0 },
-    fed: 1, epi: 0, kills: 0, pop: 0, c6: [0, 0, 0, 0, 0, 0], leader: -1, council: [], leaderSince: 0, cult: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0], iso: 0,
+    fed: 1, epi: 0, kills: 0, pop: 0, c6: [0, 0, 0, 0, 0, 0], leader: -1, council: [], leaderSince: 0, settle: 0, stay: 0, cult: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0], iso: 0,
   };
   people.groups.push(g);
   if (people.npc) { peEnsureGroups(people); people.npc.groupEth[id] = ethId; }
@@ -958,7 +969,7 @@ function peTravel(people, g, S, world, ev, rel) {
     // 着いた所の近くの川沿いに野営する（プレイヤーが川から離れた所を指定した場合）
     const k = peNearestRiver(S, t.x, t.y, PE.RIVER_SNAP);
     if (k >= 0) { const r = peDryNear(S, world, world.riverPts[k * 3], world.riverPts[k * 3 + 1]); if (!peSeaBetween(S, world, t.x, t.y, r.x, r.y)) { t.x = r.x; t.y = r.y; } }
-    g.x = t.x; g.y = t.y; g.homeX = t.x; g.homeY = t.y; g.moveTo = null; g.hunger = 0;
+    g.x = t.x; g.y = t.y; g.homeX = t.x; g.homeY = t.y; g.moveTo = null; g.hunger = 0; g.settle = 0; g.stay = 0;
     ev.push({ type: 'arrive', imp: 0, relevant: rel(g.ethId), group: g.id, eth: g.ethId, x: g.x, y: g.y, by: t.by || 'ai' });
     return;
   }
@@ -1005,7 +1016,7 @@ function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
   const have = g.food + got;
   const ratio = need > 0 ? Math.min(1, have / need) : 1;
   const spoil = PE.SPOIL[0] + PE.SPOIL[1] * peClamp01(T / 25);
-  g.food = Math.min(need * PE.STORE_MONTHS, Math.max(0, have - need) * (1 - spoil));
+  g.food = Math.min(need * PE.STORE_MONTHS * (1 + PE.VILLAGE_STORE * (g.settle || 0)), Math.max(0, have - need) * (1 - spoil));   // 定住するほど、たくさん蓄えられる
   g.lastFood.need = need; g.lastFood.got = got; g.lastFood.hunt = gotH; g.lastFood.gather = gotG; g.lastFood.fish = gotF;
   g.fed += (ratio - g.fed) / 12;
   if (ratio < PE.HUNGER_FOOD) {
@@ -1027,14 +1038,17 @@ function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
   hz.hungerDis[id] = 1 + (1 - ratio);
   // ---- 移動
   g.radius = peRadius(pop);
+  peSettleStep(people, g, S, world, ev, rel, home, people.ethSpeed || 1);
   if (g.moveTo) peTravel(people, g, S, world, ev, rel);
-  else if (g.hunger >= PE.MIG_HUNGER) {
+  else if (g.hunger >= PE.MIG_HUNGER + (g.settle === 2 ? PE.VILLAGE_HUNGER : 0)) {
     const d = peFindSite(people, g, S, world, rng, PE.MIG_RANGE, peSiteValue(S, world, home) * PE.MIG_BETTER);
     if (d) {
       g.moveTo = { x: d.x, y: d.y, by: 'ai' };
+      if (g.settle === 2) { ev.push({ type: 'abandon', imp: 1, relevant: rel(g.ethId) || (people.player && P.group[people.player.id] === g.id), group: g.id, eth: g.ethId, x: g.x, y: g.y }); }
+      g.settle = 0; g.stay = 0;
       ev.push({ type: 'migrate', imp: 1, relevant: rel(g.ethId), group: g.id, eth: g.ethId, x: g.x, y: g.y, toX: d.x, toY: d.y });
     } else g.hunger = Math.floor(PE.MIG_HUNGER / 2);
-  } else if (rng() < PE.CAMP_MOVE_P) {
+  } else if (rng() < PE.CAMP_MOVE_P * (g.settle === 2 ? 0 : g.settle === 1 ? 0.4 : 1)) {
     const dir = PE_DIR8[Math.floor(rng() * 8)], dist = g.radius * (0.3 + 0.6 * rng());
     const tx = g.homeX + dir[0] * dist, ty = g.homeY + dir[1] * dist;
     const k = peNearestRiver(S, tx, ty, g.radius);
@@ -1047,6 +1061,17 @@ function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
   }
 }
 
+// 定住の進み：同じ場所に安定してとどまった月数。野営地→半定住→村（村は、食料が豊かな場所で確率的に）
+function peSettleStep(people, g, S, world, ev, rel, home, speed) {
+  if (g.moveTo || g.hunger >= 3) { if (g.moveTo) { g.stay = 0; } return; }
+  if (g.fed > 0.9) g.stay = (g.stay || 0) + 1;
+  const need1 = PE.SETTLE1_MONTHS / speed, need2 = PE.SETTLE2_MONTHS / speed, P = people.npc;
+  if (g.settle === 0 && g.stay >= need1 && g.pop >= 30 && peSiteValue(S, world, home) >= (people.siteMid || 0)) g.settle = 1;
+  if (g.settle === 1 && g.stay >= need2 && g.pop >= PE.SETTLE2_POP && g.fed >= PE.SETTLE2_FED && peSiteValue(S, world, home) >= (people.siteHi || 0) && P.random() < Math.min(0.5, PE.SETTLE2_P * speed)) {
+    g.settle = 2; const mine = people.player && people.player.id >= 0 && P.group[people.player.id] === g.id;
+    ev.push({ type: 'settle', imp: mine ? 2 : 1, relevant: mine || rel(g.ethId), group: g.id, eth: g.ethId, x: g.x, y: g.y });
+  }
+}
 // 分裂：同じ民族の新しい集団が、近くの別の川沿いへ。家族（夫婦と子ども）ごと移る
 function peSplit(people, g, S, world, rng, ev, rel) {
   const d = peFindSite(people, g, S, world, rng, PE.SPLIT_RANGE, 0);
