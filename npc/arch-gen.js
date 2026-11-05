@@ -96,7 +96,7 @@ function designBuilding(seed, trad, role, key, members, age) {
   if (trad.roofMat === 'mud') roofKind = 'flat';   // 土の屋根は平らに
   if (role === 'rack') roofKind = 'gable';
   const pitch = Math.max(role === 'rack' ? 28 : 18, trad.pitch * (0.85 + u(7) * 0.3)), span = Math.min(plan.w, plan.kind === 'rect' ? plan.d : plan.w);
-  const roofH = roofKind === 'flat' ? 0.25 : Math.tan(pitch * Math.PI / 180) * (roofKind === 'gable' ? plan.w : span) / 2 * (roofKind === 'cone' ? 1.0 : 1);
+  const roofH = roofKind === 'flat' ? 0.25 : Math.min(4.6, Math.tan(pitch * Math.PI / 180) * (roofKind === 'gable' ? plan.w : span) / 2 * (roofKind === 'cone' ? 1.0 : 1));   // 屋根の高さは4.6mまで
   const overhang = roofKind === 'flat' ? 0.1 : trad.roofMat === 'thatch' ? 0.5 + u(8) * 0.3 : 0.3 + u(8) * 0.2;
   // 入口：向きは建物の局所の角度（ラジアン、0＝+z 方向、建物の正面の傾向）。実際の向きは配置で決める
   const doorW = 0.8 + u(9) * 0.25, doorH = Math.min(wallH - 0.1, 1.7 + u(10) * 0.2);

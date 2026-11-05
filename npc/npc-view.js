@@ -16,6 +16,10 @@ function role(P, i) {
   return j === 1 || j === 9 || j === 10 ? 'wander' : j === 2 || j === 3 ? 'away' : j === 8 ? 'guard' : 'camp';
 }
 // 世帯の家の位置（野営地の中心から、メートル）。住民は、この家の近くで夜を過ごす
+// 集落の配置ができている集団は、その世帯の住居の入口の近く（配置から）。無ければ、ハッシュで決めた位置。resolver(集団, 世帯) → { x, z } または null
+let homeResolver = null;
+function setHomeResolver(f) { homeResolver = f; }
+function homeSpot(P, hh, gid) { const r = homeResolver ? homeResolver(gid, hh) : null; if (r) return { x: r.x, z: r.z, rot: r.rot || 0, fixed: true }; const b = homeBase(P, hh); b.fixed = false; return b; }
 function homeBase(P, hh) { const ha = rnd(P.seed, hh, 1) * Math.PI * 2, hr = 7 + rnd(P.seed, hh, 2) * 36; return { x: Math.cos(ha) * hr, z: Math.sin(ha) * hr, rot: rnd(P.seed, hh, 8) * Math.PI * 2 }; }
 // 近くの集団ごとの世帯：groupSet に入る集団の、生きている人から数える。Map(集団 → Map(世帯 → 人数))
 function viewHouseholds(people, groupSet) {
@@ -25,7 +29,7 @@ function viewHouseholds(people, groupSet) {
 }
 function rawPos(P, i, t) {
   const seed = P.seed, hh = P.house[i] !== NONE ? P.house[i] : i;
-  const hb = homeBase(P, hh), hx = hb.x + (rnd(seed, i, 3) - 0.5) * 6, hz = hb.z + (rnd(seed, i, 4) - 0.5) * 6;
+  const hb = homeSpot(P, hh, P.group[i]), jit = hb.fixed ? 2.4 : 6, hx = hb.x + (rnd(seed, i, 3) - 0.5) * jit, hz = hb.z + (rnd(seed, i, 4) - 0.5) * jit;
   const r = role(P, i), s = workPhase(t), ph = rnd(seed, i, 5) * Math.PI * 2, aw = rnd(seed, i, 6) * Math.PI * 2, rw = rnd(seed, i, 7), T = Math.PI * 2;
   let wx = hx, wz = hz, dx = 0, dz = 0;
   if (r === 'home') { dx = 4 * Math.sin(T * t * 10 + ph); dz = 4 * Math.cos(T * t * 8 + ph); return { x: hx + dx, z: hz + dz, role: r }; }
@@ -86,6 +90,6 @@ function viewDescribe(people, id) {
   const e = people.ethnicities[(P.eth[id] || P.groupEth[P.group[id]]) - 1];
   return { id, age: a, sex: P.sex[id] === 1 ? '男' : '女', job, relation: relation(people, id), skills: sk.slice(0, 3).map(([n, v]) => n + ' ' + v), eth: e ? e.id : 0, married: P.spouse[id] !== NONE, leader: !!(people.groups[P.group[id] - 1] && people.groups[P.group[id] - 1].leader === id), council: !!(people.groups[P.group[id] - 1] && (people.groups[P.group[id] - 1].council || []).includes(id)), bond: bondText(bond(people, id)), isYou: !!people.player && people.player.id === id };
 }
-const api = { homeBase, viewHouseholds, bond, bondText, DAY_SEC, workPhase, role, viewPosition, viewCandidates, viewColor, viewScale, relation, viewDescribe };
+const api = { setHomeResolver, homeBase, viewHouseholds, bond, bondText, DAY_SEC, workPhase, role, viewPosition, viewCandidates, viewColor, viewScale, relation, viewDescribe };
 if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohNpcView = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

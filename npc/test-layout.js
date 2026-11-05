@@ -44,11 +44,13 @@ ok(JSON.stringify(make(2, 50).layout) === JSON.stringify(make(2, 50).layout), '�
 { const m = make(2, 40), byK = new Map(); for (const b of live(m.layout)) if (b.role === 'dwelling' && b.cluster !== undefined) { if (!byK.has(b.cluster)) byK.set(b.cluster, []); byK.get(b.cluster).push(b); } let within = [], across = []; for (const arr of byK.values()) for (let i = 0; i < arr.length; i++) for (let j = i + 1; j < arr.length; j++) within.push(Math.hypot(arr[i].x - arr[j].x, arr[i].z - arr[j].z)); const all = [...byK.values()].flat(); for (let k = 0; k < 400; k++) { const a = all[(k * 7) % all.length], b = all[(k * 13 + 5) % all.length]; if (a.cluster !== b.cluster) across.push(Math.hypot(a.x - b.x, a.z - b.z)); } const mw = within.reduce((a, b) => a + b, 0) / within.length, ma = across.reduce((a, b) => a + b, 0) / across.length; ok(mw < ma, `同じ親族の住居は近い（親族内 ${mw.toFixed(0)}m ＜ 親族外 ${ma.toFixed(0)}m）`); }
 // 5. 世帯の増減・NPCの要求
 { const m = make(2, 40), before = new Map(live(m.layout).map(b => [b.id, [b.x, b.z]])); const hs = households(40).slice(0, 36).concat([{ house: 9001, members: 4, kin: 2 }, { house: 9002, members: 3 }, { house: 9003, members: 5, kin: 99 }]);
-  const r = S.syncLayout(m.layout, m.spec, hs, 360 * 10); ok(r.added === 3 && r.vacated === 4, `新しい世帯の家を建て(3)、いなくなった世帯の家を空き家に(4)：${JSON.stringify(r)}`);
+  const r = S.syncLayout(m.layout, m.spec, hs, 360 * 10); ok(r.vacated === 4 && r.reoccupied === 3 && r.added === 0, `いなくなった世帯の家(4)を空き家にし、新しい世帯(3)はその空き家に入る：${JSON.stringify(r)}`);
   let moved = 0; for (const [id, p] of before) { const b = m.layout.items.find(i => i.id === id); if (b && (b.x !== p[0] || b.z !== p[1])) moved++; } ok(moved === 0, `既存の建物は動かない（動いた ${moved}）`);
-  checks('更新後', { spec: m.spec, layout: m.layout });
-  const r2 = S.syncLayout(m.layout, m.spec, hs, 360 * 17); ok(r2.ruined === 4, `5年後に空き家は廃屋に：${JSON.stringify(r2)}`); const r3 = S.syncLayout(m.layout, m.spec, hs, 360 * 25); ok(r3.removed === 4, `12年を超えると撤去：${JSON.stringify(r3)}`);
-  S.requestBuild(m.layout, 'renovate', hs[0].house, 360 * 26); S.requestBuild(m.layout, 'demolish', hs[1].house, 360 * 26); const ar = S.applyRequests(m.layout, m.spec, hs, 360 * 26); ok(ar.renovated === 1 && ar.demolished === 1, `NPCの改築・解体の要求を反映：${JSON.stringify(ar)}`); }
+  checks('更新後', { spec: Object.assign({}, m.spec, { households: hs }), layout: m.layout });
+  const hs2 = hs.concat([{ house: 9101, members: 4 }, { house: 9102, members: 4 }]); const rA = S.syncLayout(m.layout, m.spec, hs2, 360 * 10 + 30); ok(rA.added === 1 && rA.reoccupied === 1, `空き家が足りなければ建てる（空き家1・新しい世帯2）：${JSON.stringify(rA)}`);
+  const r2 = S.syncLayout(m.layout, m.spec, hs2, 360 * 17); ok(r2.ruined === 0, `空き家のない集落では、廃屋は出ない：${JSON.stringify(r2)}`);
+  const hs3 = hs2.slice(0, 30); S.syncLayout(m.layout, m.spec, hs3, 360 * 18); const r4 = S.syncLayout(m.layout, m.spec, hs3, 360 * 18 + 6 * 360); ok(r4.ruined > 0, `空き家のまま5年を超えると廃屋に：${JSON.stringify(r4)}`); const r5 = S.syncLayout(m.layout, m.spec, hs3, 360 * 18 + 13 * 360); ok(r5.removed > 0, `12年を超えると撤去：${JSON.stringify(r5)}`);
+  S.requestBuild(m.layout, 'renovate', hs3[0].house, 360 * 40); S.requestBuild(m.layout, 'demolish', hs3[1].house, 360 * 40); const ar = S.applyRequests(m.layout, m.spec, hs3, 360 * 40); ok(ar.renovated === 1 && ar.demolished === 1, `NPCの改築・解体の要求を反映：${JSON.stringify(ar)}`); }
 // 6. 農耕がある集団の畑（接続口）：重ならない
 { const m = make(2, 40, 42, 7, {}, { fish: 0.1, gather: 0.2, farm: true }), f = m.layout.fields; let ov = 0; for (let i = 0; i < f.length; i++) for (let j = i + 1; j < f.length; j++) if (S.overlaps(f[i], f[j], 0)) ov++; for (const b of live(m.layout)) for (const x of f) if (S.overlaps(S.shapeOf(b), x, 0)) ov++; ok(f.length > 0 && ov === 0, `畑 ${f.length}区画、重なり ${ov}件`); const n0 = make(2, 40).layout.fields.length; ok(n0 === 0, `農耕のない集団には畑を作らない（${n0}）`); }
 // 7. 柵：建物の中に杭がない、出入口が開いている
@@ -57,4 +59,14 @@ ok(JSON.stringify(make(2, 50).layout) === JSON.stringify(make(2, 50).layout), '�
 { const t0 = process.hrtime.bigint(); for (let i = 0; i < 5; i++) make(2, 90, 42, 20 + i); const ms = Number(process.hrtime.bigint() - t0) / 5e6; ok(ms < 150, `90世帯の集落の配置 ${ms.toFixed(0)}ms/回`); }
 // 9. 歴史：成立年代・状態の共存
 { const cnt = {}; let minA = 1e9, maxA = 0; for (let g = 1; g <= 200; g++) { const h = S.settleHistory(42, g, g % 3, 50 + g % 90, 0.7, { neighbors: g % 2 === 0 }); cnt[h.status] = (cnt[h.status] || 0) + 1; minA = Math.min(minA, h.age); maxA = Math.max(maxA, h.age); } ok(cnt.young > 0 && cnt.established > 0 && cnt.declining > 0 && cnt.seasonal > 0, `成立したて・古い・衰退中・季節の野営が共存 ${JSON.stringify(cnt)}（成立の古さ ${minA}〜${maxA}年）`); }
+// 10. 地形のキャッシュ：直接の関数と、キャッシュを通した関数で、同じような集落になるか
+{ const T0 = terrain(), cache = S.terrainFromSamples((x, z) => ({ h: T0.height(x, z), w: T0.water(x, z) }), 200, 5);
+  const eh = [], es = []; for (let x = -150; x <= 150; x += 17) for (let z = -150; z <= 150; z += 19) { eh.push(Math.abs(cache.height(x, z) - T0.height(x, z))); es.push(Math.abs(cache.slope(x, z) - T0.slope(x, z))); }
+  const avg = (a) => a.reduce((x, y) => x + y, 0) / a.length, p95 = (a) => a.slice().sort((x, y) => x - y)[Math.floor(a.length * 0.95)];
+  ok(avg(eh) < 0.3 && avg(es) < 3, `地形のキャッシュの誤差（平均）：高さ ${avg(eh).toFixed(2)}m、傾斜 ${avg(es).toFixed(1)}°（95%点：${p95(eh).toFixed(2)}m、${p95(es).toFixed(1)}°。川の岸の急な段差で大きくなる）`);
+  const nw = cache.nearestWater(0, 0), nw0 = T0.nearestWater(0, 0); ok(nw && Math.abs(nw.dist - nw0.dist) < 8, `水までの距離（キャッシュ ${nw ? nw.dist.toFixed(0) : '-'}m、直接 ${nw0.dist.toFixed(0)}m）`);
+  const gen = A.genome(42, 5, 5), hist = S.settleHistory(42, 7, 2, 200, 0.7, { neighbors: true }), trad = A.tradition(42, gen, env, hist.tech, [180, 120, 90]);
+  const spec = { seed: 42, gid: 7, trad, hist, level: 2, households: households(60), economy: { fish: 0.3, gather: 0.4, tool: 0.1 }, terr: cache }, L = S.layoutSettlement(spec), it = live(L); let ov = 0; for (let i = 0; i < it.length; i++) for (let j = i + 1; j < it.length; j++) if (S.overlaps(S.shapeOf(it[i]), S.shapeOf(it[j]), 0)) ov++;
+  ok(ov === 0 && spec.households.every(h => L.byHouse[h.house]), `キャッシュ地形での配置：重なり ${ov}、全世帯に住居`);
+  const t0 = process.hrtime.bigint(); S.terrainFromSamples((x, z) => ({ h: T0.height(x, z), w: T0.water(x, z) }), 200, 5); ok(Number(process.hrtime.bigint() - t0) / 1e6 < 100, `地形キャッシュの作成 ${(Number(process.hrtime.bigint() - t0) / 1e6).toFixed(0)}ms（サンプル 6,561点）`); }
 console.log(fail ? `失敗 ${fail}` : '全て合格'); process.exit(fail ? 1 : 0);

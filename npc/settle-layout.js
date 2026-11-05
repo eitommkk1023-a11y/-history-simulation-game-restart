@@ -109,7 +109,8 @@ function addBuilding(layout, spec, role, house, members, anchor, opts, builtAge)
     b.roof.mat = b.roof.mat === 'mud' || b.roof.mat === 'slab' ? 'thatch' : b.roof.mat; b.roof.pitch = 58; b.roof.h = Math.tan(58 * Math.PI / 180) * (b.roof.kind === 'gable' ? b.plan.w : Math.min(b.plan.w, b.plan.d || b.plan.w)) / 2; b.roof.overhang = 0.15;
     b.windows = 0; b.ornament = 0; b.trim = false; b.stilts = role === 'storehouse' ? 1 : 0; b.sunken = 0;
   }
-  if (!place(layout, spec, b, Object.assign({ anchor }, opts || {}))) return null;
+  const o0 = opts || {};
+  if (!place(layout, spec, b, Object.assign({ anchor }, o0)) && !place(layout, spec, b, { anchor: layout.center, radius: (o0.radius || 10) * 1.8 + 10, spread: (o0.spread || 18) * 2 + 20, prefDist: layout.plaza.r + 30 })) return null;   // 置けなければ、範囲を広げてもう一度
   layout.items.push(b); if (role === 'dwelling') layout.byHouse[house] = b.id; return b;
 }
 // ---- 集落全体の配置
@@ -189,18 +190,22 @@ function buildFence(layout, spec) {
 // ---- 世帯の変化に合わせて更新する（新しい世帯の家を建てる・いなくなった世帯の家を空き家→廃屋→撤去）。day は暦の日数
 function syncLayout(layout, spec, households, day) {
   const cur = new Set(households.map(h => h.house)), out = { added: 0, vacated: 0, ruined: 0, removed: 0, reoccupied: 0 };
-  for (const h of households) {
-    const id = layout.byHouse[h.house], b = id ? layout.items.find(i => i.id === id) : null;
-    if (b) { if (b.state === 'vacant' || b.vacantSince !== null) { b.state = 'ok'; b.vacantSince = null; out.reoccupied++; } b.members = h.members; continue; }
-    const anc = h.kin !== undefined ? (layout.items.find(i => i.role === 'dwelling' && i.cluster === h.kin && i.state === 'ok') || null) : null;
-    const nb = addBuilding(layout, spec, 'dwelling', h.house, h.members, anc ? { x: anc.x, z: anc.z } : layout.center, anc ? { radius: 8, spread: 14, prefDist: 0 } : { radius: layout.plaza.r + 5, spread: 20, prefDist: layout.plaza.r + 14 }, 0);
-    if (nb) { nb.builtYear = Math.floor(day / YEAR); nb.cluster = h.kin; out.added++; }
-  }
+  // まず、いなくなった世帯の家を空き家→廃屋→撤去に進める
   for (const b of layout.items) {
     if (b.role !== 'dwelling' || b.house < 0 || b.house >= 4e6 || cur.has(b.house) || b.state === 'removed') continue;
     if (b.vacantSince === null) { b.vacantSince = day; b.state = 'vacant'; out.vacated++; continue; }
     const yrs = (day - b.vacantSince) / YEAR;
     if (yrs > 12) { b.state = 'removed'; delete layout.byHouse[b.house]; out.removed++; } else if (yrs > 5 && b.state !== 'ruin') { b.state = 'ruin'; out.ruined++; }
+  }
+  // 新しい世帯：空き家（廃屋でないもの）があれば、親族に近い空き家に入る。なければ建てる
+  for (const h of households) {
+    const id = layout.byHouse[h.house], b = id ? layout.items.find(i => i.id === id) : null;
+    if (b && b.state !== 'removed') { if (b.state === 'vacant' || b.vacantSince !== null) { b.state = 'ok'; b.vacantSince = null; out.reoccupied++; } b.members = h.members; continue; }
+    const anc = h.kin !== undefined ? (layout.items.find(i => i.role === 'dwelling' && i.cluster === h.kin && i.state === 'ok') || null) : null, ref = anc || layout.center;
+    let vac = null, vd = 1e9; for (const i of layout.items) { if (i.role !== 'dwelling' || i.state !== 'vacant') continue; const d = Math.hypot(i.x - ref.x, i.z - ref.z); if (d < vd) { vd = d; vac = i; } }
+    if (vac) { delete layout.byHouse[vac.house]; vac.house = h.house; vac.cluster = h.kin; vac.state = 'ok'; vac.vacantSince = null; vac.members = h.members; layout.byHouse[h.house] = vac.id; out.reoccupied++; continue; }
+    const nb = addBuilding(layout, spec, 'dwelling', h.house, h.members, anc ? { x: anc.x, z: anc.z } : layout.center, anc ? { radius: 8, spread: 14, prefDist: 0 } : { radius: layout.plaza.r + 5, spread: 20, prefDist: layout.plaza.r + 14 }, 0);
+    if (nb) { nb.builtYear = Math.floor(day / YEAR); nb.cluster = h.kin; out.added++; }
   }
   if (out.added || out.removed) buildPaths(layout, spec);
   return out;
@@ -218,6 +223,29 @@ function applyRequests(layout, spec, households, day) {
   if (res.built || res.demolished) buildPaths(layout, spec);
   return res;
 }
-const api = { settleHistory, layoutSettlement, syncLayout, requestBuild, applyRequests, shapeOf, overlaps };
+// ---- 地形のキャッシュ：描画側の地形（重い）を、集落の周りだけ一度に測って、配置が使う軽い関数にする。sample(x,z) → { h: 高さ(m), w: 水深(m) }。R：範囲（m）、step：間隔（m）
+function terrainFromSamples(sample, R, step) {
+  R = R || 200; step = step || 5; const n = Math.floor(2 * R / step) + 1, H = new Float32Array(n * n), Wt = new Float32Array(n * n);
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const s = sample(-R + i * step, -R + j * step); H[j * n + i] = s.h; Wt[j * n + i] = s.w || 0; }
+  const idx = (x, z) => ({ i: Math.max(0, Math.min(n - 1, Math.round((x + R) / step))), j: Math.max(0, Math.min(n - 1, Math.round((z + R) / step))) });
+  const bil = (A, x, z) => { const fx = Math.max(0, Math.min(n - 1.001, (x + R) / step)), fz = Math.max(0, Math.min(n - 1.001, (z + R) / step)), i = Math.floor(fx), j = Math.floor(fz), tx = fx - i, tz = fz - j; return (A[j * n + i] * (1 - tx) + A[j * n + i + 1] * tx) * (1 - tz) + (A[(j + 1) * n + i] * (1 - tx) + A[(j + 1) * n + i + 1] * tx) * tz; };
+  // 水に一番近いセルへの向きと距離：水のセルから広げる（8方向の幅優先）
+  const near = new Int32Array(n * n).fill(-1), q = []; for (let k = 0; k < n * n; k++) if (Wt[k] > 0.15) { near[k] = k; q.push(k); }
+  for (let h = 0; h < q.length; h++) { const k = q[h], i = k % n, j = (k / n) | 0; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ni = i + di, nj = j + dj; if (ni < 0 || nj < 0 || ni >= n || nj >= n) continue; const nk = nj * n + ni; if (near[nk] < 0) { near[nk] = near[k]; q.push(nk); } } }
+  return {
+    height: (x, z) => bil(H, x, z),
+    slope: (x, z) => { const d = step; return Math.atan(Math.hypot(bil(H, x + d, z) - bil(H, x - d, z), bil(H, x, z + d) - bil(H, x, z - d)) / (2 * d)) * 180 / Math.PI; },
+    water: (x, z) => bil(Wt, x, z),
+    nearestWater: (x, z) => { const { i, j } = idx(x, z), k = near[j * n + i]; if (k < 0) return null; const wi = k % n, wj = (k / n) | 0, wx = -R + wi * step, wz = -R + wj * step, dx = wx - x, dz = wz - z, d = Math.hypot(dx, dz) || 1; return { dist: Math.max(0, d - step * 0.5), dx: dx / d, dz: dz / d }; },
+    wet: (x, z) => { const w = (() => { const { i, j } = idx(x, z), k = near[j * n + i]; if (k < 0) return 1e9; const wi = k % n, wj = (k / n) | 0; return Math.hypot((wi - i) * step, (wj - j) * step); })(); return w < 14; },
+  };
+}
+// 建物の足元の測定点（建物の中心を原点とした、世界の向きでのオフセット）：地面の高さを測るときに使う
+function footprintPoints(b) {
+  const hw = b.plan.w / 2, hd = (b.plan.kind === 'rect' ? b.plan.d : b.plan.w) / 2, cs = Math.cos(b.rot), sn = Math.sin(b.rot);
+  const ring = b.plan.kind === 'rect' ? [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]] : [0, 1, 2, 3, 4, 5, 6, 7].map(k => [Math.cos(k * Math.PI / 4) * hw, Math.sin(k * Math.PI / 4) * hw]);
+  return [[0, 0]].concat(ring).map(([lx, lz]) => [lx * cs + lz * sn, -lx * sn + lz * cs]);
+}
+const api = { terrainFromSamples, footprintPoints, foundationFor: decideFoundation, settleHistory, layoutSettlement, syncLayout, requestBuild, applyRequests, shapeOf, overlaps };
 if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohSettle = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
