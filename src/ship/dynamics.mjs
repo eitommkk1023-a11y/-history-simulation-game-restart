@@ -28,8 +28,8 @@ const sail_defaults = Object.freeze({ cnMax: 1.5, cnSlope: 4, cd0: 0.05 });
 
 /** Sail presets: minTrimDeg = how close to the centreline the sail chord can be set (square sails are limited by shrouds/yard bracing); trim can go up to 90 deg (square to the wind). */
 export const SAIL_TYPES = Object.freeze({
-  square: Object.freeze({ ...sail_defaults, cnMax: 1.4, minTrimDeg: 32 }),
-  foreAndAft: Object.freeze({ ...sail_defaults, cnMax: 1.6, cnSlope: 4.5, minTrimDeg: 8 }),
+  square: Object.freeze({ ...sail_defaults, cnMax: 1.3, cnSlope: 3, cd0: 0.2, minTrimDeg: 40 }),
+  foreAndAft: Object.freeze({ ...sail_defaults, cnMax: 1.5, cnSlope: 4, cd0: 0.1, minTrimDeg: 8 }),
 });
 
 /** Heel angle (deg, signed) at which the righting moment equals the heeling moment (N m). */
@@ -50,7 +50,7 @@ export function heelFromMoment(analysis, momentNm) {
 }
 
 export function createVessel({ ship, analysis, hullParams, sails = [], rudder, oars = [], waterDensity = WATER_DENSITY.seawater, airDensity = 1.225,
-  windageAreaM2 = 0, form = 0.2, keelLiftSlope = 2, crossFlowCd = 1.0, initial = {} } = {}) {
+  windageAreaM2 = 0, form = 0.2, roughnessCf = 0, waveK = 1, keelLiftSlope = 2, crossFlowCd = 1.0, initial = {} } = {}) {
   const an = analysis ?? analyzeHydrostatics(ship, { waterDensity });
   const hp = hullParams ?? deriveHullParams(ship, an);
   const m = hp.massKg, L = hp.waterlineLengthM, T = hp.draftM;
@@ -143,8 +143,8 @@ export function createVessel({ ship, analysis, hullParams, sails = [], rudder, o
     // Hull: friction + form + wave-making along the flow direction, using total water speed.
     if (U > 1e-9) {
       const Re = Math.max(U * L / NU_SEA, 1e5), Cf = 0.075 / (Math.log10(Re) - 2) ** 2;
-      const Fr = U / Math.sqrt(G_ACC * L), Cw = Math.min(0.0005 + 0.003 * (Fr / 0.35) ** 4, 0.05);
-      const Rhull = q * U * U * hp.wettedAreaM2 * (Cf * (1 + form) + Cw);
+      const Fr = U / Math.sqrt(G_ACC * L), Cw = Math.min(0.0005 + waveK * 0.003 * (Fr / 0.35) ** 4, 0.05);
+      const Rhull = q * U * U * hp.wettedAreaM2 * ((Cf + roughnessCf) * (1 + form) + Cw);
       X -= Rhull * uw / U; Y -= Rhull * vw / U;
       out.hullResistanceN = Rhull;
     }

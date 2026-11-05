@@ -48,8 +48,8 @@ export function galleyHull() {
 export function galleyMassItems() {
   return [
     { id: 'hull-structure', massKg: 14000, x: 18, y: 0, z: 1.0 },
-    { id: 'rowers', massKg: 8000, x: 18, y: 0, z: 1.4 },
-    { id: 'gear-stores', massKg: 4000, x: 18, y: 0, z: 0.8 },
+    { id: 'rowers', massKg: 13600, x: 18, y: 0, z: 1.4 }, // 170 rowers x 80 kg
+    { id: 'gear-stores', massKg: 6000, x: 18, y: 0, z: 0.8 },
   ];
 }
 
@@ -57,11 +57,14 @@ export function galleyMassItems() {
 export const sampleDesigns = Object.freeze({
   galleon: Object.freeze({
     hull: galleonLikeHull(), massItems: galleonLikeMassItems(),
-    sails: [{ id: 'main', type: 'foreAndAft', areaM2: 500, x: 21, zCe: 12 }], rudder: { x: 0.5, areaM2: 6 },
+    sails: [{ id: 'main', type: 'foreAndAft', areaM2: 1200, x: 21, zCe: 13 }], rudder: { x: 0.5, areaM2: 6 },
     openings: [{ id: 'gunport', x: 20, y: 5.3, z: 5.2 }],
+    // Hull/rig tuning for the vessel model (EXPERIMENTAL, being calibrated against rough historical ranges).
+    tuning: { roughnessCf: 0.0015, form: 0.4, waveK: 40, keelLiftSlope: 0.5, windageAreaM2: 150 },
   }),
   galley: Object.freeze({
     hull: galleyHull(), massItems: galleyMassItems(), sails: [], rudder: { x: 0.5, areaM2: 1.5 },
-    oars: [{ id: 'P', side: 'port', rowers: 50, x: 18 }, { id: 'S', side: 'starboard', rowers: 50, x: 18 }],
+    oars: [{ id: 'P', side: 'port', rowers: 85, x: 18 }, { id: 'S', side: 'starboard', rowers: 85, x: 18 }],
+    tuning: { roughnessCf: 0.0005, form: 0.15, waveK: 1, keelLiftSlope: 0.5, windageAreaM2: 25 },
   }),
 });

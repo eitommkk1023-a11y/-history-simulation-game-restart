@@ -439,8 +439,8 @@ const sail_defaults = Object.freeze({ cnMax: 1.5, cnSlope: 4, cd0: 0.05 });
 
 /** Sail presets: minTrimDeg = how close to the centreline the sail chord can be set (square sails are limited by shrouds/yard bracing); trim can go up to 90 deg (square to the wind). */
 const SAIL_TYPES = Object.freeze({
-  square: Object.freeze({ ...sail_defaults, cnMax: 1.4, minTrimDeg: 32 }),
-  foreAndAft: Object.freeze({ ...sail_defaults, cnMax: 1.6, cnSlope: 4.5, minTrimDeg: 8 }),
+  square: Object.freeze({ ...sail_defaults, cnMax: 1.3, cnSlope: 3, cd0: 0.2, minTrimDeg: 40 }),
+  foreAndAft: Object.freeze({ ...sail_defaults, cnMax: 1.5, cnSlope: 4, cd0: 0.1, minTrimDeg: 8 }),
 });
 
 /** Heel angle (deg, signed) at which the righting moment equals the heeling moment (N m). */
@@ -461,7 +461,7 @@ function heelFromMoment(analysis, momentNm) {
 }
 
 function createVessel({ ship, analysis, hullParams, sails = [], rudder, oars = [], waterDensity = WATER_DENSITY.seawater, airDensity = 1.225,
-  windageAreaM2 = 0, form = 0.2, keelLiftSlope = 2, crossFlowCd = 1.0, initial = {} } = {}) {
+  windageAreaM2 = 0, form = 0.2, roughnessCf = 0, waveK = 1, keelLiftSlope = 2, crossFlowCd = 1.0, initial = {} } = {}) {
   const an = analysis ?? analyzeHydrostatics(ship, { waterDensity });
   const hp = hullParams ?? deriveHullParams(ship, an);
   const m = hp.massKg, L = hp.waterlineLengthM, T = hp.draftM;
@@ -554,8 +554,8 @@ function createVessel({ ship, analysis, hullParams, sails = [], rudder, oars = [
     // Hull: friction + form + wave-making along the flow direction, using total water speed.
     if (U > 1e-9) {
       const Re = Math.max(U * L / NU_SEA, 1e5), Cf = 0.075 / (Math.log10(Re) - 2) ** 2;
-      const Fr = U / Math.sqrt(G_ACC * L), Cw = Math.min(0.0005 + 0.003 * (Fr / 0.35) ** 4, 0.05);
-      const Rhull = q * U * U * hp.wettedAreaM2 * (Cf * (1 + form) + Cw);
+      const Fr = U / Math.sqrt(G_ACC * L), Cw = Math.min(0.0005 + waveK * 0.003 * (Fr / 0.35) ** 4, 0.05);
+      const Rhull = q * U * U * hp.wettedAreaM2 * ((Cf + roughnessCf) * (1 + form) + Cw);
       X -= Rhull * uw / U; Y -= Rhull * vw / U;
       out.hullResistanceN = Rhull;
     }
@@ -981,8 +981,8 @@ function galleyHull() {
 function galleyMassItems() {
   return [
     { id: 'hull-structure', massKg: 14000, x: 18, y: 0, z: 1.0 },
-    { id: 'rowers', massKg: 8000, x: 18, y: 0, z: 1.4 },
-    { id: 'gear-stores', massKg: 4000, x: 18, y: 0, z: 0.8 },
+    { id: 'rowers', massKg: 13600, x: 18, y: 0, z: 1.4 }, // 170 rowers x 80 kg
+    { id: 'gear-stores', massKg: 6000, x: 18, y: 0, z: 0.8 },
   ];
 }
 
@@ -990,12 +990,15 @@ function galleyMassItems() {
 const sampleDesigns = Object.freeze({
   galleon: Object.freeze({
     hull: galleonLikeHull(), massItems: galleonLikeMassItems(),
-    sails: [{ id: 'main', type: 'foreAndAft', areaM2: 500, x: 21, zCe: 12 }], rudder: { x: 0.5, areaM2: 6 },
+    sails: [{ id: 'main', type: 'foreAndAft', areaM2: 1200, x: 21, zCe: 13 }], rudder: { x: 0.5, areaM2: 6 },
     openings: [{ id: 'gunport', x: 20, y: 5.3, z: 5.2 }],
+    // Hull/rig tuning for the vessel model (EXPERIMENTAL, being calibrated against rough historical ranges).
+    tuning: { roughnessCf: 0.0015, form: 0.4, waveK: 40, keelLiftSlope: 0.5, windageAreaM2: 150 },
   }),
   galley: Object.freeze({
     hull: galleyHull(), massItems: galleyMassItems(), sails: [], rudder: { x: 0.5, areaM2: 1.5 },
-    oars: [{ id: 'P', side: 'port', rowers: 50, x: 18 }, { id: 'S', side: 'starboard', rowers: 50, x: 18 }],
+    oars: [{ id: 'P', side: 'port', rowers: 85, x: 18 }, { id: 'S', side: 'starboard', rowers: 85, x: 18 }],
+    tuning: { roughnessCf: 0.0005, form: 0.15, waveK: 1, keelLiftSlope: 0.5, windageAreaM2: 25 },
   }),
 });
 
@@ -1035,7 +1038,7 @@ function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0.1, far
     if (!analyses.has(designId)) analyses.set(designId, analyzeHydrostatics(ship));
     const analysis = analyses.get(designId);
     if (analysis.status !== 'ok') throw new RangeError(`design ${designId} does not float (${analysis.status})`);
-    return createVessel({ ship, analysis, sails: d.sails ?? [], rudder: d.rudder, oars: d.oars ?? [], windageAreaM2: d.windageAreaM2 ?? 0 });
+    return createVessel({ ship, analysis, sails: d.sails ?? [], rudder: d.rudder, oars: d.oars ?? [], windageAreaM2: d.windageAreaM2 ?? 0, ...(d.tuning ?? {}) });
   }
 
   function addShip({ designId, X = 0, Y = 0, headingDeg = 0, id, refs = {} } = {}) {
@@ -1325,9 +1328,9 @@ let kind = 'galleon', shoal = false, notes = [];
 const galleyShip = Ship.createShip({ id: 'galley', hull: Ship.galleyHull(), massItems: Ship.galleyMassItems() });
 const galleyAnalysis = Ship.analyzeHydrostatics(galleyShip);
 function resetVessel() {
-  if (kind === 'galley') vessel = Ship.createVessel({ ship: galleyShip, analysis: galleyAnalysis, rudder: { x: 0.5, areaM2: 1.5 },
-    oars: [{ id: 'P', side: 'port', rowers: 50, x: 18 }, { id: 'S', side: 'starboard', rowers: 50, x: 18 }] });
-  else vessel = Ship.createVessel({ ship, analysis, rudder: { x: 0.5, areaM2: 6 }, sails: [{ id: 's', type: sailType, areaM2: 500, x: 21, zCe: 12 }] });
+  if (kind === 'galley') vessel = Ship.createVessel({ ship: galleyShip, analysis: galleyAnalysis, rudder: { x: 0.5, areaM2: 1.5 }, windageAreaM2: Ship.sampleDesigns.galley.windageAreaM2, ...Ship.sampleDesigns.galley.tuning,
+    oars: Ship.sampleDesigns.galley.oars.map((o) => ({ ...o })) });
+  else vessel = Ship.createVessel({ ship, analysis, rudder: { x: 0.5, areaM2: 6 }, ...Ship.sampleDesigns.galleon.tuning, sails: [{ id: 's', type: sailType, areaM2: 1200, x: 21, zCe: 13 }] });
   vessel.state.psi = +$('hd').value * DEG; vessel.state.u = 2; trail = []; notes = [];
   $('bAnc').textContent = '錨を下ろす';
 }

@@ -32,7 +32,7 @@ export function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0
     if (!analyses.has(designId)) analyses.set(designId, analyzeHydrostatics(ship));
     const analysis = analyses.get(designId);
     if (analysis.status !== 'ok') throw new RangeError(`design ${designId} does not float (${analysis.status})`);
-    return createVessel({ ship, analysis, sails: d.sails ?? [], rudder: d.rudder, oars: d.oars ?? [], windageAreaM2: d.windageAreaM2 ?? 0 });
+    return createVessel({ ship, analysis, sails: d.sails ?? [], rudder: d.rudder, oars: d.oars ?? [], windageAreaM2: d.windageAreaM2 ?? 0, ...(d.tuning ?? {}) });
   }
 
   function addShip({ designId, X = 0, Y = 0, headingDeg = 0, id, refs = {} } = {}) {

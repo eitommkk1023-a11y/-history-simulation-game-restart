@@ -107,9 +107,9 @@ let kind = 'galleon', shoal = false, notes = [];
 const galleyShip = Ship.createShip({ id: 'galley', hull: Ship.galleyHull(), massItems: Ship.galleyMassItems() });
 const galleyAnalysis = Ship.analyzeHydrostatics(galleyShip);
 function resetVessel() {
-  if (kind === 'galley') vessel = Ship.createVessel({ ship: galleyShip, analysis: galleyAnalysis, rudder: { x: 0.5, areaM2: 1.5 },
-    oars: [{ id: 'P', side: 'port', rowers: 50, x: 18 }, { id: 'S', side: 'starboard', rowers: 50, x: 18 }] });
-  else vessel = Ship.createVessel({ ship, analysis, rudder: { x: 0.5, areaM2: 6 }, sails: [{ id: 's', type: sailType, areaM2: 500, x: 21, zCe: 12 }] });
+  if (kind === 'galley') vessel = Ship.createVessel({ ship: galleyShip, analysis: galleyAnalysis, rudder: { x: 0.5, areaM2: 1.5 }, windageAreaM2: Ship.sampleDesigns.galley.windageAreaM2, ...Ship.sampleDesigns.galley.tuning,
+    oars: Ship.sampleDesigns.galley.oars.map((o) => ({ ...o })) });
+  else vessel = Ship.createVessel({ ship, analysis, rudder: { x: 0.5, areaM2: 6 }, ...Ship.sampleDesigns.galleon.tuning, sails: [{ id: 's', type: sailType, areaM2: 1200, x: 21, zCe: 13 }] });
   vessel.state.psi = +$('hd').value * DEG; vessel.state.u = 2; trail = []; notes = [];
   $('bAnc').textContent = '錨を下ろす';
 }
