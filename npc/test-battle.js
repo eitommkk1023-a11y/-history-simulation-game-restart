@@ -4,27 +4,8 @@ const Bt = require('./battle.js');
 let ok = 0, ng = 0; const t = (name, cond, extra) => { if (cond) ok++; else { ng++; console.log('NG', name, extra == null ? '' : extra); } };
 const W20 = [['spear', true, 10], ['spear', false, 4], ['sword', true, 2], ['bow', false, 4]];   // 20人の部隊
 
-// ---------------------------------------------------------------- 場面
-function scenario(kind, seed, o) {
-  o = o || {};
-  const jig = (k) => (Bt.makeRng(seed * 7 + k)() - 0.5) * 60;
-  const patches = [{ x: 1330 + jig(1) * 0.5, y: 670 + jig(2) * 0.3, r: 55 }, { x: 1330 + jig(3) * 0.5, y: 930 + jig(4) * 0.3, r: 55 }, { x: 900 + jig(5) * 4, y: 300 + jig(6) * 4, r: 80 }, { x: 700 + jig(7) * 3, y: 1250 + jig(8) * 3, r: 70 }];
-  const F = Bt.makeField({ seed, size: 1600, hill: 8, patches }), B = Bt.create(F, seed);
-  const A = o.A || {}, aUnits = [];
-  for (let i = 0; i < 3; i++) aUnits.push(Bt.addUnit(B, { side: 1, x: 250, y: 700 + i * 100, facing: 0, weapons: W20, discipline: A.discipline == null ? 0.1 : A.discipline, name: 'A' + i }));
-  const ca = Bt.addCommander(B, 1, { x: 150, y: 800, doctrine: A.doctrine || 'frontal' }); ca.guess = { x: 1400, y: 800 }; ca.advanceAt = A.advanceAt;
-  if (kind === 'trickster') {
-    const bait = Bt.addUnit(B, { side: 2, x: 1100, y: 800, facing: Math.PI, weapons: W20, discipline: 0.9, name: 'bait' });
-    const a1 = Bt.addUnit(B, { side: 2, x: 1420, y: 660, facing: Math.PI, weapons: W20, discipline: 0.9, name: 'amb1' });
-    const a2 = Bt.addUnit(B, { side: 2, x: 1420, y: 940, facing: Math.PI, weapons: W20, discipline: 0.9, name: 'amb2' });
-    const cb = Bt.addCommander(B, 2, { x: 1500, y: 800, doctrine: 'scripted' });
-    cb.script = [[bait, { type: 'feint', x: 1100, y: 800, facing: Math.PI, contactR: 70, engageSec: 12, rx: 1480, ry: 800, turnFacing: Math.PI }], [a1, { type: 'ambush', x: patches[0].x, y: patches[0].y, facing: Math.PI / 2, springR: 160, minEnemies: 8 }], [a2, { type: 'ambush', x: patches[1].x, y: patches[1].y, facing: -Math.PI / 2, springR: 160, minEnemies: 8 }]];
-  } else {
-    for (let i = 0; i < 3; i++) Bt.addUnit(B, { side: 2, x: 1350, y: 700 + i * 100, facing: Math.PI, weapons: W20, discipline: 0.9, name: 'B' + i });
-    Bt.addCommander(B, 2, { x: 1500, y: 800, doctrine: 'cautious' });
-  }
-  return B;
-}
+// ---------------------------------------------------------------- 場面（battle.js の scenario を使う）
+const scenario = Bt.scenario;
 const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
 function play(kind, seed, o, secs) { const B = scenario(kind, seed, o); Bt.run(B, secs || 1200); const S = Bt.summary(B); const a = S.sides[1], b = S.sides[2]; const enc = S.log.filter(l => l.e === 'encircled' && (B.units.find(u => u.id === l.unit) || {}).side === 1).length; return { B, S, enc, aOk: a.ok, bOk: b.ok, aDown: a.down, bDown: b.down, bWin: b.ok > a.ok, aRear: a.rear, aFlank: a.flank, sprung: S.stats.sprung }; }
 
@@ -68,7 +49,7 @@ function play(kind, seed, o, secs) { const B = scenario(kind, seed, o); Bt.run(B
 // ---------------------------------------------------------------- 5. 偽装撤退と伏兵（本題）
 {
   const N = 24, base = [], trick = [], cautious = [], sprungC = [];
-  for (let sd = 1; sd <= N; sd++) { base.push(play('frontal', sd, { A: { discipline: 0.1 } })); trick.push(play('trickster', sd, { A: { discipline: 0.1 } })); cautious.push(play('trickster', sd, { A: { discipline: 0.9, doctrine: 'cautious' } })); }
+  for (let sd = 1; sd <= N; sd++) { base.push(play('hold', sd, { A: { discipline: 0.1 } })); trick.push(play('trickster', sd, { A: { discipline: 0.1 } })); cautious.push(play('trickster', sd, { A: { discipline: 0.9, doctrine: 'cautious' } })); }
   const win = a => a.filter(r => r.bWin).length / a.length, ratio = a => mean(a.map(r => (r.aDown + 1) / (r.bDown + 1)));
   console.log('野戦の統計（A＝西の軍・命令どおり前進し、規律が低く敵を深追いする。24回ずつ、各軍60人）');
   console.log(`  B＝持ち場を守る（基準）      ：Bの勝ち ${(win(base) * 100).toFixed(0)}% ／ A損害÷B損害 ${ratio(base).toFixed(2)} ／ Aの背面・側面の損害 ${mean(base.map(r => r.aRear + r.aFlank)).toFixed(1)}人`);

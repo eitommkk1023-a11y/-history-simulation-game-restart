@@ -252,6 +252,32 @@
     const sides = {}; for (const s of B.soldiers) { const o = sides[s.side] || (sides[s.side] = { total: 0, ok: 0, down: 0, flee: 0, rear: 0, flank: 0, front: 0 }); o.total++; if (s.state === 'ok') o.ok++; else if (s.state === 'down') { o.down++; o[s.downBy || 'front']++; } else o.flee++; }
     return { t: B.t, ended: B.ended, sides, stats: B.stats, log: B.log };
   }
-  const api = { face, hitFactor, angDiff, DT, makeRng, makeField, fieldFromWorld, create, addUnit, addCommander, issue, step, run, summary, WEAPON, SPEED, unitCenter };
+
+  // ---------------------------------------------------------------- 場面（試作用の配置）
+  // 被覆（森など）を、戦場に重ねる
+  function stampPatches(F, patches) { const n = F.n, res = F.res; for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const x = (i + 0.5) * res, y = (j + 0.5) * res; for (const p of patches) if (hyp(x - p.x, y - p.y) <= p.r) F.cover[j * n + i] = Math.max(F.cover[j * n + i], p.c == null ? 2 : p.c); } }
+  const W20 = [['spear', true, 10], ['spear', false, 4], ['sword', true, 2], ['bow', false, 4]];   // 20人の部隊
+  // kind：'trickster'（Bが偽装撤退と伏兵）／'hold'（Bは持ち場を守る）／'attack'（Bが前進して攻める）。o.A＝西の軍（規律・指揮の方針）、o.field＝使う戦場（無ければ作る）
+  function scenario(kind, seed, o) {
+    o = o || {};
+    const jig = (k) => (makeRng(seed * 7 + k)() - 0.5) * 60;
+    const patches = [{ x: 1330 + jig(1) * 0.5, y: 670 + jig(2) * 0.3, r: 55 }, { x: 1330 + jig(3) * 0.5, y: 930 + jig(4) * 0.3, r: 55 }, { x: 900 + jig(5) * 4, y: 300 + jig(6) * 4, r: 80 }, { x: 700 + jig(7) * 3, y: 1250 + jig(8) * 3, r: 70 }];
+    let F = o.field; if (F) stampPatches(F, patches); else F = makeField({ seed, size: 1600, hill: 8, patches });
+    const B = create(F, seed), A = o.A || {}, aUnits = [];
+    for (let i = 0; i < 3; i++) aUnits.push(addUnit(B, { side: 1, x: 250, y: 700 + i * 100, facing: 0, weapons: W20, discipline: A.discipline == null ? 0.1 : A.discipline, name: 'A' + i }));
+    const ca = addCommander(B, 1, { x: 150, y: 800, doctrine: A.doctrine || 'frontal' }); ca.guess = { x: 1400, y: 800 }; ca.advanceAt = A.advanceAt;
+    if (kind === 'trickster') {
+      const bait = addUnit(B, { side: 2, x: 1100, y: 800, facing: Math.PI, weapons: W20, discipline: 0.9, name: 'bait' });
+      const a1 = addUnit(B, { side: 2, x: 1420, y: 660, facing: Math.PI, weapons: W20, discipline: 0.9, name: 'amb1' });
+      const a2 = addUnit(B, { side: 2, x: 1420, y: 940, facing: Math.PI, weapons: W20, discipline: 0.9, name: 'amb2' });
+      const cb = addCommander(B, 2, { x: 1500, y: 800, doctrine: 'scripted' });
+      cb.script = [[bait, { type: 'feint', x: 1100, y: 800, facing: Math.PI, contactR: 70, engageSec: 12, rx: 1480, ry: 800, turnFacing: Math.PI }], [a1, { type: 'ambush', x: patches[0].x, y: patches[0].y, facing: Math.PI / 2, springR: 160, minEnemies: 8 }], [a2, { type: 'ambush', x: patches[1].x, y: patches[1].y, facing: -Math.PI / 2, springR: 160, minEnemies: 8 }]];
+    } else {
+      for (let i = 0; i < 3; i++) addUnit(B, { side: 2, x: 1350, y: 700 + i * 100, facing: Math.PI, weapons: W20, discipline: kind === 'attack' ? 0.3 : 0.9, name: 'B' + i });
+      const cb = addCommander(B, 2, { x: 1500, y: 800, doctrine: kind === 'attack' ? 'frontal' : 'cautious' }); cb.guess = { x: 250, y: 800 }; cb.advanceAt = 10;
+    }
+    return B;
+  }
+  const api = { scenario, stampPatches, W20, face, hitFactor, angDiff, DT, makeRng, makeField, fieldFromWorld, create, addUnit, addCommander, issue, step, run, summary, WEAPON, SPEED, unitCenter };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohBattle = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
