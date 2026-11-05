@@ -89,3 +89,12 @@ test('captain: saved and restored in the fleet, the voyage continues identically
   for (const k of ['x', 'y', 'headingDeg', 'u']) assert.ok(Math.abs(a[k] - b[k]) < 1e-6, k);
   assert.equal(g.get(id).captain.mode, f.get(id).captain.mode);
 });
+
+test('captain: the Pinta (mostly square rig) sails a downwind leg and arrives; her rig is judged square', () => {
+  const d = D.pinta, ship = createShip({ id: 'p', hull: d.hull, massItems: d.massItems }), analysis = analyzeHydrostatics(ship);
+  const v = createVessel({ ship, analysis, rudder: d.rudder, sails: d.sails.map((s) => ({ ...s })), windageAreaM2: d.windageAreaM2, ...d.tuning });
+  v.state.u = 2; v.state.psi = Math.PI; const env = open(), c = createCaptain(v), dest = { X: 100, Y: -1400 };
+  assert.equal(c.setDestination(env, dest).status, 'ok');
+  sail(v, c, env, 3000, () => c.mode === 'arrived');
+  assert.equal(c.mode, 'arrived'); assert.ok(dist(v, dest) < 250, `distance ${dist(v, dest)}`);
+});

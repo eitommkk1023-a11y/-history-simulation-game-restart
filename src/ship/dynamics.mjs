@@ -30,6 +30,8 @@ const sail_defaults = Object.freeze({ cnMax: 1.5, cnSlope: 4, cd0: 0.05 });
 export const SAIL_TYPES = Object.freeze({
   square: Object.freeze({ ...sail_defaults, cnMax: 1.3, cnSlope: 3, cd0: 0.2, minTrimDeg: 40 }),
   foreAndAft: Object.freeze({ ...sail_defaults, cnMax: 1.5, cnSlope: 4, cd0: 0.1, minTrimDeg: 8 }),
+  // Lateen: a long yard on a short mast; sets close to the wind but with more drag and less lift than a modern fore-and-aft sail.
+  lateen: Object.freeze({ ...sail_defaults, cnMax: 1.4, cnSlope: 3.5, cd0: 0.14, minTrimDeg: 12 }),
 });
 
 /** Heel angle (deg, signed) at which the righting moment equals the heeling moment (N m). */

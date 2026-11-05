@@ -82,7 +82,7 @@ export function createInterior(layout, { hull = null } = {}) {
   /** Thin wall rectangles around a room on a deck, with door openings removed (for rendering). */
   function wallRects(deck, thickness = 0.16) {
     const out = [];
-    for (const r of list.filter((q) => q.deck === deck)) {
+    for (const r of list.filter((q) => q.deck === deck && !q.open)) { // open rooms (weather decks) have no walls
       const ds = doors.filter((d) => d.deck === deck);
       const edge = (fixed, a0, a1, axis) => { // axis 'x': wall runs along x at y=fixed; 'y': runs along y at x=fixed
         const cuts = ds.filter((d) => (axis === 'x' ? d.along === 'x' && d.y0 <= fixed + 0.05 && d.y1 >= fixed - 0.05 : d.along === 'y' && d.x0 <= fixed + 0.05 && d.x1 >= fixed - 0.05))
@@ -91,7 +91,7 @@ export function createInterior(layout, { hull = null } = {}) {
         for (const [c0, c1] of cuts) { if (c0 > cur) out.push(seg(fixed, cur, c0, axis)); cur = Math.max(cur, c1); }
         if (cur < a1) out.push(seg(fixed, cur, a1, axis));
       };
-      const seg = (fixed, a, b, axis) => (axis === 'x' ? { x0: a, x1: b, y0: fixed - thickness / 2, y1: fixed + thickness / 2 } : { x0: fixed - thickness / 2, x1: fixed + thickness / 2, y0: a, y1: b });
+      const seg = (fixed, a, b, axis) => ({ ...(axis === 'x' ? { x0: a, x1: b, y0: fixed - thickness / 2, y1: fixed + thickness / 2 } : { x0: fixed - thickness / 2, x1: fixed + thickness / 2, y0: a, y1: b }), room: r.id, h: r.wallHeight });
       edge(r.y0, r.x0, r.x1, 'x'); edge(r.y1, r.x0, r.x1, 'x'); edge(r.x0, r.y0, r.y1, 'y'); edge(r.x1, r.y0, r.y1, 'y');
     }
     return out;

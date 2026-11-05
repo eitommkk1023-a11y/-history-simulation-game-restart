@@ -91,7 +91,7 @@
   const gameScene = () => cp.character?.parent ?? nat.scene; // the native view has its own scene (the one the player marker lives in)
   function disposeMesh(m) { m.group.parent?.remove(m.group); m.dispose(); }
   function makeMesh(rec) {
-    const o = Ship.buildShipObject(THREE_, { hull: Ship.sampleDesigns[rec.designId].hull, vessel: rec.vessel });
+    const o = Ship.buildShipObject(THREE_, { hull: Ship.sampleDesigns[rec.designId].hull, vessel: rec.vessel, visual: Ship.sampleDesigns[rec.designId].visual });
     gameScene().add(o.group);
     return o;
   }
@@ -236,7 +236,7 @@
     ui.toast = $('div', { id: 'shipToast' });
     ui.btn.onclick = () => { ui.panel.style.display = ui.panel.style.display === 'block' ? 'none' : 'block'; };
     ui.spawn = $('div', {}, [$('h4', { textContent: '船を出す（近くの海へ）' }),
-      ...Object.keys(Ship.sampleDesigns).map((d) => $('button', { textContent: d === 'galleon' ? 'ガレオン' : 'ガレー', onclick: () => spawn(d) }))]);
+      ...['pinta', 'galleon', 'galley'].map((d) => $('button', { textContent: Ship.sampleDesigns[d].label, onclick: () => spawn(d) }))]);
     ui.list = $('div'); ui.ctrl = $('div', { className: 'btns' }); ui.info = $('div', { className: 'info' });
     ui.bar = $('div', { id: 'shipBar' }, [ui.info, ui.ctrl]);
     ui.panel.append(ui.spawn, ui.list);
@@ -249,7 +249,7 @@
   function refreshList() {
     if (!ui.list) return;
     ui.list.replaceChildren($('h4', { textContent: '船' }), ...(fleet?.list() ?? []).map((r) => $('div', { className: 'row' }, [
-      $('span', { textContent: `${r.id}（${r.designId === 'galley' ? 'ガレー' : 'ガレオン'}）`, style: 'flex:1' }),
+      $('span', { textContent: `${r.id}（${Ship.sampleDesigns[r.designId].label}）`, style: 'flex:1' }),
       $('button', { textContent: boarded === r.id ? '降りる' : '乗る', className: boarded === r.id ? 'on' : '', onclick: () => (boarded === r.id ? disembark() : board(r.id)) }),
       $('button', { textContent: '消す', onclick: () => removeShip(r.id) })])));
     ui.ctrl.replaceChildren();

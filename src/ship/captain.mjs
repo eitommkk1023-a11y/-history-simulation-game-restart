@@ -20,6 +20,7 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 export const RIG_DEFAULTS = Object.freeze({
   square: Object.freeze({ tackDeg: 58 }),
   foreAndAft: Object.freeze({ tackDeg: 42 }),
+  lateen: Object.freeze({ tackDeg: 50 }),
   oars: Object.freeze({ tackDeg: 0 }),
 });
 
@@ -32,8 +33,10 @@ class MinHeap {
 
 export function createCaptain(vessel, { rig, tackDeg, minDepthM, clearanceM, arriveRadiusM = 60, knows = () => true, maxExpansions = 40000 } = {}) {
   const hp = vessel.params, st = vessel.state;
-  const sailType = vessel.sails[0]?.type ?? null;
-  const kind = rig ?? (sailType ?? 'oars');
+  // Mixed rigs are judged by sail area: mostly square sail -> behaves (and tacks) as a square rig.
+  const areaOf = (t) => vessel.sails.filter((x) => x.type === t).reduce((a, x) => a + x.areaM2, 0);
+  const dominant = vessel.sails.length ? ['square', 'lateen', 'foreAndAft'].sort((a, b) => areaOf(b) - areaOf(a))[0] : null;
+  const kind = rig ?? (dominant ?? 'oars');
   if (!RIG_DEFAULTS[kind]) throw new RangeError(`unknown rig ${kind}`);
   const tack = tackDeg ?? RIG_DEFAULTS[kind].tackDeg;
   const needDepth = minDepthM ?? hp.draftM * 1.5 + 3;

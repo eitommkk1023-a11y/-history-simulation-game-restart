@@ -66,3 +66,18 @@ test('rooms convert to flooding boxes with floors and ceilings from the decks', 
   assert.equal(boxes.weather.z1, 8.6);
   assert.equal(it.roomOf('gun', 20, 0).id, 'gundeck'); assert.equal(it.roomOf('gun', 10.2, 0), null, 'in the wall gap');
 });
+
+test('Pinta interior: cabin door, ladders, poop deck and hold', () => {
+  const ph = createHull(sampleDesigns.pinta.hull), pi = createInterior(sampleInteriors.pinta, { hull: ph });
+  assert.equal(pi.rooms.length, 5); assert.deepEqual(pi.startPosition().deck, 'weather');
+  // Walk aft from the main deck through the cabin door, then into the cabin; the cabin wall blocks off the door line.
+  let p = { x: 8, y: 0, deck: 'weather' }; for (let i = 0; i < 40; i++) p = pi.move(p, -0.1, 0);
+  assert.ok(p.x < 5 && p.x > 1, `inside the cabin, x=${p.x}`);
+  let q = { x: 8, y: 2.5, deck: 'weather' }; for (let i = 0; i < 40; i++) q = pi.move(q, -0.1, 0);
+  assert.ok(q.x > 5.5, `blocked by the cabin wall, x=${q.x}`);
+  const up = pi.climb({ x: 6.8, y: 1.6, deck: 'weather' }, 'l-poop'); assert.equal(up.deck, 'poop'); assert.ok(pi.walkable('poop', up.x, up.y));
+  const down = pi.climb({ x: 12, y: 1, deck: 'weather' }, 'l-hold'); assert.equal(down.deck, 'hold');
+  assert.deepEqual(pi.wallRects('weather').map((w) => w.room).filter((r, i, a) => a.indexOf(r) === i), ['cabin'], 'only the cabin has walls on the main deck');
+  assert.equal(pi.wallRects('weather')[0].h, 1.3);
+  const boxes = Object.fromEntries(pi.toFloodingBoxes(5.5).map((b) => [b.id, b.box])); assert.equal(boxes.hold.z0, 1.3); assert.equal(boxes.hold.z1, 3.6);
+});

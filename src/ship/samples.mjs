@@ -54,8 +54,9 @@ export function galleyMassItems() {
 }
 
 /** Plain-data designs (JSON-safe) for the fleet. Placeholder values, NOT historical specifications. */
-export const sampleDesigns = Object.freeze({
+export const sampleDesigns = {
   galleon: Object.freeze({
+    label: 'ガレオン',
     hull: galleonLikeHull(), massItems: galleonLikeMassItems(),
     sails: [{ id: 'main', type: 'foreAndAft', areaM2: 1200, x: 21, zCe: 13 }], rudder: { x: 0.5, areaM2: 6 },
     openings: [{ id: 'gunport', x: 20, y: 5.3, z: 5.2 }],
@@ -64,19 +65,20 @@ export const sampleDesigns = Object.freeze({
     tuning: { roughnessCf: 0.0015, form: 0.4, waveK: 40, keelLiftSlope: 0.5, windageAreaM2: 150 },
   }),
   galley: Object.freeze({
+    label: 'ガレー',
     hull: galleyHull(), massItems: galleyMassItems(), sails: [], rudder: { x: 0.5, areaM2: 1.5 },
     oars: [{ id: 'P', side: 'port', rowers: 85, x: 18 }, { id: 'S', side: 'starboard', rowers: 85, x: 18 }],
     tuning: { roughnessCf: 0.0005, form: 0.15, waveK: 1, keelLiftSlope: 0.5, windageAreaM2: 25 },
     interiorId: 'galley',
   }),
-});
+};
 
 /** Interior layouts (EXPERIMENTAL placeholders, NOT historical plans). x from the stern (0) to the bow, y + starboard, z above the keel. */
-export const sampleInteriors = Object.freeze({
+export const sampleInteriors = {
   galleon: Object.freeze({
-    decks: [{ id: 'weather', z: 8.0, name: '上甲板' }, { id: 'gun', z: 5.2, name: '砲甲板' }, { id: 'hold', z: 2.4, name: '船倉' }],
+    decks: [{ id: 'weather', z: 8.0, name: '上甲板', exterior: true }, { id: 'gun', z: 5.2, name: '砲甲板' }, { id: 'hold', z: 2.4, name: '船倉' }],
     rooms: [
-      { id: 'weather', deck: 'weather', name: '上甲板', use: 'deck', x0: 3, x1: 38, y0: -6, y1: 6 },
+      { id: 'weather', deck: 'weather', name: '上甲板', use: 'deck', open: true, floor: false, x0: 3, x1: 38, y0: -6, y1: 6 },
       { id: 'captain', deck: 'gun', name: '船長室', use: 'cabin', x0: 2.5, x1: 10, y0: -4.2, y1: 4.2 },
       { id: 'gundeck', deck: 'gun', name: '砲甲板', use: 'crew', x0: 10.4, x1: 33, y0: -5.2, y1: 5.2 },
       { id: 'bosun', deck: 'gun', name: '艏倉庫', use: 'store', x0: 33.4, x1: 37.5, y0: -2.6, y1: 2.6 },
@@ -94,7 +96,69 @@ export const sampleInteriors = Object.freeze({
     ],
   }),
   galley: Object.freeze({
-    decks: [{ id: 'deck', z: 2.2, name: '甲板' }],
-    rooms: [{ id: 'deck', deck: 'deck', name: '甲板', use: 'deck', x0: 3, x1: 33.5, y0: -3, y1: 3 }],
+    decks: [{ id: 'deck', z: 2.2, name: '甲板', exterior: true }],
+    rooms: [{ id: 'deck', deck: 'deck', name: '甲板', use: 'deck', open: true, floor: false, x0: 3, x1: 33.5, y0: -3, y1: 3 }],
   }),
+};
+
+/**
+ * Pinta-like caravela redonda (square sails on fore and main, lateen mizzen). Dimensions are rough, UNVERIFIED
+ * reconstruction values (about 21 m long, 6.4 m beam, ~99 t displaced), NOT a documented plan; check against
+ * reconstruction sources before relying on them.
+ */
+export function pintaHull() {
+  return {
+    stations: [
+      { x: 0, points: [{ z: 1.0, b: 0.9 }, { z: 2.0, b: 1.5 }, { z: 3.6, b: 1.9 }] },
+      { x: 2, points: [{ z: 0.5, b: 0.6 }, { z: 1.2, b: 1.9 }, { z: 2.2, b: 2.6 }, { z: 3.6, b: 2.7 }] },
+      { x: 6, points: [{ z: 0.2, b: 0.4 }, { z: 0.8, b: 2.2 }, { z: 1.8, b: 3.0 }, { z: 3.0, b: 3.15 }, { z: 3.6, b: 3.05 }] },
+      { x: 11, points: [{ z: 0, b: 0.4 }, { z: 0.8, b: 2.4 }, { z: 1.8, b: 3.1 }, { z: 3.0, b: 3.2 }, { z: 3.6, b: 3.1 }] },
+      { x: 15.5, points: [{ z: 0.3, b: 0.35 }, { z: 1.0, b: 2.0 }, { z: 2.0, b: 2.8 }, { z: 3.0, b: 3.0 }, { z: 3.6, b: 2.9 }] },
+      { x: 18.5, points: [{ z: 1.0, b: 0.3 }, { z: 2.0, b: 1.4 }, { z: 3.0, b: 2.0 }, { z: 3.6, b: 2.1 }] },
+      { x: 21, points: [{ z: 2.0, b: 0.1 }, { z: 3.0, b: 0.5 }, { z: 3.6, b: 0.7 }] },
+    ],
+  };
+}
+export function pintaMassItems() {
+  return [
+    { id: 'hull-structure', massKg: 34000, x: 8.6, y: 0, z: 1.7 },
+    { id: 'ballast', massKg: 44000, x: 9.0, y: 0, z: 0.6 },
+    { id: 'cargo-stores', massKg: 14000, x: 11, y: 0, z: 1.5 },
+    { id: 'crew', massKg: 2100, x: 10, y: 0, z: 2.8 }, // about 26 men x 80 kg
+    { id: 'rig-sails', massKg: 5200, x: 9.5, y: 0, z: 8.2 },
+  ];
+}
+sampleDesigns.pinta = Object.freeze({
+  label: 'ピンタ号（キャラベル）',
+  hull: pintaHull(), massItems: pintaMassItems(),
+  sails: [
+    { id: 'main', type: 'square', areaM2: 120, x: 9, zCe: 7.0, shape: 'square', cross: true },
+    { id: 'fore', type: 'square', areaM2: 55, x: 16, zCe: 5.8, shape: 'square', cross: true },
+    { id: 'mizzen', type: 'lateen', areaM2: 60, x: 3.5, zCe: 6.0, shape: 'lateen' },
+  ],
+  rudder: { x: 0.3, areaM2: 1.6 },
+  tuning: { roughnessCf: 0.0015, form: 0.4, waveK: 40, keelLiftSlope: 0.5, windageAreaM2: 30 },
+  visual: { bowsprit: true, flag: true },
+  interiorId: 'pinta',
 });
+Object.freeze(sampleDesigns);
+
+sampleInteriors.pinta = Object.freeze({
+  decks: [{ id: 'poop', z: 4.9, name: '船尾甲板', exterior: true }, { id: 'weather', z: 3.6, name: '主甲板', exterior: true }, { id: 'hold', z: 1.3, name: '船倉' }],
+  rooms: [
+    { id: 'weather', deck: 'weather', name: '主甲板', use: 'deck', open: true, floor: false, x0: 6.0, x1: 19.6, y0: -3.2, y1: 3.2 },
+    { id: 'poop', deck: 'poop', name: '船尾甲板', use: 'deck', open: true, x0: 0.8, x1: 5.6, y0: -1.8, y1: 1.8 },
+    { id: 'cabin', deck: 'weather', name: '船尾の船室', use: 'cabin', wallHeight: 1.3, hideDecks: ['poop'], x0: 1.0, x1: 5.4, y0: -2.0, y1: 2.0 },
+    { id: 'hold', deck: 'hold', name: '船倉（乗員区画・貨物）', use: 'cargo', x0: 3.5, x1: 17.0, y0: -2.4, y1: 2.4 },
+    { id: 'stores', deck: 'hold', name: '食料庫', use: 'store', x0: 17.4, x1: 19.4, y0: -1.2, y1: 1.2 },
+  ],
+  doors: [
+    { id: 'd-cabin', deck: 'weather', along: 'y', x0: 5.3, x1: 6.1, y0: -0.7, y1: 0.7 },
+    { id: 'd-stores', deck: 'hold', along: 'y', x0: 16.9, x1: 17.5, y0: -0.7, y1: 0.7 },
+  ],
+  ladders: [
+    { id: 'l-poop', name: 'はしご（主甲板↔船尾甲板）', a: { deck: 'weather', x: 6.6, y: 1.8 }, b: { deck: 'poop', x: 5.0, y: 1.4 } },
+    { id: 'l-hold', name: '昇降口（主甲板↔船倉）', a: { deck: 'weather', x: 12, y: 1.0 }, b: { deck: 'hold', x: 12, y: 1.0 } },
+  ],
+});
+Object.freeze(sampleInteriors);

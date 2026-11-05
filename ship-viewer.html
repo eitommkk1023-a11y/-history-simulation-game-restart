@@ -441,6 +441,8 @@ const sail_defaults = Object.freeze({ cnMax: 1.5, cnSlope: 4, cd0: 0.05 });
 const SAIL_TYPES = Object.freeze({
   square: Object.freeze({ ...sail_defaults, cnMax: 1.3, cnSlope: 3, cd0: 0.2, minTrimDeg: 40 }),
   foreAndAft: Object.freeze({ ...sail_defaults, cnMax: 1.5, cnSlope: 4, cd0: 0.1, minTrimDeg: 8 }),
+  // Lateen: a long yard on a short mast; sets close to the wind but with more drag and less lift than a modern fore-and-aft sail.
+  lateen: Object.freeze({ ...sail_defaults, cnMax: 1.4, cnSlope: 3.5, cd0: 0.14, minTrimDeg: 12 }),
 });
 
 /** Heel angle (deg, signed) at which the righting moment equals the heeling moment (N m). */
@@ -990,8 +992,9 @@ function galleyMassItems() {
 }
 
 /** Plain-data designs (JSON-safe) for the fleet. Placeholder values, NOT historical specifications. */
-const sampleDesigns = Object.freeze({
+const sampleDesigns = {
   galleon: Object.freeze({
+    label: 'ガレオン',
     hull: galleonLikeHull(), massItems: galleonLikeMassItems(),
     sails: [{ id: 'main', type: 'foreAndAft', areaM2: 1200, x: 21, zCe: 13 }], rudder: { x: 0.5, areaM2: 6 },
     openings: [{ id: 'gunport', x: 20, y: 5.3, z: 5.2 }],
@@ -1000,19 +1003,20 @@ const sampleDesigns = Object.freeze({
     tuning: { roughnessCf: 0.0015, form: 0.4, waveK: 40, keelLiftSlope: 0.5, windageAreaM2: 150 },
   }),
   galley: Object.freeze({
+    label: 'ガレー',
     hull: galleyHull(), massItems: galleyMassItems(), sails: [], rudder: { x: 0.5, areaM2: 1.5 },
     oars: [{ id: 'P', side: 'port', rowers: 85, x: 18 }, { id: 'S', side: 'starboard', rowers: 85, x: 18 }],
     tuning: { roughnessCf: 0.0005, form: 0.15, waveK: 1, keelLiftSlope: 0.5, windageAreaM2: 25 },
     interiorId: 'galley',
   }),
-});
+};
 
 /** Interior layouts (EXPERIMENTAL placeholders, NOT historical plans). x from the stern (0) to the bow, y + starboard, z above the keel. */
-const sampleInteriors = Object.freeze({
+const sampleInteriors = {
   galleon: Object.freeze({
-    decks: [{ id: 'weather', z: 8.0, name: '上甲板' }, { id: 'gun', z: 5.2, name: '砲甲板' }, { id: 'hold', z: 2.4, name: '船倉' }],
+    decks: [{ id: 'weather', z: 8.0, name: '上甲板', exterior: true }, { id: 'gun', z: 5.2, name: '砲甲板' }, { id: 'hold', z: 2.4, name: '船倉' }],
     rooms: [
-      { id: 'weather', deck: 'weather', name: '上甲板', use: 'deck', x0: 3, x1: 38, y0: -6, y1: 6 },
+      { id: 'weather', deck: 'weather', name: '上甲板', use: 'deck', open: true, floor: false, x0: 3, x1: 38, y0: -6, y1: 6 },
       { id: 'captain', deck: 'gun', name: '船長室', use: 'cabin', x0: 2.5, x1: 10, y0: -4.2, y1: 4.2 },
       { id: 'gundeck', deck: 'gun', name: '砲甲板', use: 'crew', x0: 10.4, x1: 33, y0: -5.2, y1: 5.2 },
       { id: 'bosun', deck: 'gun', name: '艏倉庫', use: 'store', x0: 33.4, x1: 37.5, y0: -2.6, y1: 2.6 },
@@ -1030,12 +1034,74 @@ const sampleInteriors = Object.freeze({
     ],
   }),
   galley: Object.freeze({
-    decks: [{ id: 'deck', z: 2.2, name: '甲板' }],
-    rooms: [{ id: 'deck', deck: 'deck', name: '甲板', use: 'deck', x0: 3, x1: 33.5, y0: -3, y1: 3 }],
+    decks: [{ id: 'deck', z: 2.2, name: '甲板', exterior: true }],
+    rooms: [{ id: 'deck', deck: 'deck', name: '甲板', use: 'deck', open: true, floor: false, x0: 3, x1: 33.5, y0: -3, y1: 3 }],
   }),
-});
+};
 
-return { boxBarge, galleonLikeHull, galleonLikeMassItems, galleyHull, galleyMassItems, sampleDesigns, sampleInteriors };
+/**
+ * Pinta-like caravela redonda (square sails on fore and main, lateen mizzen). Dimensions are rough, UNVERIFIED
+ * reconstruction values (about 21 m long, 6.4 m beam, ~99 t displaced), NOT a documented plan; check against
+ * reconstruction sources before relying on them.
+ */
+function pintaHull() {
+  return {
+    stations: [
+      { x: 0, points: [{ z: 1.0, b: 0.9 }, { z: 2.0, b: 1.5 }, { z: 3.6, b: 1.9 }] },
+      { x: 2, points: [{ z: 0.5, b: 0.6 }, { z: 1.2, b: 1.9 }, { z: 2.2, b: 2.6 }, { z: 3.6, b: 2.7 }] },
+      { x: 6, points: [{ z: 0.2, b: 0.4 }, { z: 0.8, b: 2.2 }, { z: 1.8, b: 3.0 }, { z: 3.0, b: 3.15 }, { z: 3.6, b: 3.05 }] },
+      { x: 11, points: [{ z: 0, b: 0.4 }, { z: 0.8, b: 2.4 }, { z: 1.8, b: 3.1 }, { z: 3.0, b: 3.2 }, { z: 3.6, b: 3.1 }] },
+      { x: 15.5, points: [{ z: 0.3, b: 0.35 }, { z: 1.0, b: 2.0 }, { z: 2.0, b: 2.8 }, { z: 3.0, b: 3.0 }, { z: 3.6, b: 2.9 }] },
+      { x: 18.5, points: [{ z: 1.0, b: 0.3 }, { z: 2.0, b: 1.4 }, { z: 3.0, b: 2.0 }, { z: 3.6, b: 2.1 }] },
+      { x: 21, points: [{ z: 2.0, b: 0.1 }, { z: 3.0, b: 0.5 }, { z: 3.6, b: 0.7 }] },
+    ],
+  };
+}
+function pintaMassItems() {
+  return [
+    { id: 'hull-structure', massKg: 34000, x: 8.6, y: 0, z: 1.7 },
+    { id: 'ballast', massKg: 44000, x: 9.0, y: 0, z: 0.6 },
+    { id: 'cargo-stores', massKg: 14000, x: 11, y: 0, z: 1.5 },
+    { id: 'crew', massKg: 2100, x: 10, y: 0, z: 2.8 }, // about 26 men x 80 kg
+    { id: 'rig-sails', massKg: 5200, x: 9.5, y: 0, z: 8.2 },
+  ];
+}
+sampleDesigns.pinta = Object.freeze({
+  label: 'ピンタ号（キャラベル）',
+  hull: pintaHull(), massItems: pintaMassItems(),
+  sails: [
+    { id: 'main', type: 'square', areaM2: 120, x: 9, zCe: 7.0, shape: 'square', cross: true },
+    { id: 'fore', type: 'square', areaM2: 55, x: 16, zCe: 5.8, shape: 'square', cross: true },
+    { id: 'mizzen', type: 'lateen', areaM2: 60, x: 3.5, zCe: 6.0, shape: 'lateen' },
+  ],
+  rudder: { x: 0.3, areaM2: 1.6 },
+  tuning: { roughnessCf: 0.0015, form: 0.4, waveK: 40, keelLiftSlope: 0.5, windageAreaM2: 30 },
+  visual: { bowsprit: true, flag: true },
+  interiorId: 'pinta',
+});
+Object.freeze(sampleDesigns);
+
+sampleInteriors.pinta = Object.freeze({
+  decks: [{ id: 'poop', z: 4.9, name: '船尾甲板', exterior: true }, { id: 'weather', z: 3.6, name: '主甲板', exterior: true }, { id: 'hold', z: 1.3, name: '船倉' }],
+  rooms: [
+    { id: 'weather', deck: 'weather', name: '主甲板', use: 'deck', open: true, floor: false, x0: 6.0, x1: 19.6, y0: -3.2, y1: 3.2 },
+    { id: 'poop', deck: 'poop', name: '船尾甲板', use: 'deck', open: true, x0: 0.8, x1: 5.6, y0: -1.8, y1: 1.8 },
+    { id: 'cabin', deck: 'weather', name: '船尾の船室', use: 'cabin', wallHeight: 1.3, hideDecks: ['poop'], x0: 1.0, x1: 5.4, y0: -2.0, y1: 2.0 },
+    { id: 'hold', deck: 'hold', name: '船倉（乗員区画・貨物）', use: 'cargo', x0: 3.5, x1: 17.0, y0: -2.4, y1: 2.4 },
+    { id: 'stores', deck: 'hold', name: '食料庫', use: 'store', x0: 17.4, x1: 19.4, y0: -1.2, y1: 1.2 },
+  ],
+  doors: [
+    { id: 'd-cabin', deck: 'weather', along: 'y', x0: 5.3, x1: 6.1, y0: -0.7, y1: 0.7 },
+    { id: 'd-stores', deck: 'hold', along: 'y', x0: 16.9, x1: 17.5, y0: -0.7, y1: 0.7 },
+  ],
+  ladders: [
+    { id: 'l-poop', name: 'はしご（主甲板↔船尾甲板）', a: { deck: 'weather', x: 6.6, y: 1.8 }, b: { deck: 'poop', x: 5.0, y: 1.4 } },
+    { id: 'l-hold', name: '昇降口（主甲板↔船倉）', a: { deck: 'weather', x: 12, y: 1.0 }, b: { deck: 'hold', x: 12, y: 1.0 } },
+  ],
+});
+Object.freeze(sampleInteriors);
+
+return { boxBarge, galleonLikeHull, galleonLikeMassItems, galleyHull, galleyMassItems, sampleDesigns, sampleInteriors, pintaHull, pintaMassItems };
 })();
 const M_captain = (() => {
 /**
@@ -1060,6 +1126,7 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const RIG_DEFAULTS = Object.freeze({
   square: Object.freeze({ tackDeg: 58 }),
   foreAndAft: Object.freeze({ tackDeg: 42 }),
+  lateen: Object.freeze({ tackDeg: 50 }),
   oars: Object.freeze({ tackDeg: 0 }),
 });
 
@@ -1072,8 +1139,10 @@ class MinHeap {
 
 function createCaptain(vessel, { rig, tackDeg, minDepthM, clearanceM, arriveRadiusM = 60, knows = () => true, maxExpansions = 40000 } = {}) {
   const hp = vessel.params, st = vessel.state;
-  const sailType = vessel.sails[0]?.type ?? null;
-  const kind = rig ?? (sailType ?? 'oars');
+  // Mixed rigs are judged by sail area: mostly square sail -> behaves (and tacks) as a square rig.
+  const areaOf = (t) => vessel.sails.filter((x) => x.type === t).reduce((a, x) => a + x.areaM2, 0);
+  const dominant = vessel.sails.length ? ['square', 'lateen', 'foreAndAft'].sort((a, b) => areaOf(b) - areaOf(a))[0] : null;
+  const kind = rig ?? (dominant ?? 'oars');
   if (!RIG_DEFAULTS[kind]) throw new RangeError(`unknown rig ${kind}`);
   const tack = tackDeg ?? RIG_DEFAULTS[kind].tackDeg;
   const needDepth = minDepthM ?? hp.draftM * 1.5 + 3;
@@ -1534,7 +1603,7 @@ function createInterior(layout, { hull = null } = {}) {
   /** Thin wall rectangles around a room on a deck, with door openings removed (for rendering). */
   function wallRects(deck, thickness = 0.16) {
     const out = [];
-    for (const r of list.filter((q) => q.deck === deck)) {
+    for (const r of list.filter((q) => q.deck === deck && !q.open)) { // open rooms (weather decks) have no walls
       const ds = doors.filter((d) => d.deck === deck);
       const edge = (fixed, a0, a1, axis) => { // axis 'x': wall runs along x at y=fixed; 'y': runs along y at x=fixed
         const cuts = ds.filter((d) => (axis === 'x' ? d.along === 'x' && d.y0 <= fixed + 0.05 && d.y1 >= fixed - 0.05 : d.along === 'y' && d.x0 <= fixed + 0.05 && d.x1 >= fixed - 0.05))
@@ -1543,7 +1612,7 @@ function createInterior(layout, { hull = null } = {}) {
         for (const [c0, c1] of cuts) { if (c0 > cur) out.push(seg(fixed, cur, c0, axis)); cur = Math.max(cur, c1); }
         if (cur < a1) out.push(seg(fixed, cur, a1, axis));
       };
-      const seg = (fixed, a, b, axis) => (axis === 'x' ? { x0: a, x1: b, y0: fixed - thickness / 2, y1: fixed + thickness / 2 } : { x0: fixed - thickness / 2, x1: fixed + thickness / 2, y0: a, y1: b });
+      const seg = (fixed, a, b, axis) => ({ ...(axis === 'x' ? { x0: a, x1: b, y0: fixed - thickness / 2, y1: fixed + thickness / 2 } : { x0: fixed - thickness / 2, x1: fixed + thickness / 2, y0: a, y1: b }), room: r.id, h: r.wallHeight });
       edge(r.y0, r.x0, r.x1, 'x'); edge(r.y1, r.x0, r.x1, 'x'); edge(r.x0, r.y0, r.y1, 'y'); edge(r.x1, r.y0, r.y1, 'y');
     }
     return out;
@@ -1574,7 +1643,7 @@ const M_ship_render = (() => {
  */
 const { createHull } = M_hull_geometry;
 const { buildHullMesh } = M_hull_mesh;
-function buildShipObject(T, { hull: hullSpec, vessel }) {
+function buildShipObject(T, { hull: hullSpec, vessel, visual = {} }) {
   const hull = createHull(hullSpec), mesh = buildHullMesh(hull);
   const g = new T.BufferGeometry();
   g.setAttribute('position', new T.BufferAttribute(mesh.positions, 3)); g.setAttribute('normal', new T.BufferAttribute(mesh.normals, 3)); g.setIndex(new T.BufferAttribute(mesh.indices, 1));
@@ -1589,9 +1658,23 @@ function buildShipObject(T, { hull: hullSpec, vessel }) {
     const mast = new T.Mesh(new T.CylinderGeometry(0.25, 0.35, mastH, 6), new T.MeshStandardMaterial({ color: 0x5a432a }));
     mast.position.set(0, top + mastH / 2, zMast); inner.add(mast); masts.push(mast);
     const side = Math.sqrt(s.areaM2), pivot = new T.Group(); pivot.position.set(0, top + mastH * 0.35, zMast);
-    const sailGeo = new T.PlaneGeometry(side * 1.0, side * 0.9); sailGeo.rotateY(Math.PI / 2); sailGeo.translate(0, 0, side * 0.5);
-    pivot.add(new T.Mesh(sailGeo, new T.MeshStandardMaterial({ color: 0xf1ead8, side: T.DoubleSide, roughness: 1 })));
+    let sailGeo, mat = { color: 0xf1ead8, side: T.DoubleSide, roughness: 1 };
+    if (s.shape === 'square') { sailGeo = new T.PlaneGeometry(side * 1.25, side * 0.8); sailGeo.rotateY(Math.PI / 2); } // centred on the mast, yard athwartships at trim 90
+    else if (s.shape === 'lateen') { // triangle: tack at the mast foot, head up and aft along the yard
+      const c = side * 1.7, h = side * 1.7 * 0.5 * 0.7; sailGeo = new T.BufferGeometry();
+      sailGeo.setAttribute('position', new T.BufferAttribute(new Float32Array([0, 0, 0, 0, h, c * 0.15, 0, 0, c]), 3)); sailGeo.setIndex([0, 1, 2]); sailGeo.computeVertexNormals();
+    } else { sailGeo = new T.PlaneGeometry(side * 1.0, side * 0.9); sailGeo.rotateY(Math.PI / 2); sailGeo.translate(0, 0, side * 0.5); }
+    if (s.cross && typeof document !== 'undefined') mat.map = crossTexture(T);
+    pivot.add(new T.Mesh(sailGeo, new T.MeshStandardMaterial(mat)));
     inner.add(pivot); sails.push({ sail: s, pivot });
+  }
+  if (visual.bowsprit) { // a spar angled up over the bow
+    const bs = new T.Mesh(new T.CylinderGeometry(0.12, 0.2, 6, 6), new T.MeshStandardMaterial({ color: 0x5a432a }));
+    bs.rotation.x = -Math.PI / 2 + 0.4; bs.position.set(0, top + 0.5, -L - 1.4); inner.add(bs); masts.push(bs);
+  }
+  if (visual.flag && vessel.sails.length) { // pennant at the head of the tallest mast
+    const s0 = vessel.sails.reduce((a, b) => (b.zCe > a.zCe ? b : a)), mastH = Math.max(8, s0.zCe * 1.5);
+    const f = new T.Mesh(new T.PlaneGeometry(1.8, 1.0), new T.MeshStandardMaterial({ color: 0xb3262e, side: T.DoubleSide })); f.rotation.y = Math.PI / 2; f.position.set(0, top + mastH + 0.6, -(s0.x - hull.xMin) + 0.9); inner.add(f); masts.push(f);
   }
   const group = new T.Group(); group.rotation.order = 'YXZ'; group.add(inner); group.frustumCulled = false;
   // Walkable deck rectangle in group coordinates (the waterline origin is at the CG), kept inside the rails.
@@ -1599,6 +1682,17 @@ function buildShipObject(T, { hull: hullSpec, vessel }) {
   const deck = { y: top - p.draftM + 0.1, halfBeam, zMin: -(L - offZ) + 0.12 * L, zMax: offZ - 0.12 * L };
   const frame = { cgX: p.cgX, draft: p.draftM };
   return { group, sails, masts, hullMesh, frame, deckY: deck.y, deck, L, interiorGroups: new Map(), dispose() { group.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); }); } };
+}
+
+/** Red cross on white cloth (cross of the Order of Christ, flared arms), drawn once and shared. */
+let crossTex = null;
+function crossTexture(T) {
+  if (crossTex) return crossTex;
+  const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d');
+  g.fillStyle = '#f1ead8'; g.fillRect(0, 0, 256, 256); g.fillStyle = '#b3262e';
+  const arm = (dx, dy) => { g.save(); g.translate(128, 128); g.rotate(Math.atan2(dy, dx)); g.beginPath(); g.moveTo(10, -9); g.lineTo(62, -9); g.lineTo(88, -34); g.lineTo(88, 34); g.lineTo(62, 9); g.lineTo(10, 9); g.closePath(); g.fill(); g.restore(); };
+  arm(1, 0); arm(-1, 0); arm(0, 1); arm(0, -1); g.beginPath(); g.arc(128, 128, 14, 0, 7); g.fill();
+  crossTex = new T.CanvasTexture(c); return crossTex;
 }
 
 /** Sail angles and reefing follow the vessel (call every frame). Position and rotation are set by the caller. */
@@ -1618,25 +1712,28 @@ function addInterior(T, obj, interior, { weatherDeck = 'weather', wallHeight = 2
   const place = (mesh, x0, x1, y0, y1, z, h) => { mesh.position.set((y0 + y1) / 2, z - draft + h / 2, cgX - (x0 + x1) / 2); return mesh; };
   for (const deck of interior.decks) {
     const g = new T.Group(); g.visible = false;
-    if (deck.id !== weatherDeck) {
+    {
       for (const r of interior.floorRects(deck.id)) {
+        if (r.floor === false) continue; // e.g. the main deck, which is the hull's own top
+
         const m = new T.Mesh(new T.BoxGeometry(r.y1 - r.y0, 0.12, r.x1 - r.x0), new T.MeshLambertMaterial({ color: USE_COLOR[r.use] ?? 0x7a6038 }));
         g.add(place(m, r.x0, r.x1, r.y0, r.y1, deck.z - 0.12, 0.12));
       }
       for (const w of interior.wallRects(deck.id)) {
-        const m = new T.Mesh(new T.BoxGeometry(w.y1 - w.y0, wallHeight, w.x1 - w.x0), new T.MeshLambertMaterial({ color: 0x5f4a2e, transparent: true, opacity: 0.92 }));
-        g.add(place(m, w.x0, w.x1, w.y0, w.y1, deck.z, wallHeight));
+        const h = w.h ?? wallHeight, m = new T.Mesh(new T.BoxGeometry(w.y1 - w.y0, h, w.x1 - w.x0), new T.MeshLambertMaterial({ color: 0x5f4a2e, transparent: true, opacity: 0.92 }));
+        g.add(place(m, w.x0, w.x1, w.y0, w.y1, deck.z, h));
       }
     }
     obj.group.add(g); obj.interiorGroups.set(deck.id, g);
   }
-  obj.interior = interior; obj.weatherDeck = weatherDeck;
+  obj.interior = interior; obj.weatherDeck = interior.decks.find((d) => d.exterior)?.id ?? weatherDeck;
 }
 
-/** Cutaway: show only `deckId`'s interior; below the weather deck the hull turns see-through. */
-function setViewDeck(obj, deckId) {
-  for (const [id, g] of obj.interiorGroups) g.visible = id === deckId;
-  const below = deckId !== obj.weatherDeck && obj.interiorGroups.size > 1;
+/** Cutaway: exterior decks stay visible; below decks show only the deck you are on and the hull turns see-through. A room may hide decks above it (`hideDecks`). */
+function setViewDeck(obj, deckId, roomId = null) {
+  const decks = obj.interior.decks, here = decks.find((d) => d.id === deckId), below = !here?.exterior;
+  const room = roomId && obj.interior.rooms.find((r) => r.id === roomId), hidden = new Set(room?.hideDecks ?? []);
+  for (const d of decks) obj.interiorGroups.get(d.id).visible = (d.exterior ? !below : d.id === deckId) && !hidden.has(d.id);
   for (const { pivot } of obj.sails) pivot.visible = !below; // sails and masts would block the cutaway view
   for (const m of obj.masts) m.visible = !below;
   const m = obj.hullMesh.material; if (m.transparent !== below) { m.transparent = below; m.opacity = below ? 0.22 : 1; m.depthWrite = !below; m.needsUpdate = true; }

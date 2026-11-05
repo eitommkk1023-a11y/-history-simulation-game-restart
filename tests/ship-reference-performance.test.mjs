@@ -41,3 +41,19 @@ test('galley (170 rowers): sustained and burst speeds, fatigue, and turning', ()
   const s = t.snapshot(), radius = Math.hypot(s.u, s.v) / (s.yawRateDegS * Math.PI / 180);
   inRange(radius, 0.8 * 36, 3 * 36, 'turning radius (m)');
 });
+
+// Pinta-like caravela redonda (mixed square/lateen rig), ~99 t. Ranges are the author's rough estimates, NOT sourced figures.
+import { measureDesign } from '../tools/ship-calibration.mjs';
+const pinta = measureDesign('pinta', { headings: [40, 60, 70, 90, 130, 180], seconds: 300 });
+const pAt = (h) => pinta.find((r) => r.h === h);
+
+test('Pinta: reaching and running at a few knots in a fresh breeze, in the range of small square-rigged ships', () => {
+  for (const h of [90, 130, 180]) inRange(pAt(h).kt, 4.5, 7.5, `Pinta speed at ${h} deg`);
+});
+
+test('Pinta: close to the wind she makes little or no headway, with large leeway', () => {
+  assert.ok(pAt(40).vmg < 0, `VMG at 40 deg ${pAt(40).vmg}`);
+  const best = Math.max(...pinta.filter((r) => r.h <= 70).map((r) => r.vmg));
+  inRange(best, -0.5, 1.5, 'Pinta best upwind VMG');
+  inRange(pAt(70).leeway, 5, 12, 'Pinta leeway at 70 deg');
+});

@@ -79,7 +79,7 @@ const buoy = new T.Mesh(new T.CylinderGeometry(1, 1, 6, 8), new T.MeshLambertMat
 let fleet = null, objs = new Map(), boarded = null, speedX = 1, ctl = {}, players = new Map();
 function newFleet() { fleet = Ship.createFleet({ nearRadiusM: 1e9, farRadiusM: 1e9 }); for (const [id, d] of Object.entries(Ship.sampleDesigns)) fleet.registerDesign(id, d); }
 function makeObj(rec) {
-  const o = Ship.buildShipObject(T, { hull: Ship.sampleDesigns[rec.designId].hull, vessel: rec.vessel }); scene.add(o.group);
+  const o = Ship.buildShipObject(T, { hull: Ship.sampleDesigns[rec.designId].hull, vessel: rec.vessel, visual: Ship.sampleDesigns[rec.designId].visual }); scene.add(o.group);
   const pl = new T.Group(), body = new T.Mesh(new T.CylinderGeometry(0.28, 0.28, 1.2, 10), new T.MeshLambertMaterial({ color: 0xe5b348 })), head = new T.Mesh(new T.SphereGeometry(0.24, 12, 8), new T.MeshLambertMaterial({ color: 0xf2d08a }));
   body.position.set(0, 0.6, 0); head.position.set(0, 1.45, 0); pl.add(body, head);
   pl.visible = false; o.group.add(pl); o.player = pl;
@@ -163,11 +163,11 @@ const keys = new Set(); addEventListener('keydown', (e) => keys.add(e.code)); ad
 
 // ---------- HUD ----------
 let toastT = 0; function toast(t) { const e = $('toast'); e.textContent = t; e.style.opacity = 1; clearTimeout(toastT); toastT = setTimeout(() => { e.style.opacity = 0; }, 3000); }
-for (const [d, n] of [['galleon', 'ガレオン'], ['galley', 'ガレー']]) $('spawns').append(el('button', { textContent: n, onclick: () => spawn(d) }));
+for (const id of ['pinta', 'galleon', 'galley']) $('spawns').append(el('button', { textContent: Ship.sampleDesigns[id].label, onclick: () => spawn(id) }));
 function board(id) { boarded = id; const o = objs.get(id); if (o) { o.player.visible = true; } for (const [k, x] of objs) if (k !== id) { x.player.visible = false; Ship.setViewDeck(x, x.weatherDeck); } refresh(); toast(`${id} に乗った`); }
 function disembark() { if (!boarded) return; const o = objs.get(boarded); if (o) { o.player.visible = false; Ship.setViewDeck(o, o.weatherDeck); } boarded = null; refresh(); }
 function refresh() {
-  const L = $('list'); L.replaceChildren(...fleet.list().map((r) => el('div', { className: 'row' }, [el('span', { textContent: `${r.id}（${r.designId === 'galley' ? 'ガレー' : 'ガレオン'}）`, style: 'flex:1' }),
+  const L = $('list'); L.replaceChildren(...fleet.list().map((r) => el('div', { className: 'row' }, [el('span', { textContent: `${r.id}（${Ship.sampleDesigns[r.designId].label}）`, style: 'flex:1' }),
     el('button', { textContent: boarded === r.id ? '降りる' : '乗る', className: boarded === r.id ? 'on' : '', onclick: () => (boarded === r.id ? disembark() : board(r.id)) }),
     el('button', { textContent: '消す', onclick: () => { const o = objs.get(r.id); if (o) { scene.remove(o.group); o.dispose(); objs.delete(r.id); } fleet.removeShip(r.id); delete ctl[r.id]; if (boarded === r.id) boarded = null; refresh(); save(); } })])));
   const C = $('ctrl'); C.replaceChildren(); $('bar').style.display = boarded && fleet.has(boarded) ? 'block' : 'none'; $('stick').style.display = boarded ? 'block' : 'none';
@@ -230,7 +230,7 @@ function frame(t) {
   for (const rec of fleet.list()) {
     let o = objs.get(rec.id); if (!o) { o = makeObj(rec); objs.set(rec.id, o); if (boarded === rec.id) o.player.visible = true; }
     const s = rec.vessel.state; o.group.position.set(s.X, 0, -s.Y); o.group.rotation.set(0, -s.psi, -s.heelDeg * DEG); Ship.updateShipObject(o);
-    Ship.placePlayer(o, o.pos); if (boarded === rec.id) Ship.setViewDeck(o, o.pos.deck);
+    Ship.placePlayer(o, o.pos); if (boarded === rec.id) Ship.setViewDeck(o, o.pos.deck, o.interior.roomOf(o.pos.deck, o.pos.x, o.pos.y)?.id ?? null);
   }
   walk(dt); updateCamera(); placeSea(); if (boarded) drawRoute();
   renderer.render(scene, camera);
