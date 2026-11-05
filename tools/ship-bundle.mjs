@@ -1,6 +1,6 @@
 // Shared by the build tools: turns src/ship/*.mjs into plain (non-module) JS that defines `const Ship`.
 import { readFileSync } from 'node:fs';
-export const SHIP_MODULE_ORDER = ['hull-geometry', 'mass', 'hydrostatics', 'hull-params', 'dynamics', 'flooding', 'ship-model', 'samples', 'captain', 'fleet', 'hull-mesh', 'ship-render', 'world-environment'];
+export const SHIP_MODULE_ORDER = ['hull-geometry', 'mass', 'hydrostatics', 'hull-params', 'dynamics', 'flooding', 'ship-model', 'samples', 'captain', 'fleet', 'hull-mesh', 'interior', 'ship-render', 'world-environment'];
 export function bundleShipModules(order = SHIP_MODULE_ORDER) {
   let out = '';
   for (const name of order) {

@@ -31,7 +31,7 @@ h4{margin:4px 0 2px;font-size:12px;color:#7fc8f0}
   <div class="row"><button id="bX">倍速 ×1</button><button id="bClear">船を全部消す</button></div>
   <div style="color:var(--mu)">地図：島4つ（周りの浅瀬は水色の輪）。海をタップすると、乗船中の船の目的地になります。ドラッグで視点、ホイール／ピンチで拡大。</div>
 </div>
-<div id="bar" class="pn"><div id="info"></div><div id="ctrl"></div></div>
+<div id="bar" class="pn"><div id="info"></div><div id="ctrl"></div><div id="ladders" style="position:fixed;left:calc(150px + env(safe-area-inset-left));bottom:calc(86px + env(safe-area-inset-bottom));z-index:6"></div></div>
 <div id="stick"><div id="knob"></div></div>
 <div id="toast"></div>
 <script>/*THREE*/</script>
@@ -82,7 +82,10 @@ function makeObj(rec) {
   const o = Ship.buildShipObject(T, { hull: Ship.sampleDesigns[rec.designId].hull, vessel: rec.vessel }); scene.add(o.group);
   const pl = new T.Group(), body = new T.Mesh(new T.CylinderGeometry(0.28, 0.28, 1.2, 10), new T.MeshLambertMaterial({ color: 0xe5b348 })), head = new T.Mesh(new T.SphereGeometry(0.24, 12, 8), new T.MeshLambertMaterial({ color: 0xf2d08a }));
   body.position.set(0, 0.6, 0); head.position.set(0, 1.45, 0); pl.add(body, head);
-  pl.visible = false; o.group.add(pl); o.player = pl; o.local = { x: 0, z: 0 }; return o;
+  pl.visible = false; o.group.add(pl); o.player = pl;
+  const d = Ship.sampleDesigns[rec.designId];
+  o.interior = Ship.createInterior(Ship.sampleInteriors[d.interiorId], { hull: Ship.createHull(d.hull) });
+  Ship.addInterior(T, o, o.interior); o.pos = o.interior.startPosition(); o.facing = 0; Ship.placePlayer(o, o.pos); Ship.setViewDeck(o, o.pos.deck); return o;
 }
 function spawn(designId) {
   const n = fleet.list().length, X = (n % 4) * 90 - 135, Y = -Math.floor(n / 4) * 90 - 40;
@@ -148,9 +151,10 @@ function walk(dt) {
   // stick up = away from the camera; convert the world direction to ship-local axes
   const fx = -Math.sin(cam.yaw), fz = -Math.cos(cam.yaw), rx = -fz, rz = fx;
   const w = new T.Vector3(fx * -sy + rx * sx, 0, fz * -sy + rz * sx).normalize().multiplyScalar(Math.min(1, m) * 2.8 * dt);
-  const q = o.group.getWorldQuaternion(new T.Quaternion()).invert(), l = w.applyQuaternion(q), d = o.deck;
-  o.local.x = Math.min(d.halfBeam, Math.max(-d.halfBeam, o.local.x + l.x)); o.local.z = Math.min(d.zMax, Math.max(d.zMin, o.local.z + l.z));
-  o.player.rotation.y = Math.atan2(l.x, l.z);
+  const q = o.group.getWorldQuaternion(new T.Quaternion()).invert(), l = w.applyQuaternion(q);
+  // group axes: x = starboard (+y of the hull frame), z = -forward, so hull dx = -l.z and dy = l.x
+  const before = o.pos; o.pos = o.interior.move(o.pos, -l.z, l.x); o.facing = Math.atan2(l.x, l.z);
+  if (o.pos.x !== before.x || o.pos.y !== before.y) o.player.rotation.y = o.facing;
 }
 const keys = new Set(); addEventListener('keydown', (e) => keys.add(e.code)); addEventListener('keyup', (e) => keys.delete(e.code));
 (() => { const s = $('stick'), k = $('knob'); let id = null; const set = (e) => { const r = s.getBoundingClientRect(), dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2), m = Math.hypot(dx, dy), c = Math.min(1, m / 45); stick.x = m ? dx / m * c : 0; stick.y = m ? dy / m * c : 0; k.style.left = 35 + stick.x * 35 + 'px'; k.style.top = 35 + stick.y * 35 + 'px'; };
@@ -160,8 +164,8 @@ const keys = new Set(); addEventListener('keydown', (e) => keys.add(e.code)); ad
 // ---------- HUD ----------
 let toastT = 0; function toast(t) { const e = $('toast'); e.textContent = t; e.style.opacity = 1; clearTimeout(toastT); toastT = setTimeout(() => { e.style.opacity = 0; }, 3000); }
 for (const [d, n] of [['galleon', 'ガレオン'], ['galley', 'ガレー']]) $('spawns').append(el('button', { textContent: n, onclick: () => spawn(d) }));
-function board(id) { boarded = id; const o = objs.get(id); if (o) { o.player.visible = true; } for (const [k, x] of objs) if (k !== id) x.player.visible = false; refresh(); toast(`${id} に乗った`); }
-function disembark() { if (!boarded) return; const o = objs.get(boarded); if (o) o.player.visible = false; boarded = null; refresh(); }
+function board(id) { boarded = id; const o = objs.get(id); if (o) { o.player.visible = true; } for (const [k, x] of objs) if (k !== id) { x.player.visible = false; Ship.setViewDeck(x, x.weatherDeck); } refresh(); toast(`${id} に乗った`); }
+function disembark() { if (!boarded) return; const o = objs.get(boarded); if (o) { o.player.visible = false; Ship.setViewDeck(o, o.weatherDeck); } boarded = null; refresh(); }
 function refresh() {
   const L = $('list'); L.replaceChildren(...fleet.list().map((r) => el('div', { className: 'row' }, [el('span', { textContent: `${r.id}（${r.designId === 'galley' ? 'ガレー' : 'ガレオン'}）`, style: 'flex:1' }),
     el('button', { textContent: boarded === r.id ? '降りる' : '乗る', className: boarded === r.id ? 'on' : '', onclick: () => (boarded === r.id ? disembark() : board(r.id)) }),
@@ -176,12 +180,21 @@ function refresh() {
   if (v.sails.length) C.append(el('button', { textContent: c.auto ? '帆：自動' : '帆：固定', className: c.auto ? 'on' : '', onclick: () => { c.auto = !c.auto; refresh(); } }));
   if (v.oars.length) { const r = el('input', { type: 'range', min: -100, max: 100, step: 5, value: Math.round(c.oar * 100), style: 'width:90px' }); r.oninput = () => { c.oar = r.value / 100; }; C.append(el('span', { textContent: '櫂 ' }), r); }
 }
+let ladderSig = '';
+function ladderUi() {
+  const o = boarded && objs.get(boarded); const wrap = $('ladders'); if (!o) { wrap.replaceChildren(); ladderSig = ''; return; }
+  const near = o.interior.laddersNear(o.pos), sig = near.map((l) => l.id).join(',');
+  if (sig === ladderSig) return; ladderSig = sig;
+  wrap.replaceChildren(...near.map((l) => el('button', { textContent: l.direction === 'up' ? '上る' : '下りる', className: 'on', onclick: () => { o.pos = o.interior.climb(o.pos, l.id); ladderSig = ''; } })));
+}
 function info() {
   if (!boarded || !fleet.has(boarded)) return;
+  ladderUi();
   const rec = fleet.get(boarded), v = rec.vessel, s = v.snapshot(), f = v.forces(env), w = windVec(), cap = rec.captain;
   const dd = cap?.destination && Math.hypot(cap.destination.X - v.state.X, cap.destination.Y - v.state.Y);
   const capTxt = cap && active(rec) ? `／航海中 残り${dd > 1000 ? (dd / 1000).toFixed(1) + 'km' : Math.round(dd) + 'm'}（約${Math.round(dd / Math.max(0.8, s.speedOverGround) / 60)}分）${cap.reef < 1 ? '／帆を絞っている' : ''}` : cap?.mode === 'arrived' ? '／到着' : '';
-  $('info').textContent = `速度 ${(s.speedOverGround * 1.9438).toFixed(1)} kt／方位 ${s.headingDeg.toFixed(0)}°／風 ${Math.hypot(w.x, w.y).toFixed(1)} m/s・${wind.from.toFixed(0)}°から／傾斜 ${s.heelDeg.toFixed(1)}°／水深余裕 ${f.clearanceM.toFixed(1)} m${s.aground ? '／座礁中' : ''}${s.anchored ? (s.anchorDragging ? '／走錨中' : '／錨泊中') : ''}${capTxt}`;
+  const here = objs.get(boarded), room = here ? here.interior.roomOf(here.pos.deck, here.pos.x, here.pos.y) : null, deckName = here?.interior.decks.find((d) => d.id === here.pos.deck)?.name ?? '';
+  $('info').textContent = `現在地：${room?.name ?? deckName}／速度 ${(s.speedOverGround * 1.9438).toFixed(1)} kt／方位 ${s.headingDeg.toFixed(0)}°／風 ${Math.hypot(w.x, w.y).toFixed(1)} m/s・${wind.from.toFixed(0)}°から／傾斜 ${s.heelDeg.toFixed(1)}°／水深余裕 ${f.clearanceM.toFixed(1)} m${s.aground ? '／座礁中' : ''}${s.anchored ? (s.anchorDragging ? '／走錨中' : '／錨泊中') : ''}${capTxt}`;
 }
 const out = () => { $('wsO').textContent = wind.speed + ' m/s'; $('wdO').textContent = wind.from + '°'; };
 $('ws').oninput = () => { wind.speed = +$('ws').value; out(); save(); }; $('wd').oninput = () => { wind.from = +$('wd').value; out(); save(); };
@@ -217,7 +230,7 @@ function frame(t) {
   for (const rec of fleet.list()) {
     let o = objs.get(rec.id); if (!o) { o = makeObj(rec); objs.set(rec.id, o); if (boarded === rec.id) o.player.visible = true; }
     const s = rec.vessel.state; o.group.position.set(s.X, 0, -s.Y); o.group.rotation.set(0, -s.psi, -s.heelDeg * DEG); Ship.updateShipObject(o);
-    o.player.position.set(o.local.x, o.deck.y, o.local.z);
+    Ship.placePlayer(o, o.pos); if (boarded === rec.id) Ship.setViewDeck(o, o.pos.deck);
   }
   walk(dt); updateCamera(); placeSea(); if (boarded) drawRoute();
   renderer.render(scene, camera);

@@ -59,6 +59,7 @@ export const sampleDesigns = Object.freeze({
     hull: galleonLikeHull(), massItems: galleonLikeMassItems(),
     sails: [{ id: 'main', type: 'foreAndAft', areaM2: 1200, x: 21, zCe: 13 }], rudder: { x: 0.5, areaM2: 6 },
     openings: [{ id: 'gunport', x: 20, y: 5.3, z: 5.2 }],
+    interiorId: 'galleon',
     // Hull/rig tuning for the vessel model (EXPERIMENTAL, being calibrated against rough historical ranges).
     tuning: { roughnessCf: 0.0015, form: 0.4, waveK: 40, keelLiftSlope: 0.5, windageAreaM2: 150 },
   }),
@@ -66,5 +67,34 @@ export const sampleDesigns = Object.freeze({
     hull: galleyHull(), massItems: galleyMassItems(), sails: [], rudder: { x: 0.5, areaM2: 1.5 },
     oars: [{ id: 'P', side: 'port', rowers: 85, x: 18 }, { id: 'S', side: 'starboard', rowers: 85, x: 18 }],
     tuning: { roughnessCf: 0.0005, form: 0.15, waveK: 1, keelLiftSlope: 0.5, windageAreaM2: 25 },
+    interiorId: 'galley',
+  }),
+});
+
+/** Interior layouts (EXPERIMENTAL placeholders, NOT historical plans). x from the stern (0) to the bow, y + starboard, z above the keel. */
+export const sampleInteriors = Object.freeze({
+  galleon: Object.freeze({
+    decks: [{ id: 'weather', z: 8.0, name: '上甲板' }, { id: 'gun', z: 5.2, name: '砲甲板' }, { id: 'hold', z: 2.4, name: '船倉' }],
+    rooms: [
+      { id: 'weather', deck: 'weather', name: '上甲板', use: 'deck', x0: 3, x1: 38, y0: -6, y1: 6 },
+      { id: 'captain', deck: 'gun', name: '船長室', use: 'cabin', x0: 2.5, x1: 10, y0: -4.2, y1: 4.2 },
+      { id: 'gundeck', deck: 'gun', name: '砲甲板', use: 'crew', x0: 10.4, x1: 33, y0: -5.2, y1: 5.2 },
+      { id: 'bosun', deck: 'gun', name: '艏倉庫', use: 'store', x0: 33.4, x1: 37.5, y0: -2.6, y1: 2.6 },
+      { id: 'hold', deck: 'hold', name: '船倉', use: 'cargo', x0: 6, x1: 31.5, y0: -3.8, y1: 3.8 },
+      { id: 'stores', deck: 'hold', name: '食料庫', use: 'store', x0: 31.9, x1: 36.5, y0: -2.2, y1: 2.2 },
+    ],
+    doors: [
+      { id: 'd-captain', deck: 'gun', along: 'y', x0: 9.9, x1: 10.5, y0: -0.7, y1: 0.7 },
+      { id: 'd-bosun', deck: 'gun', along: 'y', x0: 32.9, x1: 33.5, y0: -0.7, y1: 0.7 },
+      { id: 'd-stores', deck: 'hold', along: 'y', x0: 31.4, x1: 32.0, y0: -0.7, y1: 0.7 },
+    ],
+    ladders: [
+      { id: 'l-gun', name: '階段（上甲板↔砲甲板）', a: { deck: 'weather', x: 22, y: 1.8 }, b: { deck: 'gun', x: 22, y: 1.8 } },
+      { id: 'l-hold', name: '階段（砲甲板↔船倉）', a: { deck: 'gun', x: 28, y: -2.2 }, b: { deck: 'hold', x: 28, y: -2.2 } },
+    ],
+  }),
+  galley: Object.freeze({
+    decks: [{ id: 'deck', z: 2.2, name: '甲板' }],
+    rooms: [{ id: 'deck', deck: 'deck', name: '甲板', use: 'deck', x0: 3, x1: 33.5, y0: -3, y1: 3 }],
   }),
 });
