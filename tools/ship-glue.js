@@ -5,7 +5,7 @@
   'use strict';
   const DEG = Math.PI / 180, KEY_PREFIX = 'woh-ships-';
   const EVT = { captain_route_planned: '航路を決めた', captain_no_route: '', captain_tack: '帆の向きを替えた', captain_reef: '帆を絞った', captain_arriving: '目的地に近づいた', captain_arrived: '到着した', captain_replan: '浅瀬を避けて航路を引き直した', captain_cancelled: '航海をやめた', grounded: '座礁した', refloated: '離礁した', anchor_dropped: '錨を下ろした', anchor_raised: '錨を上げた', anchor_dragging: '錨が走っている', anchor_parted: '錨索が切れた' };
-  const dbg = {}; let uiHidden = false, dwell = 0, renderError = null, ladderSig = '', pickMode = false, destMarker = null, routeLine = null, cp, nat, THREE_, S = null, fleet = null, env = null, ref = null, ctl = {}, meshes = new Map(), boarded = null, speedX = 1, lastT = null, saveAcc = 0, trimAcc = 0, lastSeed = null;
+  const dbg = {}; let pendingBoard = null, pendingSince = 0, lastPlaced = null, uiHidden = false, dwell = 0, renderError = null, ladderSig = '', pickMode = false, destMarker = null, routeLine = null, cp, nat, THREE_, S = null, fleet = null, env = null, ref = null, ctl = {}, meshes = new Map(), boarded = null, speedX = 1, lastT = null, saveAcc = 0, trimAcc = 0, lastSeed = null;
   const REASON = { destination_too_shallow: 'そこは浅くて行けない', blocked: '回り込む道がない', search_limit: '遠すぎて航路を決められない' };
   const ui = {};
   const $ = (tag, props = {}, kids = []) => { const e = Object.assign(document.createElement(tag), props); for (const k of kids) e.append(k); return e; };
@@ -49,7 +49,7 @@
     for (const [id, d] of Object.entries(Ship.sampleDesigns)) fleet.registerDesign(id, d);
     try {
       const raw = localStorage.getItem(KEY_PREFIX + lastSeed), data = raw && JSON.parse(raw);
-      if (data?.fleet && data.ref) { const r = fleet.restore(data.fleet, { current: Ship.sampleDesigns }); ref = data.ref; ctl = data.ctl ?? {}; makeEnv(); toast(`船 ${r.restored} 隻を読み込んだ` + (r.skipped.length ? `（古い船 ${r.skipped.length} 隻は読み込めず外した）` : '')); }
+      if (data?.fleet && data.ref) { const r = fleet.restore(data.fleet, { current: Ship.sampleDesigns }); ref = data.ref; ctl = data.ctl ?? {}; pendingBoard = data.boarded ?? null; pendingSince = performance.now(); makeEnv(); toast(`船 ${r.restored} 隻を読み込んだ` + (r.skipped.length ? `（古い船 ${r.skipped.length} 隻は読み込めず外した）` : '')); }
     } catch (e) { console.warn('ship restore failed:', e && e.message); fleet = Ship.createFleet(); for (const [id, d] of Object.entries(Ship.sampleDesigns)) fleet.registerDesign(id, d); ref = null; }
     refreshList();
   }
@@ -158,7 +158,12 @@
   }
   function board(id) {
     const rec = fleet.get(id), m = meshes.get(id); if (!m) return;
-    boarded = id; if (m.interior) m.pos = m.interior.startPosition(); ui.panel.style.display = 'none'; refreshList(); toast(`${id} に乗った（移動で甲板を歩けます）`);
+    boarded = id; lastPlaced = null; if (m.interior) m.pos = m.interior.startPosition(); ui.panel.style.display = 'none'; refreshList(); toast(`${id} に乗った（移動で甲板を歩けます）`);
+  }
+  /** Step off without moving the player (they were moved by the game). */
+  function leaveShip(msg) {
+    const mo = meshes.get(boarded); if (mo) Ship.setViewDeck(mo, mo.weatherDeck);
+    boarded = null; lastPlaced = null; clearLadders(); refreshList(); if (msg) toast(msg);
   }
   function clearLadders() { ladderSig = ''; ui.ladders?.replaceChildren(); setWater(true); }
   function disembark() {
@@ -199,7 +204,7 @@
 
   function save() {
     if (!fleet || !ref) return;
-    try { localStorage.setItem(KEY_PREFIX + lastSeed, JSON.stringify({ fleet: fleet.serialize(), ref, ctl })); } catch (_) { /* storage unavailable */ }
+    try { localStorage.setItem(KEY_PREFIX + lastSeed, JSON.stringify({ fleet: fleet.serialize(), ref, ctl, boarded })); } catch (_) { /* storage unavailable */ }
   }
 
   // ---------- frame loop ----------
@@ -220,6 +225,11 @@
     if (dt > 0) fleet.step(dt * speedX, env, focus);
     for (const e of fleet.takeEvents()) { if (e.type === 'captain_no_route') toast('船長：' + (REASON[e.reason] ?? '行けない')); else if (EVT[e.type]) toast(`${e.shipId}：${EVT[e.type]}`); }
     syncMeshes();
+    if (pendingBoard) { // the player was aboard when this was saved: step back on if the loaded player stands by the ship
+      const m = meshes.get(pendingBoard), mp = cp.markerPoint;
+      if (!fleet.has(pendingBoard) || performance.now() - pendingSince > 20000) pendingBoard = null;
+      else if (m && mp) { const s = fleet.get(pendingBoard).vessel.state; if (Math.hypot(mp.xM - (ref.xM + s.X), mp.yM - (ref.yM - s.Y)) < 40) { const id = pendingBoard; pendingBoard = null; board(id); } }
+    }
     if (boarded && fleet.has(boarded) && cp.view.overview) { const st = fleet.get(boarded).vessel.state; cp.placeMarker(ref.xM + st.X, ref.yM - st.Y, false); }
     if (boarded && fleet.has(boarded) && !cp.view.overview && meshes.has(boarded)) walkOnBoard(dt);
     saveAcc += dt; if (saveAcc > 8) { saveAcc = 0; save(); }
@@ -253,8 +263,12 @@
   }
   /** Per frame while aboard: keep the game's chunks and mini-map on the ship, update the cutaway view, crew and stair buttons. */
   function walkOnBoard(dt = 0) {
-    const m = meshes.get(boarded), w = deckPoint(m);
+    const m = meshes.get(boarded), mp0 = cp.markerPoint;
+    // The game moved the player somewhere else (explore / teleport / loading): they have left the ship, so do not drag them back.
+    if (lastPlaced && mp0 && Math.hypot(mp0.xM - lastPlaced.xM, mp0.yM - lastPlaced.yM) > 8) { leaveShip('移動したので船を降りた'); return; }
+    const w = deckPoint(m);
     cp.placeMarker(w.x + S.origin.xM, w.z + S.origin.yM, false);
+    lastPlaced = cp.markerPoint ? { xM: cp.markerPoint.xM, yM: cp.markerPoint.yM } : null;
     if (cp.markerPoint) cp.markerPoint.elevationM = w.y + S.origin.elevationM; // the game keeps the marker at this height while the player stands still
     Ship.setViewDeck(m, m.pos.deck, m.interior.roomOf(m.pos.deck, m.pos.x, m.pos.y)?.id ?? null);
     setWater(!m.cutaway); // below deck the hold floor is under the sea surface: hide the sea (cutaway view) so the hold can be seen
