@@ -210,6 +210,26 @@
     #toasts { top: 80px; }
     .sheet { top: 48px; }
   }
+
+  /* ---- タイトル画面と開発者モード */
+  #titleScreen { position: fixed; inset: 0; z-index: 250; display: none; align-items: center; justify-content: center; background: radial-gradient(ellipse at 30% 20%, #1d3a5c 0%, #0b1624 60%, #070d16 100%); color: #e8eef5; font-family: system-ui, sans-serif; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  #titleScreen.show { display: flex; }
+  #titleScreen .tbox { display: flex; gap: 36px; align-items: center; max-width: 820px; width: 100%; padding: 0 24px; box-sizing: border-box; }
+  #titleScreen .tmain { flex: 1 1 0; min-width: 0; }
+  #titleScreen h1 { margin: 0 0 6px; font-size: 34px; letter-spacing: 1px; font-weight: 700; }
+  #titleScreen .tsub { margin: 0; font-size: 13px; color: #9fb0c3; line-height: 1.6; }
+  #titleScreen .tver { margin-top: 14px; font-size: 11px; color: #6f8399; }
+  #titleScreen .tbtns { flex: 0 0 290px; display: flex; flex-direction: column; gap: 9px; max-height: calc(100dvh - 24px); overflow-y: auto; }
+  #titleScreen button { min-height: 46px; padding: 6px 14px; border-radius: 10px; border: 1px solid #ffffff2e; background: #1f3a58; color: #e8eef5; font-size: 15px; text-align: left; touch-action: manipulation; }
+  #titleScreen button.primary { background: #2f6aa8; border-color: #7cc0ff80; }
+  #titleScreen button:disabled { opacity: .4; }
+  #titleScreen button small { display: block; font-size: 11px; color: #b9cadb; margin-top: 2px; font-weight: normal; }
+  #titleScreen #tDevBox { display: none; gap: 6px; flex-direction: column; padding: 8px; border-radius: 10px; border: 1px dashed #ffffff40; }
+  #titleScreen #tDevBox.show { display: flex; }
+  #titleScreen input { height: 38px; border-radius: 8px; border: 1px solid #ffffff40; background: #0b1624; color: #e8eef5; padding: 0 10px; font-size: 14px; }
+  body.title-open #menu, body.title-open .modal { z-index: 270; }
+  body:not(.woh-dev) .dev-only, body:not(.woh-dev) #lab, body:not(.woh-dev) #developerPanel, body:not(.woh-dev) #devBadge, body:not(.woh-dev) #devMenu, body:not(.woh-dev) #leftMenu, body:not(.woh-dev) #hudStats, body:not(.woh-dev) #displayChoices { display: none !important; }
+  @media (max-height: 480px) { #titleScreen h1 { font-size: 26px; } #titleScreen .tbox { gap: 22px; } #titleScreen .tbtns { flex-basis: 270px; gap: 6px; } #titleScreen button { min-height: 40px; font-size: 14px; } }
 </style>
 
 
@@ -278,7 +298,7 @@
 </div>
 <div id="menu" class="sheet">
   <div class="shead"><b>メニュー</b><button id="menuClose">閉じる</button></div>
-  <div class="sfilter"><button id="menuHist">歴史を見る</button><button id="menuExport">ファイルに書き出す</button><button id="menuImport">ファイルから読み込む</button></div>
+  <div class="sfilter"><button id="menuTitle">タイトルへ戻る</button><button id="menuHist">歴史を見る</button><button id="menuExport">ファイルに書き出す</button><button id="menuImport">ファイルから読み込む</button></div>
   <input type="file" id="menuFile" accept=".json,application/json" style="display:none">
   <div id="menuSlots" class="scrollable"></div>
   <div id="menuMsg"></div>
@@ -7414,6 +7434,7 @@ function randomSeed() { return String(1 + Math.floor(Math.random() * 999999999))
 let currentSeed = null, previousSeed = null;
 let currentRockVersion = null, previousRockVersion = null;
 function generate(seedStr, requestedRockVersion) {
+  titleHide();
   const generationRockVersion = pendingLoad ? (pendingLoad.rockGenerationVersion || null) : requestedRockVersion === undefined ? 'rock-24-v4' : requestedRockVersion;
   if (busy) return;
   busy = true; setButtons();
@@ -9773,10 +9794,45 @@ updateRiverPix();
 resetCamera();
 coreSetup();
 loop();
-dbDo('readonly', st => st.get('auto')).then(st => {
-  if (st && st.format === SAVE_FORMAT) confirmBox(`前回の続きから始めますか？（${fmtDate(st.clock.day)}・Seed ${st.seed}）`, () => loadState(st), '続きから', () => generate(randomSeed()));
-  else generate(randomSeed());
-}).catch(() => generate(randomSeed()));
+// ---- タイトル画面：起動時に出す。続きから／新しい世界／記録を読み込む／開発者モード
+const TITLE_DEV_KEY = 'woh-dev';
+let titlePending = true;
+function devModeGet() { try { return localStorage.getItem(TITLE_DEV_KEY) === '1'; } catch (e) { return false; } }
+function devModeSet(on) { document.body.classList.toggle('woh-dev', !!on); try { localStorage.setItem(TITLE_DEV_KEY, on ? '1' : '0'); } catch (e) {} }
+function titleHide() { titlePending = false; document.body.classList.remove('title-open'); const el = document.getElementById('titleScreen'); if (el) el.classList.remove('show'); }
+function titleShow(st) {
+  let el = document.getElementById('titleScreen');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'titleScreen';
+    el.innerHTML = '<div class="tbox"><div class="tmain"><h1>World of History</h1><p class="tsub">自然地理から始まる、民族と歴史の物語。<br>あなたは一人の人物として生まれ、世代をつないでいく。</p><div class="tver" id="tVer"></div></div>' +
+      '<div class="tbtns"><button id="tContinue" class="primary">続きから<small id="tContinueInfo"></small></button><button id="tNew">新しい世界で始める</button><button id="tLoad">記録を読み込む</button>' +
+      '<button id="tDev">開発者モード：オフ</button><div id="tDevBox"><input id="tSeed" type="text" placeholder="Seed（空ならランダム）" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><button id="tSeedGo">Seedを指定して始める</button></div></div></div>';
+    document.body.appendChild(el);
+    bindTap(el.querySelector('#tNew'), () => { titleHide(); generate(randomSeed()); });
+    bindTap(el.querySelector('#tLoad'), () => { document.body.classList.add('title-open'); menuShow(true); });
+    bindTap(el.querySelector('#tDev'), () => { devModeSet(!devModeGet()); titleDevRefresh(); });
+    bindTap(el.querySelector('#tSeedGo'), () => { const v = el.querySelector('#tSeed').value.trim(); titleHide(); generate(v || randomSeed()); });
+  }
+  const c = el.querySelector('#tContinue');
+  c.disabled = !st; el.querySelector('#tContinueInfo').textContent = st ? `${fmtDate(st.clock.day)}・Seed ${st.seed}` : '保存された記録がありません';
+  c.onclick = st ? () => { titleHide(); loadState(st); } : null;
+  el.querySelector('#tVer').textContent = 'v30 開発版';
+  titleDevRefresh(); document.body.classList.add('title-open'); el.classList.add('show');
+}
+function titleDevRefresh() {
+  const on = devModeGet(); document.body.classList.toggle('woh-dev', on);
+  const b = document.getElementById('tDev'); if (b) b.textContent = on ? '開発者モード：オン' : '開発者モード：オフ';
+  const box = document.getElementById('tDevBox'); if (box) box.classList.toggle('show', on);
+}
+function titleBoot(st) {
+  devModeSet(devModeGet());
+  for (const id of ['btnRegen', 'btnPrev', 'seedInput', 'btnSeed', 'btnView', 'btnLab']) document.getElementById(id)?.classList.add('dev-only');
+  document.getElementById('iEthSpeed')?.closest('.row')?.classList.add('dev-only');
+  bindTap(document.getElementById('menuTitle'), () => { const go = () => location.reload(); autoSaveMaybe(true); setTimeout(go, 400); });
+  if (/[?&]autostart\b/.test(location.search)) { titleHide(); generate(randomSeed()); return; }   // 動作確認用：タイトルを飛ばして新しい世界を始める
+  titleShow(st);
+}
+dbDo('readonly', st => st.get('auto')).then(st => titleBoot(st && st.format === SAVE_FORMAT ? st : null)).catch(() => titleBoot(null));
 })();
 </script>
 
