@@ -294,6 +294,7 @@
   <div class="row"><span class="k">人口</span><span class="v" id="iPeople">-</span></div>
   <div class="row"><span class="k">自分の民族</span><span class="v" id="iMine">-</span></div>
   <div class="row"><span class="k">あなたの集団</span><span class="v" id="iCamp">-</span></div>
+  <div class="row"><span class="k">移動</span><span class="v"><select id="iGo" style="max-width:170px;font-size:12px;background:#0e1a2a;color:#e8f0f8;border:1px solid #ffffff30;border-radius:6px;padding:2px 4px;touch-action:manipulation"></select> <button id="iGoBtn" style="font-size:12px;padding:2px 8px;border-radius:6px;border:1px solid #ffffff40;background:#183d5c;color:#e8f0f8;touch-action:manipulation">行く</button><div id="iGoMsg" style="font-size:11px;opacity:.9;margin-top:2px"></div></span></div>
   <div class="row"><span class="k">あなた</span><span class="v" id="iYou">-</span></div>
   <div class="row"><span class="k">首長</span><span class="v" id="iLeader">-</span></div>
   <div class="row"><span class="k">提案</span><span class="v"><select id="iProp" style="max-width:150px;font-size:12px;background:#0e1a2a;color:#e8f0f8;border:1px solid #ffffff30;border-radius:6px;padding:2px 4px;touch-action:manipulation"></select> <button id="iPropGo" style="font-size:12px;padding:2px 8px;border-radius:6px;border:1px solid #ffffff40;background:#183d5c;color:#e8f0f8;touch-action:manipulation">提案する</button><div id="iPropMsg" style="font-size:11px;opacity:.9;margin-top:2px"></div></span></div>
@@ -8967,13 +8968,45 @@ function peoplePropInit() {
   };
   go.addEventListener('click', fire);
 }
+// ---- 探索：遠い所へ移動する（集落・近くの山頂・近くの海辺）。世界は広いので、歩くだけでは時間がかかる
+function travelOptions() {
+  const o = [], A = globalThis.__wohAvatar, me = A && A.block ? A.block() : null; if (!people || !world) return o;
+  const gs = people.groups.filter(g => g.alive).map(g => { const c = WohPeople.peCampCenter(g); return { g, c, d: me ? Math.hypot(c.x - me.x, c.y - me.y) : 0 }; }).sort((a, b) => a.d - b.d);
+  const mine = people.player && people.player.id >= 0 ? people.npc.group[people.player.id] : 0;
+  const own = gs.find(x => x.g.id === mine); if (own) o.push({ k: 'g' + own.g.id, label: `あなたの集団（${peGrpName(own.g.id)}）`, bx: own.c.x, by: own.c.y });
+  o.push({ k: 'peak', label: '近くの山頂（半径60ブロック）' }, { k: 'coast', label: '近くの海辺' });
+  for (const x of gs.slice(0, 14)) { if (own && x.g.id === own.g.id) continue; o.push({ k: 'g' + x.g.id, label: `${peEthName(x.g.ethId)}の${peGrpName(x.g.id)}（${['野営地', '半定住', '村'][x.g.settle || 0]}・${Math.round(x.d)}ブロック先）`, bx: x.c.x, by: x.c.y }); }
+  return o;
+}
+function travelFind(kind, me) {
+  const W = world.stats.width, H = world.stats.height, R = kind === 'peak' ? 60 : 90; let best = null, bv = -1e9;
+  for (let dy = -R; dy <= R; dy += 2) for (let dx = -R; dx <= R; dx += 2) {
+    const x = Math.round(me.x + dx), y = Math.round(me.y + dy); if (x < 3 || y < 3 || x >= W - 3 || y >= H - 3) continue; const i = y * W + x; if (!world.type[i] || world.water[i]) continue;
+    if (kind === 'peak') { const v = world.elev[i]; if (v > bv) { bv = v; best = { x, y }; } }
+    else { if (world.type[i - 2] && world.type[i + 2] && world.type[i - 2 * W] && world.type[i + 2 * W]) continue; const v = -Math.hypot(dx, dy); if (v > bv) { bv = v; best = { x, y }; } }
+  }
+  return best;
+}
+function peopleGoInit() {
+  const sel = document.getElementById('iGo'), btn = document.getElementById('iGoBtn'); if (!sel || sel.dataset.bound) return; sel.dataset.bound = '1';
+  const fill = () => { const cur = sel.value; sel.innerHTML = ''; for (const o of travelOptions()) { const e = document.createElement('option'); e.value = o.k; e.textContent = o.label; e._o = o; sel.appendChild(e); } if (cur) sel.value = cur; };
+  sel.addEventListener('focus', fill); sel.addEventListener('mousedown', fill); fill(); sel._fill = fill;
+  const msg = document.getElementById('iGoMsg');
+  btn.addEventListener('click', () => {
+    const A = globalThis.__wohAvatar, me = A && A.block ? A.block() : null; if (!A || !me) { msg.textContent = '3D の場所が決まっていない'; return; }
+    const o = sel.options[sel.selectedIndex] && sel.options[sel.selectedIndex]._o; if (!o) { msg.textContent = '行き先がない'; return; }
+    let t = null, dz = 0; if (o.k === 'peak' || o.k === 'coast') t = travelFind(o.k, me); else { t = { x: o.bx, y: o.by }; dz = 9; }
+    if (!t) { msg.textContent = o.k === 'peak' ? '近くに山がない' : '近くに海辺がない'; return; }
+    A.toBlock(t.x, t.y, 0, dz); msg.textContent = `${o.label.replace(/（.*）/, '')}へ移動した` + (o.k === 'peak' ? `（実際の標高 ${Math.round(world.elev[t.y * world.stats.width + t.x]).toLocaleString('ja-JP')}m）` : '');
+  });
+}
 function peopleActInit() {
   const sel = document.getElementById('iAct'); if (!sel || sel.options.length) return;
   for (const [k, name] of WohPeople.ACTIVITIES) { const o = document.createElement('option'); o.value = k; o.textContent = name; sel.appendChild(o); }
   sel.addEventListener('change', () => { if (people) { WohPeople.peopleSetActivity(people, sel.value); postEvent({ cat: 'people', imp: 0, group: 'player-act', text: `あなたの活動を「${sel.options[sel.selectedIndex].textContent}」に変えた` }); } });
 }
 function peopleInfoUpdate() {
-  peopleActInit(); peoplePropInit(); peopleSpeedInit();
+  peopleActInit(); peoplePropInit(); peopleSpeedInit(); peopleGoInit();
   { const sp = document.getElementById('iEthSpeed'); if (sp && people) sp.value = String(people.ethSpeed || 1); }
   { const sel = document.getElementById('iAct'), y0 = people ? WohPeople.peopleYou(people) : null; if (sel) { sel.disabled = !y0 || y0.over; if (y0) sel.value = y0.activity; } }
   const a = document.getElementById('iPeople'), b = document.getElementById('iMine'), c = document.getElementById('iYou'); if (!a || !b) return;
