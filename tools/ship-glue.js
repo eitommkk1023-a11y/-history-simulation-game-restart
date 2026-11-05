@@ -24,13 +24,17 @@
   function preRender(cam) {
     syncMeshes();
     if (!boarded || !fleet.has(boarded) || !meshes.has(boarded)) return;
-    const mk = cp.character, w = deckPoint(meshes.get(boarded)), v = cp.view, r = 4, target = w.clone(); target.y += 1.2; // the game's own orbit: 4 m around the player
+    const mk = cp.character, w = deckPoint(meshes.get(boarded)), v = cp.view;
     mk.position.copy(w);
+    if (globalThis.__wohFirstPerson) { // first-person view (V key): eye height above the deck, looking along yaw/pitch (same formula as the game)
+      const eye = w.clone(); eye.y += 1.58; const cpch = Math.cos(v.pitch);
+      cam.position.copy(eye); cam.lookAt(eye.x - cpch * Math.sin(v.yaw), eye.y - Math.sin(v.pitch), eye.z - cpch * Math.cos(v.yaw));
+      return;
+    }
+    const r = globalThis.__wohCamDist || 4, target = w.clone(); target.y += 1.2; // the game's own orbit around the player
     cam.position.set(target.x + r * Math.cos(v.pitch) * Math.sin(v.yaw), target.y + r * Math.sin(v.pitch), target.z + r * Math.cos(v.pitch) * Math.cos(v.yaw)); cam.lookAt(target);
   }
 
-  /** Every ship UI element hides together; only the small eye button stays. While hidden, stairs are used by standing at their foot. */
-  function setUiHidden(h) { uiHidden = !!h; document.documentElement.classList.toggle('shipUiHidden', uiHidden); try { localStorage.setItem('woh-ship-ui-hidden', uiHidden ? '1' : '0'); } catch (_) { /* ignore */ } }
   function toast(text) { ui.toast.textContent = text; ui.toast.style.opacity = 1; clearTimeout(toast.t); toast.t = setTimeout(() => { ui.toast.style.opacity = 0; }, 3500); }
 
   // ---------- world / environment ----------
@@ -268,9 +272,9 @@
 #shipBtn,#shipPanel{position:fixed;z-index:120;left:calc(8px + env(safe-area-inset-left));font:12px/1.35 -apple-system,"Hiragino Sans",sans-serif;color:#e6edf3}
 #shipBtn{top:calc(56px + env(safe-area-inset-top));padding:6px 10px;background:#132a40e8;border:1px solid #2e5576;border-radius:8px}
 #shipPanel{top:calc(96px + env(safe-area-inset-top));width:min(250px,calc(100vw - 24px));max-height:calc(100vh - 170px);min-height:0;overflow:auto;background:#10202ff2;border:1px solid #2e5576;border-radius:10px;padding:8px;display:none;-webkit-user-select:none;user-select:none}
-#shipBar{position:fixed;z-index:120;bottom:calc(8px + env(safe-area-inset-bottom));left:calc(150px + env(safe-area-inset-left));right:calc(240px + env(safe-area-inset-right));display:none;font:12px/1.3 -apple-system,"Hiragino Sans",sans-serif;color:#e6edf3;background:#10202ff2;border:1px solid #2e5576;border-radius:10px;padding:6px;-webkit-user-select:none;user-select:none}
+#shipBar{position:fixed;z-index:120;bottom:calc(8px + env(safe-area-inset-bottom));left:calc(128px + env(safe-area-inset-left));right:calc(226px + env(safe-area-inset-right));display:none;font:12px/1.3 -apple-system,"Hiragino Sans",sans-serif;color:#e6edf3;background:#10202ff2;border:1px solid #2e5576;border-radius:10px;padding:6px;-webkit-user-select:none;user-select:none}
 #shipBar .info{font-size:11px;color:#9fc4de;margin-bottom:2px}#shipBar .btns{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
-@media (max-width:720px){#shipPanel:not([style*="display: none"]) ~ #shipBar{display:none!important}#shipBar{left:calc(8px + env(safe-area-inset-left));right:calc(8px + env(safe-area-inset-right));bottom:calc(150px + env(safe-area-inset-bottom))}}
+@media (max-width:720px){#shipPanel:not([style*="display: none"]) ~ #shipBar{display:none!important}}
 #shipPanel{touch-action:pan-y;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 #shipBar button{padding:3px 7px!important;font-size:11px!important;min-height:27px!important;margin:1px!important}#shipBar .info{font-size:10.5px!important}
 #shipPanel button,#shipBar button{background:#25415a;color:#e6edf3;border:1px solid #3b6288;border-radius:7px;padding:6px 9px;font-size:12px;min-height:30px;margin:2px 2px 2px 0}
@@ -280,7 +284,7 @@ html.shipUiHidden #shipBtn,html.shipUiHidden #shipPanel,html.shipUiHidden #shipB
 #shipEye{position:fixed;z-index:122;top:calc(56px + env(safe-area-inset-top));left:calc(88px + env(safe-area-inset-left));padding:6px 9px;background:#132a40b0;color:#e6edf3;border:1px solid #2e5576;border-radius:8px;font-size:13px;opacity:.85}
 html.shipUiHidden #shipEye{left:calc(8px + env(safe-area-inset-left));opacity:.45}
 #shipLadders{position:fixed;z-index:121;left:calc(150px + env(safe-area-inset-left));bottom:calc(96px + env(safe-area-inset-bottom))}#shipLadders button{background:#4cc2ff;color:#04202e;border:1px solid #3b6288;border-radius:7px;padding:6px 14px;font-size:13px;min-height:34px}
-#shipToast{position:fixed;z-index:130;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));max-width:min(420px,58vw);text-align:center;transform:translateX(-50%);background:#000c;color:#fff;padding:6px 12px;border-radius:8px;font:13px sans-serif;opacity:0;transition:opacity .3s;pointer-events:none}` });
+#shipToast{position:fixed;z-index:130;left:50%;top:calc(54px + env(safe-area-inset-top));max-width:min(420px,56vw);text-align:center;transform:translateX(-50%);background:#000c;color:#fff;padding:6px 12px;border-radius:8px;font:13px sans-serif;opacity:0;transition:opacity .3s;pointer-events:none}` });
     ui.btn = $('button', { id: 'shipBtn', textContent: '⛵ 船' });
     ui.eye = $('button', { id: 'shipEye', textContent: '👁', title: '船のUIの表示／非表示', onclick: () => setUiHidden(!uiHidden) });
     ui.panel = $('div', { id: 'shipPanel', className: 'scrollable' });
