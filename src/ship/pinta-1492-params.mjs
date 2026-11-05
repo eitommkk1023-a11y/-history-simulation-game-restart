@@ -47,6 +47,15 @@ export const PINTA_1492_PARAMS = Object.freeze({
     waterBarrelKg: d(260, 'one water barrel with contents (assumed 250 L)'),
     personKg: d(75, 'per person'),
   }),
+  // Stowage and deck gear shown in 3D. The sources list what was carried (casks of water, food, gear, repair material, ballast, cargo) but
+  // record no furniture and no positions: every item and place below is a hypothesis. NOT placed on purpose: bunks, tables, a captain's
+  // cabin fittings, a cooking hearth (existence possible, position unknown), guns (armament unresolved), flags or insignia.
+  furnishings: Object.freeze({
+    foodSackKg: d(50, 'one sack or small barrel of provisions'),
+    aisleHalfWidth: d(0.8, 'keep the centre line of the hold clear for walking'),
+    forelocker: d({ ropeCoils: 3, spareSailRolls: 1, repairPlanks: 8 }, 'fore locker contents: rope, a spare sail, repair boards (gear and repair material)'),
+    deck: d({ ropeCoilsPerMast: 1, anchors: 1 }, 'a coil of rope at the foot of each mast; ONE anchor shown (the real number is unknown)'),
+  }),
   crew: Object.freeze({ scenarioSize: d(P.dimensions.crew_size.value, 'scenario starting value only; other sources differ, never a fixed roster size') }),
   tuning: Object.freeze({ roughnessCf: d(0.0015, 'generic carvel hull, not calibrated to this ship'), form: d(0.4, 'generic'), waveK: d(40, 'generic'), keelLiftSlope: d(0.5, 'generic low-aspect hull'), windageAreaM2: d(12, 'm2 hull and rig windage') }),
   armament: Object.freeze({ status: 'unresolved', note: 'number, calibre and positions of guns are not established; none is modelled' }),

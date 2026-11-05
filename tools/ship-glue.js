@@ -110,6 +110,7 @@
     if (rec.crew) Ship.addCrewFigures(THREE_, o, rec.crew);
     o.interior = rec.crew?.interior ?? Ship.createInterior(dd.interior ?? Ship.sampleInteriors[dd.interiorId], { hull: Ship.createHull(dd.hull) });
     Ship.addInterior(THREE_, o, o.interior); Ship.setViewDeck(o, o.weatherDeck);
+    if (isPinta) { o.furn = () => Ship.addFurnishings(THREE_, o, Ship.planFurnishings({ design: dd, interior: o.interior, massItems: rec.massItems ?? dd.massItems })); o.furn(); o.loadRef = rec.massItems ?? null; }
     o.pos = o.interior.startPosition();
     gameScene().add(o.group);
     return o;
@@ -122,6 +123,7 @@
       const st = rec.vessel.state, xM = ref.xM + st.X, yM = ref.yM - st.Y;
       try { const q = T.toLocal(xM, yM, 0, S.origin); m.group.position.set(q.x, q.y, q.z); m.group.visible = true; } catch (_) { m.group.visible = false; continue; }
       m.group.rotation.set(0, -st.psi, -st.heelDeg * DEG);
+      if (m.furn && m.loadRef !== (rec.massItems ?? null)) { m.loadRef = rec.massItems ?? null; m.furn(); Ship.updateFurnishingsVisibility(m); } // stores follow the real load
       Ship.updateShipObject(m, { leeSign: Math.sign(rec.vessel.apparentWind(env).y) || 1 }); if (m.crewFigs?.length) Ship.updateCrewFigures(m, null); if (m.setDetail) m.setDetail(THREE_ && cp.camera.position.distanceTo(m.group.position) > 400 ? 2 : cp.camera.position.distanceTo(m.group.position) > 120 ? 1 : 0);
     }
     for (const id of [...meshes.keys()]) if (!fleet.has(id)) { disposeMesh(meshes.get(id)); meshes.delete(id); }
@@ -271,6 +273,7 @@
     lastPlaced = cp.markerPoint ? { xM: cp.markerPoint.xM, yM: cp.markerPoint.yM } : null;
     if (cp.markerPoint) cp.markerPoint.elevationM = w.y + S.origin.elevationM; // the game keeps the marker at this height while the player stands still
     Ship.setViewDeck(m, m.pos.deck, m.interior.roomOf(m.pos.deck, m.pos.x, m.pos.y)?.id ?? null);
+    if (m.furn) Ship.updateFurnishingsVisibility(m);
     setWater(!m.cutaway); // below deck the hold floor is under the sea surface: hide the sea (cutaway view) so the hold can be seen
     if (m.crewFigs?.length) Ship.updateCrewFigures(m, m.pos.deck);
     const near = m.interior.laddersNear(m.pos), sig = near.map((l) => l.id).join(',');
