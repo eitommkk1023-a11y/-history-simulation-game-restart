@@ -72,7 +72,7 @@ export function createVessel({ ship, analysis, hullParams, sails = [], rudder, o
   if (new Set(oarList.map((o) => o.id)).size !== oarList.length) throw new TypeError('duplicate oar bank id');
   const events = [];
   const s0 = { x: 0, y: 0, headingDeg: 0, u: 0, v: 0, r: 0, ...initial };
-  const st = { time: 0, X: s0.x, Y: s0.y, psi: s0.headingDeg * DEG, u: s0.u, v: s0.v, r: s0.r, rudderDeg: 0, rudderTargetDeg: 0, heelDeg: 0, overpowered: false, anchor: null, aground: false, groundingDamageMJ: 0 };
+  const st = { time: 0, X: s0.x, Y: s0.y, psi: s0.headingDeg * DEG, u: s0.u, v: s0.v, r: s0.r, rudderDeg: 0, rudderTargetDeg: 0, headingTarget: null, heelDeg: 0, overpowered: false, anchor: null, aground: false, groundingDamageMJ: 0 };
   if (rud) rud.xRel = rud.x - hp.cgX;
 
   const fwd = () => [Math.sin(st.psi), Math.cos(st.psi)];
@@ -227,6 +227,7 @@ export function createVessel({ ship, analysis, hullParams, sails = [], rudder, o
   }
 
   function step(dt = 0.1, env = {}) {
+    if (st.headingTarget !== null && st.headingTarget !== undefined) steerTowards(st.headingTarget); // helm runs every physics step
     // Rudder follows its target at a limited rate.
     if (rud) {
       const tgt = clamp(st.rudderTargetDeg, -rud.maxDeg, rud.maxDeg), dr = rud.rateDegS * dt;
@@ -285,7 +286,9 @@ export function createVessel({ ship, analysis, hullParams, sails = [], rudder, o
   return {
     params: Object.freeze({ ...hp, mx, my, Iz }), state: st, sails: sailList,
     forces, step, run, autoTrim, apparentWind, steerTowards,
-    setRudder(deg) { st.rudderTargetDeg = deg; },
+    setRudder(deg) { st.headingTarget = null; st.rudderTargetDeg = deg; },
+    /** Hold a compass heading (deg) automatically every physics step; null returns to manual rudder control. */
+    setHeadingTarget(deg) { st.headingTarget = deg === null ? null : ((deg % 360) + 360) % 360; },
     setOarEffort(id, e) { const o = oarList.find((x) => x.id === id); if (!o) throw new RangeError(`unknown oar bank ${id}`); o.effort = clamp(e, -1, 1); },
     setAllOarEffort(e) { for (const o of oarList) o.effort = clamp(e, -1, 1); },
     oars: oarList,

@@ -9436,7 +9436,7 @@ function createVessel({ ship, analysis, hullParams, sails = [], rudder, oars = [
   if (new Set(oarList.map((o) => o.id)).size !== oarList.length) throw new TypeError('duplicate oar bank id');
   const events = [];
   const s0 = { x: 0, y: 0, headingDeg: 0, u: 0, v: 0, r: 0, ...initial };
-  const st = { time: 0, X: s0.x, Y: s0.y, psi: s0.headingDeg * DEG, u: s0.u, v: s0.v, r: s0.r, rudderDeg: 0, rudderTargetDeg: 0, heelDeg: 0, overpowered: false, anchor: null, aground: false, groundingDamageMJ: 0 };
+  const st = { time: 0, X: s0.x, Y: s0.y, psi: s0.headingDeg * DEG, u: s0.u, v: s0.v, r: s0.r, rudderDeg: 0, rudderTargetDeg: 0, headingTarget: null, heelDeg: 0, overpowered: false, anchor: null, aground: false, groundingDamageMJ: 0 };
   if (rud) rud.xRel = rud.x - hp.cgX;
 
   const fwd = () => [Math.sin(st.psi), Math.cos(st.psi)];
@@ -9591,6 +9591,7 @@ function createVessel({ ship, analysis, hullParams, sails = [], rudder, oars = [
   }
 
   function step(dt = 0.1, env = {}) {
+    if (st.headingTarget !== null && st.headingTarget !== undefined) steerTowards(st.headingTarget); // helm runs every physics step
     // Rudder follows its target at a limited rate.
     if (rud) {
       const tgt = clamp(st.rudderTargetDeg, -rud.maxDeg, rud.maxDeg), dr = rud.rateDegS * dt;
@@ -9649,7 +9650,9 @@ function createVessel({ ship, analysis, hullParams, sails = [], rudder, oars = [
   return {
     params: Object.freeze({ ...hp, mx, my, Iz }), state: st, sails: sailList,
     forces, step, run, autoTrim, apparentWind, steerTowards,
-    setRudder(deg) { st.rudderTargetDeg = deg; },
+    setRudder(deg) { st.headingTarget = null; st.rudderTargetDeg = deg; },
+    /** Hold a compass heading (deg) automatically every physics step; null returns to manual rudder control. */
+    setHeadingTarget(deg) { st.headingTarget = deg === null ? null : ((deg % 360) + 360) % 360; },
     setOarEffort(id, e) { const o = oarList.find((x) => x.id === id); if (!o) throw new RangeError(`unknown oar bank ${id}`); o.effort = clamp(e, -1, 1); },
     setAllOarEffort(e) { for (const o of oarList) o.effort = clamp(e, -1, 1); },
     oars: oarList,
@@ -9957,6 +9960,234 @@ const sampleDesigns = Object.freeze({
 
 return { boxBarge, galleonLikeHull, galleonLikeMassItems, galleyHull, galleyMassItems, sampleDesigns };
 })();
+const M_captain = (() => {
+/**
+ * Captain AI prototype (Ver.14/15 basic part): turns "go to (X, Y)" into steering, sail and oar commands.
+ *  - Route: A* over a depth grid (passable = depth >= draft margin), then line-of-sight smoothing.
+ *  - Sailing: head straight for the waypoint unless it is inside the no-go zone; otherwise beat to windward
+ *    on alternating tacks (square rigs wear round, fore-and-aft rigs tack through the wind).
+ *  - Sails: re-trims every second, reefs when heeled hard, shortens sail again when it eases.
+ *  - Oars: used when there are no sails; effort follows stamina.
+ *  - Arrival: furls, brakes, and anchors when the depth allows.
+ *  - Safety: looks ahead along the track and re-plans if shoal water is coming.
+ * Simplifications (NOT approved rules): the captain reads depth/wind straight from the environment (no
+ * chart or knowledge model yet; `knows(X,Y)` is a hook that unknown cells are avoided through), uses fixed
+ * pointing angles per rig, and orders are applied instantly (no crew work time yet).
+ * State is JSON-safe so it can be saved with the ship.
+ */
+const DEG = Math.PI / 180;
+const norm360 = (d) => ((d % 360) + 360) % 360;
+const angDiff = (a, b) => ((a - b + 540) % 360) - 180; // signed a-b in (-180, 180]
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+const RIG_DEFAULTS = Object.freeze({
+  square: Object.freeze({ tackDeg: 58 }),
+  foreAndAft: Object.freeze({ tackDeg: 42 }),
+  oars: Object.freeze({ tackDeg: 0 }),
+});
+
+class MinHeap {
+  constructor() { this.a = []; }
+  get size() { return this.a.length; }
+  push(f, v) { const a = this.a; a.push([f, v]); let i = a.length - 1; while (i) { const p = (i - 1) >> 1; if (a[p][0] <= a[i][0]) break; [a[p], a[i]] = [a[i], a[p]]; i = p; } }
+  pop() { const a = this.a, top = a[0], last = a.pop(); if (a.length) { a[0] = last; let i = 0; for (;;) { let l = 2 * i + 1, r = l + 1, m = i; if (l < a.length && a[l][0] < a[m][0]) m = l; if (r < a.length && a[r][0] < a[m][0]) m = r; if (m === i) break; [a[m], a[i]] = [a[i], a[m]]; i = m; } } return top[1]; }
+}
+
+function createCaptain(vessel, { rig, tackDeg, minDepthM, clearanceM, arriveRadiusM = 60, knows = () => true, maxExpansions = 40000 } = {}) {
+  const hp = vessel.params, st = vessel.state;
+  const sailType = vessel.sails[0]?.type ?? null;
+  const kind = rig ?? (sailType ?? 'oars');
+  if (!RIG_DEFAULTS[kind]) throw new RangeError(`unknown rig ${kind}`);
+  const tack = tackDeg ?? RIG_DEFAULTS[kind].tackDeg;
+  const needDepth = minDepthM ?? hp.draftM * 1.5 + 3;
+  const margin = clearanceM ?? hp.waterlineLengthM * 2; // keep this far from shoals: leeway, turning and gusts push the ship off its track
+  const events = [];
+  const S = { drift: 0, underway: false, mode: 'idle', dest: null, waypoints: [], wp: 0, tackSide: 1, phase: null, lastTrim: 0, noRouteReason: null, replanAt: -1e9, time: 0, reef: 1 };
+  const emit = (type, extra = {}) => events.push({ type, time: S.time, ...extra });
+
+  const rawDepth = (env, X, Y, t) => (typeof env.depth === 'function' ? env.depth(X, Y, t) : env.depth ?? Infinity);
+  function depthOk(env, X, Y, t, m = margin) {
+    if (!knows(X, Y) || rawDepth(env, X, Y, t) < needDepth) return false;
+    return m <= 0 || [[m, 0], [-m, 0], [0, m], [0, -m]].every(([dx, dy]) => rawDepth(env, X + dx, Y + dy, t) >= needDepth);
+  }
+  const clearLine = (env, a, b, step, t) => {
+    const d = Math.hypot(b.X - a.X, b.Y - a.Y), n = Math.max(1, Math.ceil(d / step));
+    for (let i = 0; i <= n; i++) if (!depthOk(env, a.X + (b.X - a.X) * i / n, a.Y + (b.Y - a.Y) * i / n, t, margin * 1.6)) return false; // straight legs keep extra room: the ship cannot hold the line exactly
+    return true;
+  };
+
+  /** A* route from the ship's position to dest. Returns waypoint list or a failure reason. */
+  function plan(env, dest) {
+    const t = S.time, s0 = { X: st.X, Y: st.Y }, dist = Math.hypot(dest.X - s0.X, dest.Y - s0.Y);
+    if (dist < arriveRadiusM) return { status: 'ok', waypoints: [dest] };
+    const cell = clamp(dist / 50, 40, 400), margin = Math.max(600, dist * 0.6);
+    const x0 = Math.min(s0.X, dest.X) - margin, y0 = Math.min(s0.Y, dest.Y) - margin;
+    const W = Math.ceil((Math.abs(dest.X - s0.X) + 2 * margin) / cell) + 1, H = Math.ceil((Math.abs(dest.Y - s0.Y) + 2 * margin) / cell) + 1;
+    const cx = (i) => x0 + (i + 0.5) * cell, cy = (j) => y0 + (j + 0.5) * cell;
+    const toI = (X) => clamp(Math.floor((X - x0) / cell), 0, W - 1), toJ = (Y) => clamp(Math.floor((Y - y0) / cell), 0, H - 1);
+    const memo = new Map(), pass = (i, j) => { const k = j * W + i; let v = memo.get(k); if (v === undefined) { v = depthOk(env, cx(i), cy(j), t); memo.set(k, v); } return v; };
+    const si = toI(s0.X), sj = toJ(s0.Y);
+    let gi = toI(dest.X), gj = toJ(dest.Y);
+    if (!depthOk(env, dest.X, dest.Y, t, 0)) return { status: 'no_route', reason: 'destination_too_shallow' };
+    memo.set(sj * W + si, true); // the start is always usable
+    if (!pass(gi, gj)) memo.set(gj * W + gi, true);
+    const g = new Map([[sj * W + si, 0]]), from = new Map(), heap = new MinHeap(), closed = new Set();
+    const h = (i, j) => { const dx = Math.abs(i - gi), dy = Math.abs(j - gj); return (Math.max(dx, dy) + 0.4142 * Math.min(dx, dy)) * cell; };
+    heap.push(h(si, sj), sj * W + si);
+    let expansions = 0, found = false;
+    while (heap.size) {
+      const k = heap.pop(); if (closed.has(k)) continue; closed.add(k);
+      const i = k % W, j = (k / W) | 0;
+      if (i === gi && j === gj) { found = true; break; }
+      if (++expansions > maxExpansions) return { status: 'no_route', reason: 'search_limit' };
+      for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
+        if (!di && !dj) continue;
+        const ni = i + di, nj = j + dj; if (ni < 0 || nj < 0 || ni >= W || nj >= H || !pass(ni, nj)) continue;
+        if (di && dj && (!pass(i + di, j) || !pass(i, j + dj))) continue; // no corner cutting
+        const nk = nj * W + ni, ng = g.get(k) + (di && dj ? 1.4142 : 1) * cell;
+        if (ng < (g.get(nk) ?? Infinity)) { g.set(nk, ng); from.set(nk, k); heap.push(ng + h(ni, nj), nk); }
+      }
+    }
+    if (!found) return { status: 'no_route', reason: 'blocked' };
+    const cells = []; for (let k = gj * W + gi; k !== undefined; k = from.get(k)) cells.push({ X: cx(k % W), Y: cy((k / W) | 0) });
+    cells.reverse(); cells[0] = s0; cells[cells.length - 1] = dest;
+    // Line-of-sight smoothing.
+    const out = []; let a = 0;
+    while (a < cells.length - 1) {
+      let b = cells.length - 1; while (b > a + 1 && !clearLine(env, cells[a], cells[b], Math.max(15, cell / 3), t)) b--;
+      out.push(cells[b]); a = b;
+    }
+    return { status: 'ok', waypoints: out };
+  }
+
+  function setDestination(env, dest) {
+    if (!Number.isFinite(dest?.X) || !Number.isFinite(dest?.Y)) throw new TypeError('destination needs finite X and Y');
+    S.time = S.time; S.dest = { X: dest.X, Y: dest.Y };
+    const r = plan(env, S.dest);
+    if (r.status !== 'ok') { S.mode = 'idle'; S.noRouteReason = r.reason; emit('captain_no_route', { reason: r.reason }); return r; }
+    S.waypoints = r.waypoints; S.wp = 0; S.mode = 'sailing'; S.phase = null; S.noRouteReason = null;
+    if (st.anchor) vessel.raiseAnchor();
+    for (const s of vessel.sails) s.deployed = 1;
+    S.reef = 1;
+    emit('captain_route_planned', { waypoints: S.waypoints.length });
+    return { status: 'ok', waypoints: S.waypoints.map((w) => ({ ...w })) };
+  }
+
+  const bearingTo = (p) => norm360(Math.atan2(p.X - st.X, p.Y - st.Y) / DEG);
+
+  function windFrom(env) {
+    const w = typeof env.wind === 'function' ? env.wind(st.X, st.Y, S.time) : env.wind ?? { x: 0, y: 0 };
+    const sp = Math.hypot(w.x, w.y);
+    return { from: sp > 0.05 ? norm360(Math.atan2(-w.x, -w.y) / DEG) : null, speed: sp };
+  }
+
+  /** Course over ground vs heading (leeway, current): steer off the bearing by the measured drift so the TRACK meets the waypoint. */
+  function crabbed(B) {
+    const f = [Math.sin(st.psi), Math.cos(st.psi)], sd = [Math.cos(st.psi), -Math.sin(st.psi)];
+    const vx = st.u * f[0] + st.v * sd[0], vy = st.u * f[1] + st.v * sd[1];
+    if (Math.hypot(vx, vy) > 1.5 && st.u > 0) { const cog = norm360(Math.atan2(vx, vy) / DEG); S.drift += (angDiff(cog, st.psi / DEG) - S.drift) * 0.1; }
+    return norm360(B - clamp(S.drift, -30, 30));
+  }
+
+  /** Heading to steer for the current waypoint, including beating to windward. */
+  function chooseHeading(env, wp) {
+    const B = bearingTo(wp), w = windFrom(env);
+    if (vessel.sails.length === 0 || w.from === null || tack === 0) { S.phase = null; return crabbed(B); }
+    const off = angDiff(B, w.from); // how far the bearing is from straight into the wind
+    const sailing = Math.abs(off) > tack + 4;
+    // Getting under way: a ship without steerage way that points into the wind falls astern ("in irons").
+    // The crew first bears away onto a reach to build speed, then comes back up to the course.
+    if (S.underway && st.u > 2.2) S.underway = false;
+    if (!S.underway && st.u < 1.2 && !sailing) S.underway = true;
+    if (S.underway) { S.phase = null; return norm360(w.from + S.tackSide * (tack + 40)); }
+    if (sailing) { S.phase = null; return crabbed(B); }
+    // Inside the no-go zone: beat on alternating tacks. Switch when the track has drifted outside the corridor.
+    const dist = Math.hypot(wp.X - st.X, wp.Y - st.Y), lastWp = S.wp === 0 ? { X: S.startX ?? st.X, Y: S.startY ?? st.Y } : S.waypoints[S.wp - 1];
+    const lx = wp.X - lastWp.X, ly = wp.Y - lastWp.Y, ll = Math.hypot(lx, ly) || 1;
+    const cross = ((st.X - lastWp.X) * ly - (st.Y - lastWp.Y) * lx) / ll; // + = right of the rhumb line (looking at the waypoint)
+    const corridor = kind === 'square' ? clamp(0.35 * ll, 300, 1000) : clamp(0.18 * ll, 120, 500); // wearing a square rig round costs a lot of ground, so square rigs tack less often
+    const wantSide = S.tackSide; // +1: steer to the right of the wind (heading = from + tack), -1: left
+    // heading on starboard tack side: wind from + tack offset
+    if ((wantSide > 0 && cross > corridor) || (wantSide < 0 && cross < -corridor)) { S.tackSide = -S.tackSide; emit('captain_tack', { side: S.tackSide }); S.phase = kind === 'square' ? { wear: norm360(w.from + 180), to: null } : null; }
+    const target = norm360(w.from + S.tackSide * tack);
+    if (S.phase?.wear !== undefined) {
+      // Square rigs wear: bear away through downwind before coming up on the new tack.
+      if (Math.abs(angDiff(st.psi / DEG, S.phase.wear)) > 25 && Math.abs(angDiff(st.psi / DEG, target)) > 25) return S.phase.wear;
+      S.phase = null;
+    }
+    return target;
+  }
+
+  function trimAndReef(env, dt) {
+    S.lastTrim += dt;
+    if (!vessel.sails.length || S.lastTrim < 1) return;
+    S.lastTrim = 0;
+    const hv = Math.abs(st.heelDeg);
+    if ((hv > 9 || st.overpowered) && S.reef > 0.4) { S.reef = Math.max(0.4, S.reef - 0.3); emit('captain_reef', { deployed: S.reef }); }
+    else if (hv < 3.5 && S.reef < 1) S.reef = Math.min(1, S.reef + 0.1);
+    for (const s of vessel.sails) s.deployed = S.reef;
+    vessel.autoTrim(env);
+  }
+
+  function lookAheadShallow(env) {
+    const sp = Math.hypot(st.u, st.v); if (sp < 0.5) return false;
+    const f = [Math.sin(st.psi), Math.cos(st.psi)], dirx = (st.u * f[0] + st.v * f[1]) / 1, v = [st.u * f[0] + st.v * Math.cos(st.psi), st.u * f[1] - st.v * Math.sin(st.psi)];
+    const m = Math.hypot(v[0], v[1]) || 1;
+    for (const d of [hp.waterlineLengthM * 1.5, hp.waterlineLengthM * 3.5]) if (!depthOk(env, st.X + v[0] / m * d, st.Y + v[1] / m * d, S.time, hp.waterlineLengthM * 0.5)) return true;
+    return false;
+  }
+
+  /** Apply the captain's orders for one control tick of length dt seconds. */
+  function update(env, dt) {
+    S.time += dt;
+    if (S.mode === 'idle' || S.mode === 'arrived') return;
+    if (S.startX === undefined) { S.startX = st.X; S.startY = st.Y; }
+    const wp = S.waypoints[S.wp], dWp = Math.hypot(wp.X - st.X, wp.Y - st.Y), last = S.wp === S.waypoints.length - 1;
+    if (dWp < (last ? arriveRadiusM : Math.max(arriveRadiusM, 80))) {
+      if (last) { S.mode = 'arriving'; S.arrivingFor = 0; emit('captain_arriving'); } else { S.wp++; S.startX = st.X; S.startY = st.Y; return; }
+    }
+    if (S.mode === 'arriving') {
+      for (const s of vessel.sails) s.deployed = 0;
+      const sp = Math.hypot(st.u, st.v);
+      vessel.setAllOarEffort(sp > 1 ? -0.5 : 0);
+      vessel.setHeadingTarget(norm360(st.psi / DEG));
+      S.arrivingFor = (S.arrivingFor ?? 0) + dt;
+      if (!st.anchor && sp < 3.5) {
+        const r = vessel.dropAnchor(env, { anchorKg: 600, rodeM: 80 });
+        if (r.status === 'ok') { S.mode = 'arrived'; vessel.setAllOarEffort(0); emit('captain_arrived', { anchored: true }); return; }
+      }
+      if (sp < 0.4 || S.arrivingFor > 180) { S.mode = 'arrived'; vessel.setAllOarEffort(0); emit('captain_arrived', { anchored: !!st.anchor }); }
+      return;
+    }
+    // Shoal ahead: re-plan (at most every 20 s).
+    if (S.time - S.replanAt > 20 && lookAheadShallow(env)) {
+      S.replanAt = S.time; const r = plan(env, S.dest);
+      if (r.status === 'ok') { S.waypoints = r.waypoints; S.wp = 0; S.startX = st.X; S.startY = st.Y; emit('captain_replan'); }
+      else { S.mode = 'idle'; emit('captain_no_route', { reason: r.reason }); return; }
+    }
+    vessel.setHeadingTarget(chooseHeading(env, S.waypoints[S.wp]));
+    trimAndReef(env, dt);
+    if (vessel.oars.length) {
+      const rowing = vessel.sails.length === 0 || windFrom(env).speed < 2.5;
+      const stam = vessel.snapshot().stamina ?? 1;
+      vessel.setAllOarEffort(rowing ? (stam < 0.25 ? 0.3 : 0.7) : 0);
+    }
+  }
+
+  function cancel() { S.mode = 'idle'; S.dest = null; S.waypoints = []; vessel.setAllOarEffort?.(0); emit('captain_cancelled'); }
+
+  return {
+    setDestination, update, cancel,
+    takeEvents: () => events.splice(0),
+    get mode() { return S.mode; }, get destination() { return S.dest && { ...S.dest }; }, get waypoints() { return S.waypoints.map((w) => ({ ...w })); },
+    get waypointIndex() { return S.wp; }, get reef() { return S.reef; },
+    serialize: () => JSON.parse(JSON.stringify(S)),
+    restore(data) { Object.assign(S, data); },
+  };
+}
+
+return { RIG_DEFAULTS, createCaptain };
+})();
 const M_fleet = (() => {
 /**
  * Fleet registry: ship ids, designs, simulation LOD, JSON save/restore (Ver.25-26 basic part).
@@ -9970,6 +10201,7 @@ const M_fleet = (() => {
 const { createShip } = M_ship_model;
 const { analyzeHydrostatics } = M_hydrostatics;
 const { createVessel } = M_dynamics;
+const { createCaptain } = M_captain;
 const FORMAT = 1;
 const LOD = Object.freeze({ near: 'near', far: 'far', dormant: 'dormant' });
 
@@ -10000,10 +10232,18 @@ function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0.1, far
     if (id) { const m = /^ship-(\d+)$/.exec(id); if (m) nextId = Math.max(nextId, +m[1] + 1); }
     const vessel = build(designId);
     Object.assign(vessel.state, { X, Y, psi: headingDeg * Math.PI / 180 });
-    const rec = { id: shipId, designId, vessel, lod: LOD.near, lifecycle: 'afloat', dormantSeconds: 0, refs: { owner: null, crew: [], cargo: [], ...refs }, history: [{ type: 'ship_created', time }] };
+    const rec = { id: shipId, designId, vessel, captain: null, lod: LOD.near, lifecycle: 'afloat', dormantSeconds: 0, refs: { owner: null, crew: [], cargo: [], ...refs }, history: [{ type: 'ship_created', time }] };
     ships.set(shipId, rec);
     return shipId;
   }
+
+  /** Give the ship's captain a destination (ship frame metres). Returns the planner's {status, waypoints|reason}. */
+  function setDestination(id, env, dest, options) {
+    const rec = get(id);
+    rec.captain ??= createCaptain(rec.vessel, options);
+    return rec.captain.setDestination(env, dest);
+  }
+  function cancelDestination(id) { get(id).captain?.cancel(); }
 
   const get = (id) => { const s = ships.get(id); if (!s) throw new RangeError(`unknown ship ${id}`); return s; };
 
@@ -10017,8 +10257,8 @@ function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0.1, far
       if (s.lod === LOD.dormant) { s.dormantSeconds += dt; continue; }
       const h = s.lod === LOD.near ? nearDt : farDt, n = Math.min(maxSubsteps, Math.max(1, Math.round(dt / h)));
       const sub = dt / n;
-      for (let i = 0; i < n; i++) v.step(sub, env);
-      for (const e of v.takeEvents()) { const ev = { ...e, shipId: s.id }; events.push(ev); s.history.push(ev); }
+      for (let i = 0; i < n; i++) { v.step(sub, env); s.captain?.update(env, sub); }
+      for (const e of [...v.takeEvents(), ...(s.captain?.takeEvents() ?? [])]) { const ev = { ...e, shipId: s.id }; events.push(ev); s.history.push(ev); }
     }
   }
 
@@ -10035,6 +10275,7 @@ function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0.1, far
           state: { ...st, anchor: st.anchor ? { ...st.anchor, breakingN: num(st.anchor.breakingN) } : null },
           sails: v.sails.map((x) => ({ id: x.id, trimDeg: x.trimDeg, deployed: x.deployed })),
           oars: v.oars.map((o) => ({ id: o.id, effort: o.effort, stamina: o.stamina })),
+          captain: s.captain ? s.captain.serialize() : null,
         };
       }),
     }));
@@ -10051,12 +10292,14 @@ function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0.1, far
       if (r.state.anchor) vessel.state.anchor = { ...r.state.anchor, breakingN: r.state.anchor.breakingN ?? Infinity };
       for (const x of r.sails) { const sl = vessel.sails.find((s) => s.id === x.id); if (sl) { sl.trimDeg = x.trimDeg; sl.deployed = x.deployed; } }
       for (const x of r.oars) { const o = vessel.oars.find((q) => q.id === x.id); if (o) { o.effort = x.effort; o.stamina = x.stamina; } }
-      ships.set(r.id, { id: r.id, designId: r.designId, vessel, lod: LOD.near, lifecycle: r.lifecycle, dormantSeconds: r.dormantSeconds, refs: r.refs, history: r.history });
+      let captain = null;
+      if (r.captain) { captain = createCaptain(vessel); captain.restore(r.captain); }
+      ships.set(r.id, { id: r.id, designId: r.designId, vessel, captain, lod: LOD.near, lifecycle: r.lifecycle, dormantSeconds: r.dormantSeconds, refs: r.refs, history: r.history });
     }
   }
 
   return {
-    registerDesign, addShip, step, serialize, restore, get,
+    registerDesign, addShip, step, serialize, restore, get, setDestination, cancelDestination,
     has: (id) => ships.has(id),
     list: () => [...ships.values()],
     ids: () => [...ships.keys()],
@@ -10216,7 +10459,7 @@ function createWorldEnvironment(world, {
 
 return { createWorldEnvironment };
 })();
-const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_params, M_dynamics, M_flooding, M_ship_model, M_samples, M_fleet, M_hull_mesh, M_world_environment);
+const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_params, M_dynamics, M_flooding, M_ship_model, M_samples, M_captain, M_fleet, M_hull_mesh, M_world_environment);
 
 // Glue between the ship system (const Ship, defined above by the bundle) and the game's native view.
 // Additive only: reads globalThis.__chunkPreview / __wohNative / __geo and adds its own meshes and HUD.
@@ -10224,8 +10467,9 @@ const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_p
 (() => {
   'use strict';
   const DEG = Math.PI / 180, KEY_PREFIX = 'woh-ships-';
-  const EVT = { grounded: '座礁した', refloated: '離礁した', anchor_dropped: '錨を下ろした', anchor_raised: '錨を上げた', anchor_dragging: '錨が走っている', anchor_parted: '錨索が切れた' };
-  let cp, nat, THREE_, S = null, fleet = null, env = null, ref = null, ctl = {}, meshes = new Map(), boarded = null, speedX = 1, lastT = null, saveAcc = 0, trimAcc = 0, lastSeed = null;
+  const EVT = { captain_route_planned: '航路を決めた', captain_no_route: '', captain_tack: '帆の向きを替えた', captain_reef: '帆を絞った', captain_arriving: '目的地に近づいた', captain_arrived: '到着した', captain_replan: '浅瀬を避けて航路を引き直した', captain_cancelled: '航海をやめた', grounded: '座礁した', refloated: '離礁した', anchor_dropped: '錨を下ろした', anchor_raised: '錨を上げた', anchor_dragging: '錨が走っている', anchor_parted: '錨索が切れた' };
+  let pickMode = false, destMarker = null, routeLine = null, cp, nat, THREE_, S = null, fleet = null, env = null, ref = null, ctl = {}, meshes = new Map(), boarded = null, speedX = 1, lastT = null, saveAcc = 0, trimAcc = 0, lastSeed = null;
+  const REASON = { destination_too_shallow: 'そこは浅くて行けない', blocked: '回り込む道がない', search_limit: '遠すぎて航路を決められない' };
   const ui = {};
   const $ = (tag, props = {}, kids = []) => { const e = Object.assign(document.createElement(tag), props); for (const k of kids) e.append(k); return e; };
 
@@ -10237,7 +10481,7 @@ const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_p
   /** The game renders inside its own frame, so ship meshes and the boarded player are placed right before each render. */
   function patchRender() {
     const rd = nat.renderer, orig = rd.render.bind(rd);
-    rd.render = function (sc, cam) { try { if (fleet && env && S === cp.state) { if (cp.view.overview) { if (sc === nat.scene) syncOverview(); } else if (sc === gameScene()) preRender(cam); } } catch (_) { /* never break the game's render */ } return orig(sc, cam); };
+    rd.render = function (sc, cam) { try { if (fleet && env && S === cp.state) { if (cp.view.overview) { if (sc === nat.scene) { syncOverview(); if (boarded) updateRoute(boarded); } } else if (sc === gameScene()) preRender(cam); } } catch (_) { /* never break the game's render */ } return orig(sc, cam); };
   }
   function preRender() { syncMeshes(); }
 
@@ -10384,6 +10628,32 @@ const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_p
     if (!land) { toast('近くに降りられる陸がない'); return; }
     cp.placeMarker(land.xM, land.yM, true); boarded = null; refreshList(); toast('陸に降りた');
   }
+  function setDest(id, X, Y) {
+    const r = fleet.setDestination(id, env, { X, Y });
+    if (r.status !== 'ok') { toast('船長：' + (REASON[r.reason] ?? '行けない')); return false; }
+    updateRoute(id); refreshList(); save(); return true;
+  }
+  function updateRoute(id) {
+    const rec = id && fleet.has(id) ? fleet.get(id) : null, mpc = S.terrain.metersPerCell ?? 33.3, k = WB / (WB - 1);
+    if (routeLine) { nat.scene.remove(routeLine); routeLine.geometry.dispose(); routeLine.material.dispose(); routeLine = null; }
+    if (destMarker) { nat.scene.remove(destMarker); destMarker.geometry.dispose(); destMarker.material.dispose(); destMarker = null; }
+    if (!rec?.captain?.destination || !['sailing', 'arriving'].includes(rec.captain.mode)) return;
+    const toMap = (X, Y) => new THREE_.Vector3(((ref.xM + X) / mpc) * k - WB / 2, 22, ((ref.yM - Y) / mpc) * k - WB / 2);
+    const pts = [toMap(rec.vessel.state.X, rec.vessel.state.Y), ...rec.captain.waypoints.slice(rec.captain.waypointIndex).map((w) => toMap(w.X, w.Y))];
+    routeLine = new THREE_.Line(new THREE_.BufferGeometry().setFromPoints(pts), new THREE_.LineBasicMaterial({ color: 0xffe14a, depthTest: false })); routeLine.renderOrder = 102; nat.scene.add(routeLine);
+    destMarker = new THREE_.Mesh(new THREE_.SphereGeometry(26, 10, 8), new THREE_.MeshBasicMaterial({ color: 0xffe14a, depthTest: false })); destMarker.renderOrder = 102;
+    destMarker.position.copy(toMap(rec.captain.destination.X, rec.captain.destination.Y)); nat.scene.add(destMarker);
+  }
+  /** Overview tap -> destination: intersect the camera ray with the sea plane of the map scene. */
+  function onMapTap(e) {
+    if (!pickMode || !boarded || !cp.view.overview || !fleet?.has(boarded)) return;
+    const el = nat.renderer.domElement, r = el.getBoundingClientRect(), cam = cp.camera;
+    const ndc = new THREE_.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    const ray = new THREE_.Raycaster(); ray.setFromCamera(ndc, cam);
+    const hit = new THREE_.Vector3(); if (!ray.ray.intersectPlane(new THREE_.Plane(new THREE_.Vector3(0, 1, 0), 0), hit)) return;
+    const mpc = S.terrain.metersPerCell ?? 33.3, k = WB / (WB - 1), xM = ((hit.x + WB / 2) / k) * mpc, yM = ((hit.z + WB / 2) / k) * mpc;
+    pickMode = false; setDest(boarded, xM - ref.xM, ref.yM - yM); toast('目的地を決めた'); refreshList();
+  }
   function removeShip(id) { fleet.removeShip(id); delete ctl[id]; if (boarded === id) boarded = null; refreshList(); save(); }
 
   function save() {
@@ -10400,13 +10670,14 @@ const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_p
     const mp = cp.markerPoint, focus = boarded ? posOf(boarded) : mp ? { X: mp.xM - ref.xM, Y: ref.yM - mp.yM } : null;
     for (const rec of fleet.list()) {
       const c = ctl[rec.id] ??= { heading: rec.vessel.snapshot().headingDeg, held: 0, auto: true, oar: 0.8 }, v = rec.vessel;
+      if (captainActive(rec)) { c.heading = v.snapshot().headingDeg; continue; }
       c.heading = (c.heading + c.held * 25 * dt * speedX + 360) % 360;
-      v.steerTowards(c.heading);
+      v.setHeadingTarget(c.heading);
       if (v.oars.length) v.setAllOarEffort(c.oar);
     }
-    trimAcc += dt; if (trimAcc > 1) { trimAcc = 0; for (const rec of fleet.list()) if (ctl[rec.id]?.auto) rec.vessel.autoTrim(env); }
+    trimAcc += dt; if (trimAcc > 1) { trimAcc = 0; for (const rec of fleet.list()) if (ctl[rec.id]?.auto && !captainActive(rec)) rec.vessel.autoTrim(env); }
     if (dt > 0) fleet.step(dt * speedX, env, focus);
-    for (const e of fleet.takeEvents()) if (EVT[e.type]) toast(`${e.shipId}：${EVT[e.type]}`);
+    for (const e of fleet.takeEvents()) { if (e.type === 'captain_no_route') toast('船長：' + (REASON[e.reason] ?? '行けない')); else if (EVT[e.type]) toast(`${e.shipId}：${EVT[e.type]}`); }
     syncMeshes();
     if (boarded && fleet.has(boarded) && cp.view.overview) { const st = fleet.get(boarded).vessel.state; cp.placeMarker(ref.xM + st.X, ref.yM - st.Y, false); }
     if (boarded && fleet.has(boarded) && !cp.view.overview && meshes.has(boarded)) {
@@ -10423,6 +10694,7 @@ const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_p
     saveAcc += dt; if (saveAcc > 8) { saveAcc = 0; save(); }
     updateHud();
   }
+  const captainActive = (rec) => !!rec.captain && ['sailing', 'arriving'].includes(rec.captain.mode);
   const posOf = (id) => { const s = fleet.get(id).vessel.state; return { X: s.X, Y: s.Y }; };
 
   // ---------- HUD ----------
@@ -10449,6 +10721,9 @@ const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_p
     ui.bar = $('div', { id: 'shipBar' }, [ui.info, ui.ctrl]);
     ui.panel.append(ui.spawn, ui.list);
     document.body.append(css, ui.btn, ui.panel, ui.bar, ui.toast);
+    let down = null; const cv = nat.renderer.domElement;
+    cv.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; }, true);
+    cv.addEventListener('pointerup', (e) => { if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 8 && performance.now() - down.t < 500) onMapTap(e); down = null; }, true);
     ['pointerdown', 'pointermove', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'wheel'].forEach((ev) => { for (const el of [ui.panel, ui.btn, ui.bar]) el.addEventListener(ev, (e) => e.stopPropagation(), { passive: true}); });
   }
   function refreshList() {
@@ -10466,6 +10741,10 @@ const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_p
       $('button', { textContent: v.state.anchor ? '錨を上げる' : '錨を下ろす', onclick: () => { if (v.state.anchor) v.raiseAnchor(); else { const r = v.dropAnchor(env, { anchorKg: 400, rodeM: 60 }); if (r.status !== 'ok') toast('投錨できない：' + r.status); } refreshList(); } }));
     if (v.sails.length) ui.ctrl.append($('button', { textContent: c.auto ? '帆：自動' : '帆：固定', className: c.auto ? 'on' : '', onclick: () => { c.auto = !c.auto; refreshList(); } }));
     if (v.oars.length) { const r = $('input', { type: 'range', min: -100, max: 100, step: 5, value: Math.round(c.oar * 100) }); r.oninput = () => { c.oar = r.value / 100; }; ui.ctrl.append($('span', { textContent: '櫂' }), r); r.style.cssText = 'width:90px'; }
+    const active = captainActive(rec);
+    ui.ctrl.append($('button', { textContent: pickMode ? '地図をタップ…' : '目的地（俯瞰で指定）', className: pickMode ? 'on' : '', onclick: () => { pickMode = !pickMode; toast(pickMode ? '「UIを表示」→「世界を俯瞰」で地図を開き、行き先をタップ' : '指定をやめた'); refreshList(); } }),
+      $('button', { textContent: '前方3km', onclick: () => { const st = v.state, h = st.psi; setDest(boarded, st.X + Math.sin(h) * 3000, st.Y + Math.cos(h) * 3000); } }));
+    if (active) ui.ctrl.append($('button', { textContent: '航海をやめる', onclick: () => { fleet.cancelDestination(boarded); updateRoute(null); v.setHeadingTarget(null); ctl[boarded].heading = v.snapshot().headingDeg; refreshList(); } }));
     ui.ctrl.append($('button', { textContent: '降りる', onclick: () => disembark() }), $('button', { textContent: `倍速 ×${speedX}`, onclick: (e) => { speedX = speedX === 1 ? 4 : speedX === 4 ? 10 : 1; e.target.textContent = `倍速 ×${speedX}`; } }));
   }
   function updateHud() {
@@ -10473,7 +10752,9 @@ const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_p
     if (!boarded || !fleet?.has(boarded)) { ui.info.textContent = ''; return; }
     const v = fleet.get(boarded).vessel, s = v.snapshot(), f = v.forces(env), c = ctl[boarded];
     const w = env.wind(v.state.X, v.state.Y, 0), wf = (Math.atan2(-w.x, -w.y) / DEG + 360) % 360;
-    ui.info.textContent = `速度 ${(s.speedOverGround * 1.9438).toFixed(1)} kt／方位 ${s.headingDeg.toFixed(0)}°（目標 ${c.heading.toFixed(0)}°）／風 ${Math.hypot(w.x, w.y).toFixed(1)} m/s・${wf.toFixed(0)}°から／傾斜 ${s.heelDeg.toFixed(1)}°／水深余裕 ${f.clearanceM.toFixed(1)} m${s.aground ? '／座礁中' : ''}${s.anchored ? (s.anchorDragging ? '／走錨中' : '／錨泊中') : ''}`;
+    const cap = fleet.get(boarded).captain, dd = cap?.destination && Math.hypot(cap.destination.X - v.state.X, cap.destination.Y - v.state.Y), eta = dd ? Math.round(dd / Math.max(0.8, s.speedOverGround) / 60) : 0;
+    const capTxt = cap && ['sailing', 'arriving'].includes(cap.mode) ? `／航海中 残り${dd > 1000 ? (dd / 1000).toFixed(1) + 'km' : Math.round(dd) + 'm'}（約${eta}分）${cap.reef < 1 ? '／帆を絞っている' : ''}` : cap?.mode === 'arrived' ? '／到着' : '';
+    ui.info.textContent = `速度 ${(s.speedOverGround * 1.9438).toFixed(1)} kt／方位 ${s.headingDeg.toFixed(0)}°（目標 ${c.heading.toFixed(0)}°）／風 ${Math.hypot(w.x, w.y).toFixed(1)} m/s・${wf.toFixed(0)}°から／傾斜 ${s.heelDeg.toFixed(1)}°／水深余裕 ${f.clearanceM.toFixed(1)} m${s.aground ? '／座礁中' : ''}${s.anchored ? (s.anchorDragging ? '／走錨中' : '／錨泊中') : ''}${capTxt}`;
   }
 })();
 

@@ -4,8 +4,9 @@
 (() => {
   'use strict';
   const DEG = Math.PI / 180, KEY_PREFIX = 'woh-ships-';
-  const EVT = { grounded: '座礁した', refloated: '離礁した', anchor_dropped: '錨を下ろした', anchor_raised: '錨を上げた', anchor_dragging: '錨が走っている', anchor_parted: '錨索が切れた' };
-  let cp, nat, THREE_, S = null, fleet = null, env = null, ref = null, ctl = {}, meshes = new Map(), boarded = null, speedX = 1, lastT = null, saveAcc = 0, trimAcc = 0, lastSeed = null;
+  const EVT = { captain_route_planned: '航路を決めた', captain_no_route: '', captain_tack: '帆の向きを替えた', captain_reef: '帆を絞った', captain_arriving: '目的地に近づいた', captain_arrived: '到着した', captain_replan: '浅瀬を避けて航路を引き直した', captain_cancelled: '航海をやめた', grounded: '座礁した', refloated: '離礁した', anchor_dropped: '錨を下ろした', anchor_raised: '錨を上げた', anchor_dragging: '錨が走っている', anchor_parted: '錨索が切れた' };
+  let pickMode = false, destMarker = null, routeLine = null, cp, nat, THREE_, S = null, fleet = null, env = null, ref = null, ctl = {}, meshes = new Map(), boarded = null, speedX = 1, lastT = null, saveAcc = 0, trimAcc = 0, lastSeed = null;
+  const REASON = { destination_too_shallow: 'そこは浅くて行けない', blocked: '回り込む道がない', search_limit: '遠すぎて航路を決められない' };
   const ui = {};
   const $ = (tag, props = {}, kids = []) => { const e = Object.assign(document.createElement(tag), props); for (const k of kids) e.append(k); return e; };
 
@@ -17,7 +18,7 @@
   /** The game renders inside its own frame, so ship meshes and the boarded player are placed right before each render. */
   function patchRender() {
     const rd = nat.renderer, orig = rd.render.bind(rd);
-    rd.render = function (sc, cam) { try { if (fleet && env && S === cp.state) { if (cp.view.overview) { if (sc === nat.scene) syncOverview(); } else if (sc === gameScene()) preRender(cam); } } catch (_) { /* never break the game's render */ } return orig(sc, cam); };
+    rd.render = function (sc, cam) { try { if (fleet && env && S === cp.state) { if (cp.view.overview) { if (sc === nat.scene) { syncOverview(); if (boarded) updateRoute(boarded); } } else if (sc === gameScene()) preRender(cam); } } catch (_) { /* never break the game's render */ } return orig(sc, cam); };
   }
   function preRender() { syncMeshes(); }
 
@@ -164,6 +165,32 @@
     if (!land) { toast('近くに降りられる陸がない'); return; }
     cp.placeMarker(land.xM, land.yM, true); boarded = null; refreshList(); toast('陸に降りた');
   }
+  function setDest(id, X, Y) {
+    const r = fleet.setDestination(id, env, { X, Y });
+    if (r.status !== 'ok') { toast('船長：' + (REASON[r.reason] ?? '行けない')); return false; }
+    updateRoute(id); refreshList(); save(); return true;
+  }
+  function updateRoute(id) {
+    const rec = id && fleet.has(id) ? fleet.get(id) : null, mpc = S.terrain.metersPerCell ?? 33.3, k = WB / (WB - 1);
+    if (routeLine) { nat.scene.remove(routeLine); routeLine.geometry.dispose(); routeLine.material.dispose(); routeLine = null; }
+    if (destMarker) { nat.scene.remove(destMarker); destMarker.geometry.dispose(); destMarker.material.dispose(); destMarker = null; }
+    if (!rec?.captain?.destination || !['sailing', 'arriving'].includes(rec.captain.mode)) return;
+    const toMap = (X, Y) => new THREE_.Vector3(((ref.xM + X) / mpc) * k - WB / 2, 22, ((ref.yM - Y) / mpc) * k - WB / 2);
+    const pts = [toMap(rec.vessel.state.X, rec.vessel.state.Y), ...rec.captain.waypoints.slice(rec.captain.waypointIndex).map((w) => toMap(w.X, w.Y))];
+    routeLine = new THREE_.Line(new THREE_.BufferGeometry().setFromPoints(pts), new THREE_.LineBasicMaterial({ color: 0xffe14a, depthTest: false })); routeLine.renderOrder = 102; nat.scene.add(routeLine);
+    destMarker = new THREE_.Mesh(new THREE_.SphereGeometry(26, 10, 8), new THREE_.MeshBasicMaterial({ color: 0xffe14a, depthTest: false })); destMarker.renderOrder = 102;
+    destMarker.position.copy(toMap(rec.captain.destination.X, rec.captain.destination.Y)); nat.scene.add(destMarker);
+  }
+  /** Overview tap -> destination: intersect the camera ray with the sea plane of the map scene. */
+  function onMapTap(e) {
+    if (!pickMode || !boarded || !cp.view.overview || !fleet?.has(boarded)) return;
+    const el = nat.renderer.domElement, r = el.getBoundingClientRect(), cam = cp.camera;
+    const ndc = new THREE_.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    const ray = new THREE_.Raycaster(); ray.setFromCamera(ndc, cam);
+    const hit = new THREE_.Vector3(); if (!ray.ray.intersectPlane(new THREE_.Plane(new THREE_.Vector3(0, 1, 0), 0), hit)) return;
+    const mpc = S.terrain.metersPerCell ?? 33.3, k = WB / (WB - 1), xM = ((hit.x + WB / 2) / k) * mpc, yM = ((hit.z + WB / 2) / k) * mpc;
+    pickMode = false; setDest(boarded, xM - ref.xM, ref.yM - yM); toast('目的地を決めた'); refreshList();
+  }
   function removeShip(id) { fleet.removeShip(id); delete ctl[id]; if (boarded === id) boarded = null; refreshList(); save(); }
 
   function save() {
@@ -180,13 +207,14 @@
     const mp = cp.markerPoint, focus = boarded ? posOf(boarded) : mp ? { X: mp.xM - ref.xM, Y: ref.yM - mp.yM } : null;
     for (const rec of fleet.list()) {
       const c = ctl[rec.id] ??= { heading: rec.vessel.snapshot().headingDeg, held: 0, auto: true, oar: 0.8 }, v = rec.vessel;
+      if (captainActive(rec)) { c.heading = v.snapshot().headingDeg; continue; }
       c.heading = (c.heading + c.held * 25 * dt * speedX + 360) % 360;
-      v.steerTowards(c.heading);
+      v.setHeadingTarget(c.heading);
       if (v.oars.length) v.setAllOarEffort(c.oar);
     }
-    trimAcc += dt; if (trimAcc > 1) { trimAcc = 0; for (const rec of fleet.list()) if (ctl[rec.id]?.auto) rec.vessel.autoTrim(env); }
+    trimAcc += dt; if (trimAcc > 1) { trimAcc = 0; for (const rec of fleet.list()) if (ctl[rec.id]?.auto && !captainActive(rec)) rec.vessel.autoTrim(env); }
     if (dt > 0) fleet.step(dt * speedX, env, focus);
-    for (const e of fleet.takeEvents()) if (EVT[e.type]) toast(`${e.shipId}：${EVT[e.type]}`);
+    for (const e of fleet.takeEvents()) { if (e.type === 'captain_no_route') toast('船長：' + (REASON[e.reason] ?? '行けない')); else if (EVT[e.type]) toast(`${e.shipId}：${EVT[e.type]}`); }
     syncMeshes();
     if (boarded && fleet.has(boarded) && cp.view.overview) { const st = fleet.get(boarded).vessel.state; cp.placeMarker(ref.xM + st.X, ref.yM - st.Y, false); }
     if (boarded && fleet.has(boarded) && !cp.view.overview && meshes.has(boarded)) {
@@ -203,6 +231,7 @@
     saveAcc += dt; if (saveAcc > 8) { saveAcc = 0; save(); }
     updateHud();
   }
+  const captainActive = (rec) => !!rec.captain && ['sailing', 'arriving'].includes(rec.captain.mode);
   const posOf = (id) => { const s = fleet.get(id).vessel.state; return { X: s.X, Y: s.Y }; };
 
   // ---------- HUD ----------
@@ -229,6 +258,9 @@
     ui.bar = $('div', { id: 'shipBar' }, [ui.info, ui.ctrl]);
     ui.panel.append(ui.spawn, ui.list);
     document.body.append(css, ui.btn, ui.panel, ui.bar, ui.toast);
+    let down = null; const cv = nat.renderer.domElement;
+    cv.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; }, true);
+    cv.addEventListener('pointerup', (e) => { if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 8 && performance.now() - down.t < 500) onMapTap(e); down = null; }, true);
     ['pointerdown', 'pointermove', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'wheel'].forEach((ev) => { for (const el of [ui.panel, ui.btn, ui.bar]) el.addEventListener(ev, (e) => e.stopPropagation(), { passive: true}); });
   }
   function refreshList() {
@@ -246,6 +278,10 @@
       $('button', { textContent: v.state.anchor ? '錨を上げる' : '錨を下ろす', onclick: () => { if (v.state.anchor) v.raiseAnchor(); else { const r = v.dropAnchor(env, { anchorKg: 400, rodeM: 60 }); if (r.status !== 'ok') toast('投錨できない：' + r.status); } refreshList(); } }));
     if (v.sails.length) ui.ctrl.append($('button', { textContent: c.auto ? '帆：自動' : '帆：固定', className: c.auto ? 'on' : '', onclick: () => { c.auto = !c.auto; refreshList(); } }));
     if (v.oars.length) { const r = $('input', { type: 'range', min: -100, max: 100, step: 5, value: Math.round(c.oar * 100) }); r.oninput = () => { c.oar = r.value / 100; }; ui.ctrl.append($('span', { textContent: '櫂' }), r); r.style.cssText = 'width:90px'; }
+    const active = captainActive(rec);
+    ui.ctrl.append($('button', { textContent: pickMode ? '地図をタップ…' : '目的地（俯瞰で指定）', className: pickMode ? 'on' : '', onclick: () => { pickMode = !pickMode; toast(pickMode ? '「UIを表示」→「世界を俯瞰」で地図を開き、行き先をタップ' : '指定をやめた'); refreshList(); } }),
+      $('button', { textContent: '前方3km', onclick: () => { const st = v.state, h = st.psi; setDest(boarded, st.X + Math.sin(h) * 3000, st.Y + Math.cos(h) * 3000); } }));
+    if (active) ui.ctrl.append($('button', { textContent: '航海をやめる', onclick: () => { fleet.cancelDestination(boarded); updateRoute(null); v.setHeadingTarget(null); ctl[boarded].heading = v.snapshot().headingDeg; refreshList(); } }));
     ui.ctrl.append($('button', { textContent: '降りる', onclick: () => disembark() }), $('button', { textContent: `倍速 ×${speedX}`, onclick: (e) => { speedX = speedX === 1 ? 4 : speedX === 4 ? 10 : 1; e.target.textContent = `倍速 ×${speedX}`; } }));
   }
   function updateHud() {
@@ -253,6 +289,8 @@
     if (!boarded || !fleet?.has(boarded)) { ui.info.textContent = ''; return; }
     const v = fleet.get(boarded).vessel, s = v.snapshot(), f = v.forces(env), c = ctl[boarded];
     const w = env.wind(v.state.X, v.state.Y, 0), wf = (Math.atan2(-w.x, -w.y) / DEG + 360) % 360;
-    ui.info.textContent = `速度 ${(s.speedOverGround * 1.9438).toFixed(1)} kt／方位 ${s.headingDeg.toFixed(0)}°（目標 ${c.heading.toFixed(0)}°）／風 ${Math.hypot(w.x, w.y).toFixed(1)} m/s・${wf.toFixed(0)}°から／傾斜 ${s.heelDeg.toFixed(1)}°／水深余裕 ${f.clearanceM.toFixed(1)} m${s.aground ? '／座礁中' : ''}${s.anchored ? (s.anchorDragging ? '／走錨中' : '／錨泊中') : ''}`;
+    const cap = fleet.get(boarded).captain, dd = cap?.destination && Math.hypot(cap.destination.X - v.state.X, cap.destination.Y - v.state.Y), eta = dd ? Math.round(dd / Math.max(0.8, s.speedOverGround) / 60) : 0;
+    const capTxt = cap && ['sailing', 'arriving'].includes(cap.mode) ? `／航海中 残り${dd > 1000 ? (dd / 1000).toFixed(1) + 'km' : Math.round(dd) + 'm'}（約${eta}分）${cap.reef < 1 ? '／帆を絞っている' : ''}` : cap?.mode === 'arrived' ? '／到着' : '';
+    ui.info.textContent = `速度 ${(s.speedOverGround * 1.9438).toFixed(1)} kt／方位 ${s.headingDeg.toFixed(0)}°（目標 ${c.heading.toFixed(0)}°）／風 ${Math.hypot(w.x, w.y).toFixed(1)} m/s・${wf.toFixed(0)}°から／傾斜 ${s.heelDeg.toFixed(1)}°／水深余裕 ${f.clearanceM.toFixed(1)} m${s.aground ? '／座礁中' : ''}${s.anchored ? (s.anchorDragging ? '／走錨中' : '／錨泊中') : ''}${capTxt}`;
   }
 })();

@@ -10,6 +10,7 @@
 import { createShip } from './ship-model.mjs';
 import { analyzeHydrostatics } from './hydrostatics.mjs';
 import { createVessel } from './dynamics.mjs';
+import { createCaptain } from './captain.mjs';
 
 const FORMAT = 1;
 export const LOD = Object.freeze({ near: 'near', far: 'far', dormant: 'dormant' });
@@ -41,10 +42,18 @@ export function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0
     if (id) { const m = /^ship-(\d+)$/.exec(id); if (m) nextId = Math.max(nextId, +m[1] + 1); }
     const vessel = build(designId);
     Object.assign(vessel.state, { X, Y, psi: headingDeg * Math.PI / 180 });
-    const rec = { id: shipId, designId, vessel, lod: LOD.near, lifecycle: 'afloat', dormantSeconds: 0, refs: { owner: null, crew: [], cargo: [], ...refs }, history: [{ type: 'ship_created', time }] };
+    const rec = { id: shipId, designId, vessel, captain: null, lod: LOD.near, lifecycle: 'afloat', dormantSeconds: 0, refs: { owner: null, crew: [], cargo: [], ...refs }, history: [{ type: 'ship_created', time }] };
     ships.set(shipId, rec);
     return shipId;
   }
+
+  /** Give the ship's captain a destination (ship frame metres). Returns the planner's {status, waypoints|reason}. */
+  function setDestination(id, env, dest, options) {
+    const rec = get(id);
+    rec.captain ??= createCaptain(rec.vessel, options);
+    return rec.captain.setDestination(env, dest);
+  }
+  function cancelDestination(id) { get(id).captain?.cancel(); }
 
   const get = (id) => { const s = ships.get(id); if (!s) throw new RangeError(`unknown ship ${id}`); return s; };
 
@@ -58,8 +67,8 @@ export function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0
       if (s.lod === LOD.dormant) { s.dormantSeconds += dt; continue; }
       const h = s.lod === LOD.near ? nearDt : farDt, n = Math.min(maxSubsteps, Math.max(1, Math.round(dt / h)));
       const sub = dt / n;
-      for (let i = 0; i < n; i++) v.step(sub, env);
-      for (const e of v.takeEvents()) { const ev = { ...e, shipId: s.id }; events.push(ev); s.history.push(ev); }
+      for (let i = 0; i < n; i++) { v.step(sub, env); s.captain?.update(env, sub); }
+      for (const e of [...v.takeEvents(), ...(s.captain?.takeEvents() ?? [])]) { const ev = { ...e, shipId: s.id }; events.push(ev); s.history.push(ev); }
     }
   }
 
@@ -76,6 +85,7 @@ export function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0
           state: { ...st, anchor: st.anchor ? { ...st.anchor, breakingN: num(st.anchor.breakingN) } : null },
           sails: v.sails.map((x) => ({ id: x.id, trimDeg: x.trimDeg, deployed: x.deployed })),
           oars: v.oars.map((o) => ({ id: o.id, effort: o.effort, stamina: o.stamina })),
+          captain: s.captain ? s.captain.serialize() : null,
         };
       }),
     }));
@@ -92,12 +102,14 @@ export function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0
       if (r.state.anchor) vessel.state.anchor = { ...r.state.anchor, breakingN: r.state.anchor.breakingN ?? Infinity };
       for (const x of r.sails) { const sl = vessel.sails.find((s) => s.id === x.id); if (sl) { sl.trimDeg = x.trimDeg; sl.deployed = x.deployed; } }
       for (const x of r.oars) { const o = vessel.oars.find((q) => q.id === x.id); if (o) { o.effort = x.effort; o.stamina = x.stamina; } }
-      ships.set(r.id, { id: r.id, designId: r.designId, vessel, lod: LOD.near, lifecycle: r.lifecycle, dormantSeconds: r.dormantSeconds, refs: r.refs, history: r.history });
+      let captain = null;
+      if (r.captain) { captain = createCaptain(vessel); captain.restore(r.captain); }
+      ships.set(r.id, { id: r.id, designId: r.designId, vessel, captain, lod: LOD.near, lifecycle: r.lifecycle, dormantSeconds: r.dormantSeconds, refs: r.refs, history: r.history });
     }
   }
 
   return {
-    registerDesign, addShip, step, serialize, restore, get,
+    registerDesign, addShip, step, serialize, restore, get, setDestination, cancelDestination,
     has: (id) => ships.has(id),
     list: () => [...ships.values()],
     ids: () => [...ships.keys()],

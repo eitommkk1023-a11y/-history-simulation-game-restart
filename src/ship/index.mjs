@@ -8,3 +8,4 @@ export { createVessel, heelFromMoment, SAIL_TYPES, SEABED } from './dynamics.mjs
 export { createWorldEnvironment } from './world-environment.mjs';
 export { createFleet, LOD } from './fleet.mjs';
 export { buildHullMesh } from './hull-mesh.mjs';
+export { createCaptain, RIG_DEFAULTS } from './captain.mjs';
