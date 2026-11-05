@@ -37,7 +37,8 @@
   // 持ち物の上限は「枠」の数（重さは使わない）。1つの枠に積める数は、かさで決まる［仮］
   const SLOTS = 20;
   function stackOf(it) { return it.group === 'tool' ? 3 : it.bulk >= 1 ? 10 : it.bulk >= 0.25 ? 20 : 40; }
-  function slotsUsed(st, except) { let n = 0; for (const id in st.inv) if (id !== except && IDX[id] != null && st.inv[id] > 0) n += Math.ceil(st.inv[id] / stackOf(ITEMS[IDX[id]])); return n; }
+  function slotsOf(inv, except) { let n = 0; for (const id in inv) if (id !== except && IDX[id] != null && inv[id] > 0) n += Math.ceil(inv[id] / stackOf(ITEMS[IDX[id]])); return n; }
+  function slotsUsed(st, except) { return slotsOf(st.inv, except); }
   // その品物を、あと何個持てるか
   function roomFor(st, id, slots) {
     const it = ITEMS[IDX[id]], st1 = stackOf(it), free = (slots || SLOTS) - slotsUsed(st, id);
@@ -48,7 +49,7 @@
 
   // 体と暮らしの状態：kcal＝おなかの蓄え、t＝最後に時間を反映した日、sickUntil＝体調不良が続く日、fire＝焚き火、soak＝水にさらした木の実
   const KCAL_MAX = 3000, KCAL_DAY = 2000, KCAL_START = 2200;
-  function newState() { return { inv: {}, depl: {}, total: {}, wear: {}, seq: 0, kcal: KCAL_START, t: 0, sickUntil: 0, fire: null, soak: null }; }
+  function newState() { return { inv: {}, depl: {}, total: {}, wear: {}, home: null, store: {}, seq: 0, kcal: KCAL_START, t: 0, sickUntil: 0, fire: null, soak: null }; }
   function count(st, id) { return st.inv[id] || 0; }
 
   // 場所の状況から、拾えるものの「豊かさ」を求める（0〜）
@@ -270,6 +271,47 @@
     return { ok: true, n: batches, broke };
   }
 
+  // ---------------------------------------------------------------- 住まい（竪穴住居）・貯蔵・睡眠
+  const HOME_NEED = { firewood: 10, fiber: 12, rope: 2, clay: 4 }, HOME_DAYS = 3, HOME_REACH = 3, STORE_SLOTS = 30;
+  function homeStatus(st, day) { const h = st.home; return !h ? 'none' : day >= h.ready ? 'built' : 'building'; }
+  function nearHome(st, bx, by, r) { const h = st.home; return !!h && Math.abs(h.bx - Math.floor(bx)) <= (r == null ? HOME_REACH : r) && Math.abs(h.by - Math.floor(by)) <= (r == null ? HOME_REACH : r); }
+  function homeNeedText() { return Object.keys(HOME_NEED).map(k => ITEMS[IDX[k]].name + '×' + HOME_NEED[k]).join('・'); }
+  // 建てる：材料を使い、3日かけて建つ。1人1軒。水辺・海辺には建てない（okSite は呼び出し側が判定）
+  function buildHome(st, bx, by, day, xM, yM, okSite) {
+    if (st.home) return { ok: false, why: homeStatus(st, day) === 'built' ? 'すでに家がある（建て直すなら先に壊す）' : 'いま建築中（あと' + Math.ceil(st.home.ready - day) + '日）' };
+    if (!okSite) return { ok: false, why: '水辺・海辺には建てられない（少し内陸へ）' };
+    for (const k in HOME_NEED) if ((st.inv[k] || 0) < HOME_NEED[k]) return { ok: false, why: '家の材料が足りない（' + homeNeedText() + '）' };
+    for (const k in HOME_NEED) drop(st, k, HOME_NEED[k]);
+    st.home = { bx: Math.floor(bx), by: Math.floor(by), xM: Number.isFinite(xM) ? xM : null, yM: Number.isFinite(yM) ? yM : null, ready: day + HOME_DAYS };
+    return { ok: true, ready: st.home.ready };
+  }
+  // 壊す：貯蔵庫が空のときだけ（中身を失わないため）。材料は戻らない
+  function demolishHome(st) {
+    if (!st.home) return { ok: false, why: '家がない' };
+    if (slotsOf(st.store) > 0) return { ok: false, why: '貯蔵庫に物が残っている。先に取り出す' };
+    st.home = null; return { ok: true };
+  }
+  function storeRoom(st, id) { const it = ITEMS[IDX[id]], free = STORE_SLOTS - slotsOf(st.store, id); return Math.max(0, free * stackOf(it) - (st.store[id] || 0)); }
+  function storePut(st, id, n, bx, by, day) {
+    if (homeStatus(st, day) !== 'built' || !nearHome(st, bx, by)) return { ok: false, why: '家のそばでしか預けられない' };
+    const have = st.inv[id] || 0; if (have <= 0) return { ok: false, why: '持っていない' };
+    const k = Math.min(n == null ? have : n, have, storeRoom(st, id)); if (k <= 0) return { ok: false, why: '貯蔵庫がいっぱい（' + slotsOf(st.store) + '/' + STORE_SLOTS + '枠）' };
+    drop(st, id, k); st.store[id] = (st.store[id] || 0) + k; return { ok: true, n: k };
+  }
+  function storeTake(st, id, n, bx, by, day) {
+    if (homeStatus(st, day) !== 'built' || !nearHome(st, bx, by)) return { ok: false, why: '家のそばでしか取り出せない' };
+    const have = st.store[id] || 0; if (have <= 0) return { ok: false, why: '貯蔵庫にない' };
+    const k = Math.min(n == null ? have : n, have, roomFor(st, id)); if (k <= 0) return { ok: false, why: FULL_MSG };
+    st.store[id] = have - k; if (!st.store[id]) delete st.store[id]; st.inv[id] = (st.inv[id] || 0) + k; return { ok: true, n: k };
+  }
+  function storeList(st) { return ITEMS.filter(it => st.store[it.id]).map(it => ({ id: it.id, name: it.name, n: st.store[it.id] })); }
+  // 眠る：家で眠ると体調不良が治る。家が無くても、焚き火のそばなら野宿できる（体調は戻らない）。1日進める処理は呼び出し側
+  function sleep(st, bx, by, day) {
+    if (homeStatus(st, day) === 'built' && nearHome(st, bx, by)) { st.sickUntil = Math.min(st.sickUntil, day); return { ok: true, home: true }; }
+    if (fireActive(st, bx, by, day)) return { ok: true, home: false };
+    return { ok: false, why: '眠れる場所がない（家のそば、または焚き火のそばで）' };
+  }
+
   function save(st) { return JSON.parse(JSON.stringify(st)); }
   function load(o) {
     const st = newState();
@@ -278,7 +320,9 @@
       for (const k in (o.wear || {})) if (LIFE[k] && Number.isFinite(o.wear[k])) st.wear[k] = Math.max(0, o.wear[k] | 0);
       if (Number.isFinite(o.kcal)) st.kcal = Math.max(0, Math.min(KCAL_MAX, o.kcal));
       if (Number.isFinite(o.t)) st.t = o.t; if (Number.isFinite(o.sickUntil)) st.sickUntil = o.sickUntil;
-      const f = o.fire; if (f && Number.isFinite(f.bx) && Number.isFinite(f.by) && Number.isFinite(f.until)) st.fire = { bx: f.bx, by: f.by, until: f.until };
+      const f = o.fire; if (f && Number.isFinite(f.bx) && Number.isFinite(f.by) && Number.isFinite(f.until)) { st.fire = { bx: f.bx, by: f.by, until: f.until }; if (Number.isFinite(f.xM) && Number.isFinite(f.yM)) { st.fire.xM = f.xM; st.fire.yM = f.yM; } }
+      const hm = o.home; if (hm && Number.isFinite(hm.bx) && Number.isFinite(hm.by) && Number.isFinite(hm.ready)) st.home = { bx: hm.bx, by: hm.by, xM: Number.isFinite(hm.xM) ? hm.xM : null, yM: Number.isFinite(hm.yM) ? hm.yM : null, ready: hm.ready };
+      for (const id in (o.store || {})) if (IDX[id] != null && o.store[id] > 0) st.store[id] = o.store[id] | 0;
       const k = o.soak; if (k && Number.isFinite(k.bx) && Number.isFinite(k.by) && Number.isFinite(k.n) && Number.isFinite(k.ready) && k.n > 0) st.soak = { bx: k.bx, by: k.by, n: k.n | 0, ready: k.ready };
       for (const id in (o.inv || {})) if (IDX[id] != null && o.inv[id] > 0) st.inv[id] = o.inv[id] | 0;
       for (const id in (o.total || {})) if (IDX[id] != null) st.total[id] = o.total[id] | 0;
@@ -293,6 +337,6 @@
     return function () { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   }
 
-  const api = { SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
+  const api = { slotsOf, HOME_NEED, HOME_DAYS, HOME_REACH, STORE_SLOTS, homeStatus, nearHome, homeNeedText, buildHome, demolishHome, storePut, storeTake, storeList, storeRoom, sleep, SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohForage = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

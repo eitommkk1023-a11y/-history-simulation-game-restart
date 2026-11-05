@@ -205,5 +205,54 @@ t('不毛地は全部ほぼ0', Object.values(F.availability(desert)).every(v => 
   const H = F.newState(); H.inv = { stone: 200 }; t('満杯のメッセージに枠数', /20\/20枠/.test(F.gather(H, { ...desert, rock: 1 }, 0, 0, 0, rngSeed(3), { want: 'stone' }).why));
   t('一覧に重さを出さない', !('kg' in (F.list({ inv: { nut: 2 } })[0] || {})) && !('weight' in F));
 }
+
+// ---------------------------------------------------------------- 住まい・貯蔵・睡眠
+{
+  const mats = () => ({ firewood: 12, fiber: 14, rope: 3, clay: 5 });
+  const H = F.newState(); H.inv = mats();
+  t('材料不足は建てられない', !F.buildHome(F.newState(), 5, 5, 0, 10, 10, true).ok);
+  t('水辺には建てられない', !F.buildHome(H, 5, 5, 0, 10, 10, false).ok && H.inv.firewood === 12);
+  let r = F.buildHome(H, 5.7, 5.2, 10, 123, 456, true);
+  t('建築開始：材料を使い3日後に完成', r.ok && r.ready === 13 && H.inv.firewood === 2 && H.inv.fiber === 2 && H.inv.rope === 1 && H.inv.clay === 1 && F.homeStatus(H, 11) === 'building' && F.homeStatus(H, 13) === 'built', JSON.stringify(H));
+  t('位置は整数ブロックと実座標', H.home.bx === 5 && H.home.by === 5 && H.home.xM === 123);
+  t('二軒目は建てられない', !F.buildHome(H, 8, 8, 11, 1, 1, true).ok && /建築中/.test(F.buildHome(H, 8, 8, 11, 1, 1, true).why));
+  H.inv = { ...mats() }; t('完成後も一軒だけ', /すでに家/.test(F.buildHome(H, 8, 8, 14, 1, 1, true).why));
+  t('家のそば判定', F.nearHome(H, 7, 7) && !F.nearHome(H, 9, 5));
+  // 貯蔵
+  const S = F.newState(); S.inv = { nut: 30, stone: 5 };
+  t('家が無いと預けられない', !F.storePut(S, 'nut', null, 0, 0, 0).ok);
+  S.home = { bx: 0, by: 0, xM: 0, yM: 0, ready: 5 };
+  t('建築中は預けられない', !F.storePut(S, 'nut', null, 0, 0, 3).ok);
+  t('遠いと預けられない', !F.storePut(S, 'nut', null, 9, 9, 6).ok);
+  r = F.storePut(S, 'nut', 10, 1, 1, 6); t('一部を預ける', r.ok && r.n === 10 && S.inv.nut === 20 && S.store.nut === 10, JSON.stringify(S));
+  r = F.storePut(S, 'nut', null, 1, 1, 6); t('全部預ける', r.n === 20 && !S.inv.nut && S.store.nut === 30);
+  t('持っていない物は預けられない', !F.storePut(S, 'fish', null, 1, 1, 6).ok);
+  r = F.storeTake(S, 'nut', 5, 0, 0, 6); t('取り出す', r.ok && r.n === 5 && S.inv.nut === 5 && S.store.nut === 25);
+  t('貯蔵庫にない物', !F.storeTake(S, 'fish', null, 0, 0, 6).ok);
+  t('遠いと取り出せない', !F.storeTake(S, 'nut', null, 9, 9, 6).ok);
+  t('一覧', F.storeList(S).length === 1 && F.storeList(S)[0].n === 25);
+  // 貯蔵庫の上限
+  const B = F.newState(); B.home = { bx: 0, by: 0, xM: 0, yM: 0, ready: 0 }; B.inv = { stone: 10 };
+  B.store = { stone: 10 * 29 }; r = F.storePut(B, 'stone', null, 0, 0, 1); t('貯蔵庫は30枠まで', r.ok && r.n === 10 && F.storeRoom(B, 'stone') === 0, JSON.stringify(r));
+  B.inv = { stone: 5 }; r = F.storePut(B, 'stone', null, 0, 0, 1); t('いっぱいなら預けられない', !r.ok && /いっぱい/.test(r.why));
+  // 持ち物がいっぱいなら取り出せない
+  const T = F.newState(); T.home = { bx: 0, by: 0, xM: 0, yM: 0, ready: 0 }; T.inv = { stone: 200 }; T.store = { nut: 5 };
+  t('持ち物満杯だと取り出せない', !F.storeTake(T, 'nut', null, 0, 0, 1).ok);
+  // 壊す
+  t('貯蔵庫が空でないと壊せない', !F.demolishHome(S).ok && S.home !== null);
+  const E = F.newState(); E.home = { bx: 0, by: 0, xM: 0, yM: 0, ready: 0 }; t('空なら壊せる', F.demolishHome(E).ok && E.home === null);
+  t('家が無いと壊せない', !F.demolishHome(F.newState()).ok);
+  // 眠る
+  const Z = F.newState(); Z.sickUntil = 20;
+  t('何もない所では眠れない', !F.sleep(Z, 0, 0, 5).ok);
+  Z.fire = { bx: 0, by: 0, until: 9 }; r = F.sleep(Z, 1, 1, 5); t('焚き火のそばで野宿（体調は戻らない）', r.ok && !r.home && Z.sickUntil === 20);
+  Z.home = { bx: 0, by: 0, xM: 0, yM: 0, ready: 3 }; r = F.sleep(Z, 1, 1, 5); t('家で眠ると体調不良が治る', r.ok && r.home && !F.sick(Z, 5), JSON.stringify(Z));
+  Z.home.ready = 99; Z.sickUntil = 20; t('建築中の家では眠れず野宿扱い', F.sleep(Z, 1, 1, 5).home === false);
+  // 保存
+  const V = F.newState(); V.home = { bx: 3, by: 4, xM: 100, yM: 200, ready: 9 }; V.store = { nutC: 12, stew: 3 }; V.fire = { bx: 1, by: 2, until: 8, xM: 5, yM: 6 };
+  const L = F.load(JSON.parse(JSON.stringify(F.save(V)))); t('家・貯蔵・焚き火の座標を保存できる', JSON.stringify(L) === JSON.stringify(V), JSON.stringify(L));
+  const bad = F.load({ home: { bx: 'a' }, store: { zzz: 4, nut: -2, fish: 3 } }); t('壊れた保存でも既定値', bad.home === null && bad.store.fish === 3 && !bad.store.zzz && !bad.store.nut);
+  t('古い保存（家なし）', F.load({ inv: {} }).home === null);
+}
 console.log(ng ? 'FAIL ' + ng + ' / ' + (ok + ng) : 'OK ' + ok + ' 件通過');
 process.exit(ng ? 1 : 0);
