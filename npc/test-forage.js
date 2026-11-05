@@ -502,5 +502,17 @@ t('不毛地は全部ほぼ0', Object.values(F.availability(desert)).every(v => 
   const forest2 = { plant: [0.3, 0.8, 0.5, 0.8, 0.3], forest: 0.9, grass: 0.1, coast: false, water: false, rock: 0 };
   t('森に薬草がある', F.availability(forest2).herb > 0.2); t('砂漠に薬草はない', F.availability({ plant: [0, 0, 0, 0, 0], forest: 0, grass: 0 }).herb === 0);
 }
+
+// ---------------------------------------------------------------- 開発者モードの「消耗なし」
+{
+  const mk = (o) => Object.assign(F.newState(), o);
+  const G = mk({ god: true, kcal: 100, water: 0, hp: 5, injuredUntil: 99 }); F.tick(G, 30);
+  t('消耗なし：30日たっても、満たされて体力も満タン', G.water === 100 && G.hp === 100 && G.kcal >= 2200 && G.injuredUntil === 0 && !G.dead && G.dyingDays === 0, JSON.stringify([G.kcal, G.water, G.hp]));
+  const G2 = mk({ god: true, hp: 0, dyingDays: 2, kcal: 0, water: 0 }); F.tick(G2, 5); t('消耗なし：瀕死でも死なない', !G2.dead && G2.hp === 100);
+  const G3 = mk({ god: true }); G3.sp = 3; G3.exhausted = true; const o = F.staminaStep(G3, 1, { sprinting: true, moving: true }); t('消耗なし：スタミナは尽きない', G3.sp === 100 && !G3.exhausted && !o.lockSprint && !o.lockJump);
+  const G4 = mk({ god: true, kcal: 3000, water: 100 }); G4.inv = { meat: 10 }; F.setEnv(G4, { temp: -30, sheltered: false }); F.tick(G4, 3); t('消耗なし：寒くても平気。傷む（保存食）は別なので続く', G4.hp === 100 && G4.inv.meat < 10);
+  const R = mk({ kcal: 100, water: 0, hp: 5 }); F.tick(R, 5); t('消耗なしでなければ、いつもどおり消耗する（god未設定）', R.water === 0 && R.hp < 5 || R.dead === 'thirst' || R.dead === 'hunger', JSON.stringify([R.hp, R.dead]));
+  t('消耗なしはセーブに入らない', F.save(G).god === undefined);
+}
 console.log(ng ? 'FAIL ' + ng + ' / ' + (ok + ng) : 'OK ' + ok + ' 件通過');
 process.exit(ng ? 1 : 0);

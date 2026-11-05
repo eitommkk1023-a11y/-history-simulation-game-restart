@@ -233,6 +233,7 @@
   // 実時間で動く：ダッシュ中は減り、休むと戻る。尽きたら、25まで戻るまでダッシュできない
   const SP_DASH = 6, SP_REST = 7, SP_WALK = 2, SP_RECOVER = 25;
   function staminaStep(st, dt, mv) {
+    if (st.god) { st.sp = SP_MAX; st.exhausted = false; return { lockSprint: false, lockJump: false }; }
     mv = mv || {}; if (st.sp == null) st.sp = SP_MAX;
     const cap = staminaCap(st), dash = !!(mv.sprinting && mv.moving && !st.exhausted);
     if (dash) { st.sp -= SP_DASH * dt; st.water = Math.max(0, (st.water == null ? 80 : st.water) - 0.25 * dt); }
@@ -273,6 +274,8 @@
       const env = st.env || {}, cold = (env.temp != null && env.temp < 0 && !env.sheltered ? Math.min(10, -env.temp * 0.4) : 0) * clothFactor(st);
       const thirst = st.water <= 0, hungry = st.kcal <= 0, ill = cur < st.sickUntil, hurt = cur < (st.injuredUntil || 0);
       wearCloth(st, step); rot(st, step);
+      // 開発者モードの「消耗なし」：渇き・飢え・寒さ・怪我・体力の消耗と、死亡を止める
+      if (st.god) { st.kcal = Math.max(st.kcal, KCAL_START); st.water = WATER_MAX; st.hp = HP_MAX; st.dyingDays = 0; st.injuredUntil = 0; st.dead = null; continue; }
       const loss = (thirst ? 12 : 0) + (hungry ? 8 : 0) + (ill ? 3 : 0) + (hurt ? 4 : 0) + cold;
       const regen = loss === 0 && st.kcal > 900 && st.water > 30 ? 5 : 0;
       const mortal = st.mortal !== false;
@@ -605,7 +608,7 @@
     return { ok: true, text: lines.join('') };
   }
 
-  function save(st) { const o = JSON.parse(JSON.stringify(st)); delete o.commons; delete o.env; delete o.rotted; return o; }
+  function save(st) { const o = JSON.parse(JSON.stringify(st)); delete o.commons; delete o.env; delete o.rotted; delete o.god; return o; }
   function load(o) {
     const st = newState();
     if (o && typeof o === 'object') {

@@ -432,7 +432,7 @@
 </div>
 <div id="menu" class="sheet">
   <div class="shead"><b>メニュー</b><button id="menuClose">閉じる</button></div>
-  <div class="sfilter"><button id="menuTitle">タイトルへ戻る</button><button id="menuMortal">死亡：あり</button><button id="menuBt1" class="dev-only">野戦：敵が攻めてくる</button><button id="menuBt2" class="dev-only">野戦：敵が罠を張る</button><button id="menuBt3" class="dev-only">野戦：敵は守る</button><button id="menuDevBar" class="dev-only">開発ツール（上のボタン列）</button><button id="menuHist">歴史を見る</button><button id="menuExport">ファイルに書き出す</button><button id="menuImport">ファイルから読み込む</button></div>
+  <div class="sfilter"><button id="menuTitle">タイトルへ戻る</button><button id="menuMortal">死亡：あり</button><button id="menuGod" class="dev-only">暮らしの消耗：なし</button><button id="menuBt1" class="dev-only">野戦：敵が攻めてくる</button><button id="menuBt2" class="dev-only">野戦：敵が罠を張る</button><button id="menuBt3" class="dev-only">野戦：敵は守る</button><button id="menuDevBar" class="dev-only">開発ツール（上のボタン列）</button><button id="menuHist">歴史を見る</button><button id="menuExport">ファイルに書き出す</button><button id="menuImport">ファイルから読み込む</button></div>
   <input type="file" id="menuFile" accept=".json,application/json" style="display:none">
   <div id="menuSlots" class="scrollable"></div>
   <div id="menuMsg"></div>
@@ -6690,6 +6690,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
   // 実時間で動く：ダッシュ中は減り、休むと戻る。尽きたら、25まで戻るまでダッシュできない
   const SP_DASH = 6, SP_REST = 7, SP_WALK = 2, SP_RECOVER = 25;
   function staminaStep(st, dt, mv) {
+    if (st.god) { st.sp = SP_MAX; st.exhausted = false; return { lockSprint: false, lockJump: false }; }
     mv = mv || {}; if (st.sp == null) st.sp = SP_MAX;
     const cap = staminaCap(st), dash = !!(mv.sprinting && mv.moving && !st.exhausted);
     if (dash) { st.sp -= SP_DASH * dt; st.water = Math.max(0, (st.water == null ? 80 : st.water) - 0.25 * dt); }
@@ -6730,6 +6731,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
       const env = st.env || {}, cold = (env.temp != null && env.temp < 0 && !env.sheltered ? Math.min(10, -env.temp * 0.4) : 0) * clothFactor(st);
       const thirst = st.water <= 0, hungry = st.kcal <= 0, ill = cur < st.sickUntil, hurt = cur < (st.injuredUntil || 0);
       wearCloth(st, step); rot(st, step);
+      // 開発者モードの「消耗なし」：渇き・飢え・寒さ・怪我・体力の消耗と、死亡を止める
+      if (st.god) { st.kcal = Math.max(st.kcal, KCAL_START); st.water = WATER_MAX; st.hp = HP_MAX; st.dyingDays = 0; st.injuredUntil = 0; st.dead = null; continue; }
       const loss = (thirst ? 12 : 0) + (hungry ? 8 : 0) + (ill ? 3 : 0) + (hurt ? 4 : 0) + cold;
       const regen = loss === 0 && st.kcal > 900 && st.water > 30 ? 5 : 0;
       const mortal = st.mortal !== false;
@@ -7062,7 +7065,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     return { ok: true, text: lines.join('') };
   }
 
-  function save(st) { const o = JSON.parse(JSON.stringify(st)); delete o.commons; delete o.env; delete o.rotted; return o; }
+  function save(st) { const o = JSON.parse(JSON.stringify(st)); delete o.commons; delete o.env; delete o.rotted; delete o.god; return o; }
   function load(o) {
     const st = newState();
     if (o && typeof o === 'object') {
@@ -10137,13 +10140,16 @@ function vitalsDie(cause) {
 }
 globalThis.__wohVitalsDie = vitalsDie;
 document.getElementById('deathOk')?.addEventListener('click', () => document.getElementById('deathBox').classList.remove('show'));
+document.getElementById('menuGod')?.addEventListener('click', () => { try { localStorage.setItem('woh-god', forageGodOn() ? '0' : '1'); } catch (e) { } forageSt.god = forageGodOn(); const b = document.getElementById('menuGod'); if (b) b.textContent = '暮らしの消耗：' + (forageSt.god ? 'なし' : 'あり'); });
 document.getElementById('menuMortal')?.addEventListener('click', () => {
   const on = forageSt.mortal === false; forageSt.mortal = on;   // 「なし」→「あり」へ／「あり」→「なし」へ
   if (!on) { forageSt.hp = Math.max(1, forageSt.hp); forageSt.dyingDays = 0; }
   try { localStorage.setItem('woh-mortal', on ? '1' : '0'); } catch (e) { }
 });
+// 開発者モードの「消耗なし」（渇き・飢え・寒さ・怪我・体力・スタミナの消耗と死亡を止める）。標準でオン。メニューで切り替える
+function forageGodOn() { try { return document.body.classList.contains('woh-dev') && localStorage.getItem('woh-god') !== '0'; } catch (e) { return document.body.classList.contains('woh-dev'); } }
 function forageNow() {
-  const F = WohForage, G = forageGroup(); F.setCommons(forageSt, G ? G.camp : null);
+  const F = WohForage, G = forageGroup(); forageSt.god = forageGodOn(); F.setCommons(forageSt, G ? G.camp : null);
   try {
     const b = window.__wohAvatar && __wohAvatar.block && __wohAvatar.block(), d = clock.day;
     const sheltered = !!(b && (F.ownFireActive(forageSt, b.x, b.y, d) || F.atCommons(forageSt, b.x, b.y) || (F.homeStatus(forageSt, d) === 'built' && F.nearHome(forageSt, b.x, b.y))));
@@ -10162,6 +10168,7 @@ globalThis.__wohOnJump = () => { try { WohForage.jumpCost(forageSt); } catch (e)
     const now = performance.now(), dt = Math.min(0.5, (now - last) / 1000); last = now;
     try {
       const A = window.__wohAvatar; if (!A || !A.moveState || document.hidden || !document.body.classList.contains('integration-third')) return;
+      forageSt.god = forageGodOn();
       const o = WohForage.staminaStep(forageSt, dt, A.moveState);
       globalThis.__wohNoSprint = o.lockSprint; globalThis.__wohNoJump = o.lockJump;
       if (o.lockSprint && A.moveState.sprinting) A.setSprint(false);
@@ -10363,6 +10370,7 @@ globalThis.__wohForage = { context: forageContext, fauna: () => fauna, FA: () =>
       else if (vi.thirsty && vi.water < 12) { txt = '喉が渇いている。水辺を探そう'; cls = 'warn'; }
       if (lastTxt.get('danger') !== txt) { lastTxt.set('danger', txt); dg.textContent = txt; dg.style.display = txt ? 'block' : 'none'; dg.classList.toggle('warn', cls === 'warn'); }
       const op = left !== null ? 0.65 : vi.hp < 30 ? (30 - vi.hp) / 30 * 0.5 : 0; vg.style.opacity = String(op.toFixed(2));
+      { const gb = document.getElementById('menuGod'); if (gb) { const gt = '暮らしの消耗：' + (forageGodOn() ? 'なし（開発者）' : 'あり'); if (gb.textContent !== gt) gb.textContent = gt; } }
       const mb = document.getElementById('menuMortal'); if (mb) { const t = '死亡：' + (forageSt.mortal === false ? 'なし（瀕死で止まる）' : 'あり'); if (mb.textContent !== t) mb.textContent = t; }
     } catch (e) { }
     // 体力・スタミナ・水分
@@ -11367,8 +11375,9 @@ const CLOCK_MODES = [
   { key: 'day', label: '日', speeds: [1, 5, 10] },     // 1秒あたりの日数
   { key: 'month', label: '月', speeds: [1, 3] },       // 1秒あたりの月数
   { key: 'year', label: '年', speeds: [1, 2] },        // 1秒あたりの年数
+  { key: 'real', label: '標準', speeds: [1 / 1440, 1 / 720, 1 / 360], shown: ['×1（1日＝24分）', '×2', '×4'] },   // 標準：1日＝現実の24分（1440秒）
 ];
-const clock = { day: 0, playing: false, mode: 0, speed: 0, acc: 0, pending: 0 };   // pending：これから計算する月の数
+const clock = { day: 0, playing: false, mode: 3, speed: 0, acc: 0, pending: 0 };   // pending：これから計算する月の数
 const AUTOSAVE_INTERVAL_MS = 5 * 60 * 1000;   // 遊んでいる間の自動セーブの間隔
 function fmtDate(day) {
   const y = Math.floor(day / LAB_DAYS_PER_YEAR), d = day % LAB_DAYS_PER_YEAR;
@@ -11410,7 +11419,7 @@ function clockFrame(dt) {
   const M = CLOCK_MODES[clock.mode];
   clock.acc += dt * M.speeds[clock.speed];
   let steps = 0;
-  if (M.key === 'day') {
+  if (M.key === 'day' || M.key === 'real') {
     if (!sim && world) labReady();
     while (clock.acc >= 1 && steps < 3) { clock.acc -= 1; clockStepDay(); steps++; }
   } else {
@@ -11429,8 +11438,8 @@ function timebarUpdate() {
   document.getElementById('tDate').textContent = fmtDate(clock.day);
   document.getElementById('tPlay').textContent = clock.playing ? '❚❚' : '▶';
   const M = CLOCK_MODES[clock.mode];
-  document.getElementById('tMode').textContent = `${M.label}ごと`;
-  document.getElementById('tSpeed').textContent = `×${M.speeds[clock.speed]}`;
+  document.getElementById('tMode').textContent = M.key === 'real' ? M.label : `${M.label}ごと`;
+  document.getElementById('tSpeed').textContent = M.shown ? M.shown[clock.speed] : `×${M.speeds[clock.speed]}`;
 }
 function clockSetPlaying(on) {
   const was = clock.playing;
@@ -11563,7 +11572,7 @@ function serializeState() {
 }
 function applyState(st) {
   if(window.__wohNative)window.__wohNative.pendingPlayer=st.player||null;
-  clock.day = st.clock.day; clock.mode = st.clock.mode || 0; clock.speed = st.clock.speed || 0; clock.playing = false;
+  clock.day = st.clock.day; clock.mode = st.clock.mode || 0; clock.speed = st.clock.speed || 0; clock.playing = clock.mode === 3;   // 標準の速さで遊んでいた記録は、続きから時間が流れる。それ以外（早送り中）は止めて読み込む
   history.list = st.history.list || []; history.nextId = st.history.nextId || 1;
   if (st.people && world && world.riverPts) people = WohPeople.peopleLoad(st.people); else peopleNew();   // 古い記録には人々が無いので、読み込んだ日から新しく始める
   if (people) people.npc.day = clock.day;
@@ -11641,7 +11650,7 @@ function loadFrom(slot) { dbDo('readonly', s => s.get(slot)).then(st => st ? loa
 function onWorldReady() {
   if (pendingLoad) { const st = pendingLoad; pendingLoad = null; applyState(st); toast({ day: clock.day, imp: 2, text: '記録を読み込みました' }); return; }
   peopleNew(); peopleInfoUpdate(); forageReset();
-  clock.day = 0; clock.playing = false; history.list = []; history.nextId = 1; names.overrides = {};
+  clock.day = 0; clock.mode = 3; clock.speed = 0; clock.acc = 0; clock.playing = true; history.list = []; history.nextId = 1; names.overrides = {};
   for (const e of names.list) { e.user = null; e.hist = []; }
   postEvent({ cat: 'nature', imp: 0, text: `世界が生まれた（Seed ${currentSeed}）` });
   timebarUpdate();
@@ -11714,7 +11723,7 @@ function coreSetup() {
   bindTap(document.getElementById('tSpeed'), () => { clock.speed = (clock.speed + 1) % CLOCK_MODES[clock.mode].speeds.length; timebarUpdate(); });
   bindTap(document.getElementById('tStep'), () => {
     if (!world) return;
-    if (CLOCK_MODES[clock.mode].key === 'day') { labReady(); clockStepDay(); }
+    if (CLOCK_MODES[clock.mode].key === 'day' || CLOCK_MODES[clock.mode].key === 'real') { labReady(); clockStepDay(); }
     else if (CLOCK_MODES[clock.mode].key === 'month') clockStepMonth();
     else { clock.pending += 12; return; }   // 年ごと：毎コマ少しずつ計算する
     clockAfterStep();
