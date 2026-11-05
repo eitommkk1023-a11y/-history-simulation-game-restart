@@ -280,7 +280,7 @@
   #bagPanel .bact{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 4px}
   #bagPanel button{height:26px;padding:0 8px;border-radius:13px;border:1px solid #ffffff44;background:#24384f;color:#e8eef5;font-size:11px}
 </style>
-<button id="uiToggle">UIを表示</button><button id="joystick" aria-label="移動スティック"><span id="stick"></span></button><div id="actions"><button id="sprint" aria-pressed="false">ダッシュ</button><button id="jump">ジャンプ</button><button id="crouch" aria-pressed="false">しゃがむ</button></div><div id="forageBar"><div id="forageMsg"></div><div class="fb"><button id="fgFood">食料を探す</button><button id="fgMat" class="mat">素材を探す</button><button id="fgBag" class="bag">持ち物</button></div></div><div id="bagPanel"></div><div id="movementNotice"></div><div id="integrationCompat"><details id="settings"></details><p id="status"></p><button id="generate"></button><input id="wire" type="checkbox"></div>
+<button id="uiToggle">UIを表示</button><button id="joystick" aria-label="移動スティック"><span id="stick"></span></button><div id="actions"><button id="sprint" aria-pressed="false">ダッシュ</button><button id="jump">ジャンプ</button><button id="crouch" aria-pressed="false">しゃがむ</button></div><div id="forageBar"><div id="forageMsg"></div><div class="fb"><button id="fgFood">食料を探す</button><button id="fgMat" class="mat">素材を探す</button><button id="fgView" class="bag">視点：3人称</button><button id="fgBag" class="bag">持ち物</button></div></div><div id="bagPanel"></div><div id="movementNotice"></div><div id="integrationCompat"><details id="settings"></details><p id="status"></p><button id="generate"></button><input id="wire" type="checkbox"></div>
 
 <div id="toolbar">
   <button id="btnRegen" class="primary">大陸を再生成</button>
@@ -9389,6 +9389,10 @@ globalThis.__wohForage = { context: forageContext, get state() { return forageSt
   const q = id => document.getElementById(id); if (!q('fgFood')) return;
   q('fgFood').addEventListener('click', () => forageDo('food'));
   q('fgMat').addEventListener('click', () => forageDo('material'));
+  const fpLabel = () => { const A = window.__wohAvatar; q('fgView').textContent = '視点：' + (A && A.firstPerson ? '1人称' : '3人称'); };
+  q('fgView').addEventListener('click', () => { const A = window.__wohAvatar; if (A && A.setFirstPerson) { A.setFirstPerson(!A.firstPerson); fpLabel(); } });
+  addEventListener('keydown', e => { if (e.code === 'KeyV') setTimeout(fpLabel, 50); });
+  try { if (localStorage.getItem('woh-fp') === '1') { const t0 = setInterval(() => { const A = window.__wohAvatar; if (A && A.setFirstPerson) { clearInterval(t0); A.setFirstPerson(true); fpLabel(); } }, 400); setTimeout(() => clearInterval(t0), 20000); } } catch (e) { }
   q('fgBag').addEventListener('click', () => { forageBagRender(); q('bagPanel').classList.toggle('show'); });
   q('bagPanel').addEventListener('click', e => {
     const t = e.target; if (!(t instanceof HTMLElement)) return;
@@ -12067,8 +12071,27 @@ let markerPoint=null,overview=false;
 let jumpHeight=0,jumpVelocity=0;
 
 function draw(){const map=overview?state?.map:null;renderer.render(map?.scene||scene,map?.camera||camera);}
+// ---- 1人称視点（切り替え式。標準は3人称）：目の高さにカメラを置き、自分の体は隠す
+let firstPerson=false;const BASE_FOV=55,FP_FOV=72;
+function setFirstPerson(on){
+  on=!!on;if(firstPerson===on)return;firstPerson=on;globalThis.__wohFirstPerson=on;
+  camera.fov=on?FP_FOV:BASE_FOV;camera.updateProjectionMatrix();
+  marker.traverse(o=>{if(o!==marker&&o.isMesh)o.visible=!on;});
+  if(!on)pitch=Math.max(-.15,Math.min(1.4,pitch));
+  try{localStorage.setItem('woh-fp',on?'1':'0');}catch(e){}
+  updateCamera();
+}
 function updateCamera(){
   if(overview&&state?.map){state.map.update();draw();return;}
+  if(firstPerson){
+    const eye=marker.position.clone();eye.y+=crouched?1.0:1.58;
+    const cp=Math.cos(pitch);
+    camera.position.copy(eye);
+    if(state){const ground=groundAt(camera.position.x+state.origin.xM,camera.position.z+state.origin.yM);
+      if(ground)camera.position.y=Math.max(camera.position.y,ground.elevationM-state.origin.elevationM+.5);}
+    camera.lookAt(camera.position.x-cp*Math.sin(yaw),camera.position.y-Math.sin(pitch),camera.position.z-cp*Math.cos(yaw));
+    draw();return;
+  }
   const r=globalThis.__wohCamDist||4,target=marker.position.clone();target.y+=1.2;
   const angle=pitch,viewYaw=yaw;
   const offset=new THREE.Vector3(r*Math.cos(angle)*Math.sin(viewYaw),r*Math.sin(angle),r*Math.cos(angle)*Math.cos(viewYaw));
@@ -12283,6 +12306,7 @@ function toggleUiNow(){
 {const ut=document.getElementById('uiToggle');let tUi=0;
  ut.addEventListener('pointerdown',e=>{e.preventDefault();tUi=Date.now();toggleUiNow();});
  ut.addEventListener('click',()=>{if(Date.now()-tUi>700)toggleUiNow();});}
+addEventListener('keydown',e=>{if(e.code==='KeyV'&&!e.repeat&&!/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName||''))setFirstPerson(!firstPerson);});
 const movementKeys=new Set(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight','Space','KeyC']);
 window.addEventListener('keydown',e=>{if(/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)||e.target.isContentEditable)return;
   if(movementKeys.has(e.code)){e.preventDefault();if(e.code==='KeyC'){if(!e.repeat)toggleCrouch();}else if(e.code==='Space'){if(!e.repeat)startJump();}else if(e.code.startsWith('Shift')&&!e.repeat)setSprint(!sprintOn);else keys.add(e.code);}});
@@ -12367,7 +12391,7 @@ renderer.domElement.addEventListener('pointerdown',e=>{
 renderer.domElement.addEventListener('pointermove',e=>{
   if(!drag||drag.id!==e.pointerId)return;
   if(overview&&state?.map){state.map.cam.yaw-=(e.clientX-drag.x)*.006;state.map.cam.pitch+=(e.clientY-drag.y)*.005;}
-  else{yaw-=(e.clientX-drag.x)*.006;pitch=Math.max(-.15,Math.min(1.4,pitch+(e.clientY-drag.y)*.005));}
+  else{yaw-=(e.clientX-drag.x)*.006;pitch=Math.max(firstPerson?-1.35:-.15,Math.min(firstPerson?1.35:1.4,pitch+(e.clientY-drag.y)*.005));}
   drag.x=e.clientX;drag.y=e.clientY;updateCamera();
 });
 for(const event of ['pointerup','pointercancel','lostpointercapture'])renderer.domElement.addEventListener(event,e=>{if(drag?.id===e.pointerId)drag=null;});
@@ -12590,7 +12614,7 @@ function npcTapAt(cx,cy){
  renderer.domElement.addEventListener('pointerup',e=>{const s=tap;tap=null;if(!s||s.id!==e.pointerId||overview)return;if(Math.hypot(e.clientX-s.x,e.clientY-s.y)>10||performance.now()-s.t>400)return;npcTapAt(e.clientX,e.clientY);});}
 globalThis.__wohSettle={get stats(){return {...dwStats,counts:{...dwN}};},get layouts(){return npcCamps.size;}};
 globalThis.__wohNpcView={get count(){return npcList.length;},get selected(){return npcSel;},screens:npcScreens,tapAt:npcTapAt};
-globalThis.__wohAvatar={setView(y,p,d){yaw=y;pitch=p;globalThis.__wohCamDist=d||4;updateCamera();},toBlock(bx,by,dx,dz){if(!state)return false;const q=state.terrain.gridToMeters(bx,by);placeMarker(q.xM+(dx||0),q.yM+(dz||0));return true;},toPlayer(){const pe=window.__geo?.people,y=pe&&globalThis.WohPeople?.peopleYou(pe);if(!y?.camp||!state)return false;const q=state.terrain.gridToMeters(y.camp.x,y.camp.y);placeMarker(q.xM,q.yM);return true;},get point(){return markerPoint;},block(){if(!state||!markerPoint)return null;const q=state.terrain.metersToGrid(markerPoint.xM,markerPoint.yM);return {x:q.x,y:q.y};}};
+globalThis.__wohAvatar={setFirstPerson,get firstPerson(){return firstPerson;},setView(y,p,d){yaw=y;pitch=p;globalThis.__wohCamDist=d||4;updateCamera();},toBlock(bx,by,dx,dz){if(!state)return false;const q=state.terrain.gridToMeters(bx,by);placeMarker(q.xM+(dx||0),q.yM+(dz||0));return true;},toPlayer(){const pe=window.__geo?.people,y=pe&&globalThis.WohPeople?.peopleYou(pe);if(!y?.camp||!state)return false;const q=state.terrain.gridToMeters(y.camp.x,y.camp.y);placeMarker(q.xM,q.yM);return true;},get point(){return markerPoint;},block(){if(!state||!markerPoint)return null;const q=state.terrain.metersToGrid(markerPoint.xM,markerPoint.yM);return {x:q.x,y:q.y};}};
 window.__wohPlayerSave=()=>playerToSource(globalThis.__wohDev?.savedPlayer()??(markerPoint?{xM:markerPoint.xM,yM:markerPoint.yM,yaw}:null));
 document.body.classList.add('integration-ui-hidden','integration-third');
 animatePlayer(0);resize();if(bridge.world)adoptNativeWorld();
