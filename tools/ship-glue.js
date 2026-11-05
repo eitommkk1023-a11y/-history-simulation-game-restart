@@ -91,7 +91,10 @@
   const gameScene = () => cp.character?.parent ?? nat.scene; // the native view has its own scene (the one the player marker lives in)
   function disposeMesh(m) { m.group.parent?.remove(m.group); m.dispose(); }
   function makeMesh(rec) {
-    const o = Ship.buildShipObject(THREE_, { hull: Ship.sampleDesigns[rec.designId].hull, vessel: rec.vessel, visual: Ship.sampleDesigns[rec.designId].visual });
+    const dd = Ship.sampleDesigns[rec.designId], isPinta = !!dd.evidence;
+    const o = Ship.buildShipObject(THREE_, { hull: dd.hull, vessel: rec.vessel, visual: { ...dd.visual, customRig: isPinta } });
+    if (isPinta) Ship.addPintaStructure(THREE_, o, dd, rec.vessel);
+    if (rec.crew) Ship.addCrewFigures(THREE_, o, rec.crew);
     gameScene().add(o.group);
     return o;
   }
@@ -103,7 +106,7 @@
       const st = rec.vessel.state, xM = ref.xM + st.X, yM = ref.yM - st.Y;
       try { const q = T.toLocal(xM, yM, 0, S.origin); m.group.position.set(q.x, q.y, q.z); m.group.visible = true; } catch (_) { m.group.visible = false; continue; }
       m.group.rotation.set(0, -st.psi, -st.heelDeg * DEG);
-      Ship.updateShipObject(m);
+      Ship.updateShipObject(m, { leeSign: Math.sign(rec.vessel.apparentWind(env).y) || 1 }); if (m.crewFigs?.length) Ship.updateCrewFigures(m, null); if (m.setDetail) m.setDetail(THREE_ && cp.camera.position.distanceTo(m.group.position) > 400 ? 2 : cp.camera.position.distanceTo(m.group.position) > 120 ? 1 : 0);
     }
     for (const id of [...meshes.keys()]) if (!fleet.has(id)) { disposeMesh(meshes.get(id)); meshes.delete(id); }
   }
@@ -132,7 +135,7 @@
     if (!spot) { toast('近くに十分深い海がない'); return; }
     if (!ref) { ref = { xM: spot.xM, yM: spot.yM }; makeEnv(); }
     const heading = openWaterHeading(spot.xM, spot.yM);
-    const id = fleet.addShip({ designId, X: spot.xM - ref.xM, Y: ref.yM - spot.yM, headingDeg: heading });
+    const id = fleet.addShip({ designId, X: spot.xM - ref.xM, Y: ref.yM - spot.yM, headingDeg: heading, crew: !!Ship.sampleDesigns[designId].evidence });
     fleet.get(id).vessel.state.u = 1.5; // already under way, so the rudder bites
     ctl[id] = { heading, held: 0, auto: true, oar: 0.8 };
     toast(`${id}（${designId}）を海に出した`); refreshList(); save();

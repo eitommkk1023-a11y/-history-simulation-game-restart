@@ -9,7 +9,7 @@ export { createWorldEnvironment } from './world-environment.mjs';
 export { createFleet, LOD } from './fleet.mjs';
 export { buildHullMesh } from './hull-mesh.mjs';
 export { createCaptain, RIG_DEFAULTS } from './captain.mjs';
-export { buildShipObject, updateShipObject, addInterior, setViewDeck, placePlayer } from './ship-render.mjs';
+export { buildShipObject, updateShipObject, addInterior, setViewDeck, placePlayer, addCrewFigures, updateCrewFigures } from './ship-render.mjs';
 export { createInterior } from './interior.mjs';
 export { PINTA_1492_PROFILE } from './pinta-1492-data.mjs';
 export { PINTA_1492_PARAMS, validatePintaProfile, validatePintaParams } from './pinta-1492-params.mjs';

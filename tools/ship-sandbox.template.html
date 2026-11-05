@@ -28,10 +28,11 @@ h4{margin:4px 0 2px;font-size:12px;color:#7fc8f0}
   <h4>天候</h4>
   <div class="row"><label>風速</label><input id="ws" type="range" min="0" max="25" step="0.5" value="10"><output id="wsO"></output></div>
   <div class="row"><label>風の来る方位</label><input id="wd" type="range" min="0" max="359" step="1" value="0"><output id="wdO"></output></div>
-  <div class="row"><button id="bX">倍速 ×1</button><button id="bClear">船を全部消す</button></div>
+  <div class="row"><button id="bX">倍速 ×1</button><button id="bClear">船を全部消す</button><button id="bEvid">史料と推定</button></div>
   <div style="color:var(--mu)">地図：島4つ（周りの浅瀬は水色の輪）。海をタップすると、乗船中の船の目的地になります。ドラッグで視点、ホイール／ピンチで拡大。</div>
 </div>
 <div id="bar" class="pn"><div id="info"></div><div id="ctrl"></div><div id="ladders" style="position:fixed;left:calc(150px + env(safe-area-inset-left));bottom:calc(86px + env(safe-area-inset-bottom));z-index:6"></div></div>
+<div id="evid" class="pn" style="display:none;left:50%;transform:translateX(-50%);top:calc(8px + env(safe-area-inset-top));width:min(620px,94vw);max-height:84vh;overflow:auto;touch-action:pan-y;z-index:8"></div>
 <div id="stick"><div id="knob"></div></div>
 <div id="toast"></div>
 <script>/*THREE*/</script>
@@ -87,12 +88,13 @@ function makeObj(rec) {
   pl.visible = false; o.group.add(pl); o.player = pl;
   const d = Ship.sampleDesigns[rec.designId];
   o.interior = Ship.createInterior(d.interior ?? Ship.sampleInteriors[d.interiorId], { hull: Ship.createHull(d.hull) });
+  if (rec.crew) Ship.addCrewFigures(T, o, rec.crew); else o.crewFigs = [];
   Ship.addInterior(T, o, o.interior); o.pos = o.interior.startPosition(); o.facing = 0; Ship.placePlayer(o, o.pos); Ship.setViewDeck(o, o.pos.deck); return o;
 }
 function spawn(designId) {
   const n = fleet.list().length, X = (n % 4) * 90 - 135, Y = -Math.floor(n / 4) * 90 - 40;
   const heading = (wind.from + 90) % 360; // beam reach to start
-  const id = fleet.addShip({ designId, X, Y, headingDeg: heading }); fleet.get(id).vessel.state.u = 1.5;
+  const id = fleet.addShip({ designId, X, Y, headingDeg: heading, crew: !!Ship.sampleDesigns[designId].evidence }); fleet.get(id).vessel.state.u = 1.5;
   ctl[id] = { heading, held: 0, auto: true, oar: 0.8 }; toast(`${id} を出した`); refresh(); save();
 }
 function removeAll() { for (const o of objs.values()) { scene.remove(o.group); o.dispose(); } objs.clear(); newFleet(); ctl = {}; boarded = null; refresh(); save(); }
@@ -179,6 +181,7 @@ function refresh() {
   C.append(hold('◀ 左へ', -1), hold('右へ ▶', 1), el('button', { textContent: '前方3km', onclick: () => { const s = v.state; setDest(boarded, s.X + Math.sin(s.psi) * 3000, s.Y + Math.cos(s.psi) * 3000); } }));
   if (active(rec)) C.append(el('button', { textContent: '航海をやめる', onclick: () => { fleet.cancelDestination(boarded); v.setHeadingTarget(null); c.heading = v.snapshot().headingDeg; drawRoute(); refresh(); } }));
   C.append(el('button', { textContent: v.state.anchor ? '錨を上げる' : '錨を下ろす', onclick: () => { if (v.state.anchor) v.raiseAnchor(); else { const r = v.dropAnchor(env, { anchorKg: 400, rodeM: 60 }); if (r.status !== 'ok') toast('投錨できない：' + r.status); } refresh(); } }));
+  if (rec.crew) C.append(el('button', { textContent: '樽±10', onclick: () => { toggleCargo(); refresh(); } }), el('button', { textContent: '8月の舵故障', onclick: startScenario }));
   if (v.sails.length) C.append(el('button', { textContent: c.auto ? '帆：自動' : '帆：固定', className: c.auto ? 'on' : '', onclick: () => { c.auto = !c.auto; refresh(); } }));
   if (v.oars.length) { const r = el('input', { type: 'range', min: -100, max: 100, step: 5, value: Math.round(c.oar * 100), style: 'width:90px' }); r.oninput = () => { c.oar = r.value / 100; }; C.append(el('span', { textContent: '櫂 ' }), r); }
 }
@@ -196,7 +199,7 @@ function info() {
   const dd = cap?.destination && Math.hypot(cap.destination.X - v.state.X, cap.destination.Y - v.state.Y);
   const capTxt = cap && active(rec) ? `／航海中 残り${dd > 1000 ? (dd / 1000).toFixed(1) + 'km' : Math.round(dd) + 'm'}（約${Math.round(dd / Math.max(0.8, s.speedOverGround) / 60)}分）${cap.reef < 1 ? '／帆を絞っている' : ''}` : cap?.mode === 'arrived' ? '／到着' : '';
   const here = objs.get(boarded), room = here ? here.interior.roomOf(here.pos.deck, here.pos.x, here.pos.y) : null, deckName = here?.interior.decks.find((d) => d.id === here.pos.deck)?.name ?? '';
-  $('info').textContent = `現在地：${room?.name ?? deckName}／速度 ${(s.speedOverGround * 1.9438).toFixed(1)} kt／方位 ${s.headingDeg.toFixed(0)}°／風 ${Math.hypot(w.x, w.y).toFixed(1)} m/s・${wind.from.toFixed(0)}°から／傾斜 ${s.heelDeg.toFixed(1)}°／水深余裕 ${f.clearanceM.toFixed(1)} m${s.aground ? '／座礁中' : ''}${s.anchored ? (s.anchorDragging ? '／走錨中' : '／錨泊中') : ''}${capTxt}`;
+  $('info').textContent = `現在地：${room?.name ?? deckName}／速度 ${(s.speedOverGround * 1.9438).toFixed(1)} kt／方位 ${s.headingDeg.toFixed(0)}°／風 ${Math.hypot(w.x, w.y).toFixed(1)} m/s・${wind.from.toFixed(0)}°から／傾斜 ${s.heelDeg.toFixed(1)}°／水深余裕 ${f.clearanceM.toFixed(1)} m${rec.crew ? `／喫水 ${v.params.draftM.toFixed(2)} m／舵${s.rudderHealth < 1 ? '損傷' + Math.round(s.rudderHealth * 100) + '%' : '正常'}／${rec.crew.effects().helmManned ? '操舵手あり' : '操舵手なし'}・帆の手${rec.crew.effects().sailHands}人` : ''}${s.aground ? '／座礁中' : ''}${s.anchored ? (s.anchorDragging ? '／走錨中' : '／錨泊中') : ''}${capTxt}`;
 }
 const out = () => { $('wsO').textContent = wind.speed + ' m/s'; $('wdO').textContent = wind.from + '°'; };
 $('ws').oninput = () => { wind.speed = +$('ws').value; out(); save(); }; $('wd').oninput = () => { wind.from = +$('wd').value; out(); save(); };
@@ -205,6 +208,36 @@ $('bClear').onclick = removeAll;
 $('bMenu').onclick = () => { const t = $('top'); t.style.display = t.style.display === 'none' ? 'block' : 'none'; };
 $('bMenu').addEventListener('pointerdown', (e) => e.stopPropagation()); $('bMenu').addEventListener('pointerup', (e) => e.stopPropagation());
 for (const id of ['top', 'bar']) for (const ev of ['pointerdown', 'pointerup', 'wheel']) $(id).addEventListener(ev, (e) => e.stopPropagation());
+
+// ---------- evidence panel, cargo, scenario ----------
+const LV = { A: '史料(A)', B: '研究(B)', C: '類例(C)', D: '仮説(D)', derived: '計算' };
+function evidence() {
+  const P = Ship.PINTA_1492_PROFILE, G = Ship.PINTA_1492_PARAMS, rows = [], flat = (o, path) => { for (const [k, v] of Object.entries(o)) { if (v && typeof v === 'object' && 'evidence_level' in v) rows.push([path + k, v]); else if (v && typeof v === 'object' && !Array.isArray(v)) flat(v, path + k + '.'); } };
+  flat(G, '');
+  const td = (t) => `<td style="padding:2px 6px;vertical-align:top">${t}</td>`;
+  const fmt = (v) => (typeof v === 'object' ? JSON.stringify(v) : String(v));
+  const dims = Object.entries(P.dimensions).map(([k, v]) => `<tr>${td(k)}${td(v.value === null ? '<b>未確定</b>' : v.value + ' ' + v.unit)}${td(LV[v.evidence_level])}${td(v.notes_ja)}</tr>`).join('');
+  const hyp = rows.map(([k, v]) => `<tr>${td(k)}${td(fmt(v.value))}${td(LV[v.evidence_level])}${td(v.note)}</tr>`).join('');
+  $('evid').innerHTML = `<div class="row"><b style="flex:1;font-size:14px">ピンタ号1492：推定復元（原船の図面は現存しない）</b><button id="evClose">閉じる</button></div>
+  <p>採用プロファイル：<b>${P.selected_profile}</b>。数値は学術的な復元案で、原船の実測値ではありません。歴史的容積<b>約40.10 toneladas de arqueo</b>は重量ではなく、排水量・積載量には使っていません。軽荷時の排水量は船体形状と喫水1.58mから計算しています。</p>
+  <h4>研究で示された値（資料のまま）</h4><table style="border-collapse:collapse;font-size:11px">${dims}</table>
+  <h4>このゲームでの仮説・計算値</h4><table style="border-collapse:collapse;font-size:11px">${hyp}</table>
+  <h4>史料に異説・未確定</h4><ul style="margin:2px 0 6px 16px;padding:0"><li>帆装の改装対象：日誌の抄録はピンタ号をラテン帆から横帆へ変更と読めるが、フェルナンド・コロンの記述ではニーニャ号。→「大西洋横断」と「出航時ラテン帆仮説」の2案を保持。</li><li>乗員：26人は初期値。文献で異なる。</li><li>武装：砲の数・口径・位置は未確定（このモデルには砲を付けていない）。</li><li>帆の意匠・旗：未確定（付けていない）。</li><li>${P.unresolved.join(', ')}</li></ul>`;
+  $('evClose').onclick = () => { $('evid').style.display = 'none'; };
+}
+$('bEvid').onclick = () => { const e = $('evid'); if (e.style.display === 'none') { evidence(); e.style.display = 'block'; } else e.style.display = 'none'; };
+for (const ev of ['pointerdown', 'pointerup', 'wheel']) $('evid').addEventListener(ev, (e) => e.stopPropagation());
+const scenarios = new Map(), HLABEL = { rudder_disengaged: '舵が外れる', rudder_repair_after_repeat_problem: '舵の修理', leak_reported: '漏水の報告' };
+function toggleCargo() {
+  const rec = fleet.get(boarded), o = objs.get(boarded), has = (rec.massItems ?? []).some((m) => m.id === 'cargo:water_barrel:player');
+  const base = rec.massItems ?? Ship.sampleDesigns[rec.designId].massItems;
+  fleet.setLoad(boarded, has ? base.filter((m) => m.id !== 'cargo:water_barrel:player') : Ship.withCargo(base, [Ship.cargoItem('water_barrel', 10, 3.5, 0, o.interior.deckZ('hold') + 0.2, 'player')]));
+  toast(has ? '樽10個を降ろした' : '水樽10個を船倉の船尾側に積んだ');
+}
+function startScenario() {
+  if (scenarios.has(boarded)) { toast('すでに再現中'); return; }
+  scenarios.set(boarded, Ship.createAugust1492({ fleet, shipId: boarded, daySeconds: 900 })); toast('1492年8月の舵故障を再現開始（1日=15分）');
+}
 
 // ---------- save / load ----------
 function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ fleet: fleet.serialize(), ctl, wind })); } catch (_) { /* storage unavailable */ } }
@@ -228,10 +261,12 @@ function frame(t) {
   }
   acc += dt; if (acc > 1) { acc = 0; for (const rec of fleet.list()) if (ctl[rec.id]?.auto && !active(rec)) rec.vessel.autoTrim(env); }
   if (dt > 0) fleet.step(dt * speedX, env, null);
+  for (const [sid, sc] of scenarios) { if (!fleet.has(sid)) { scenarios.delete(sid); continue; } sc.update(dt * speedX); for (const e of sc.takeEvents()) toast(`${e.historical.date} ${HLABEL[e.historical.kind]}（史料A）：${e.game.note}`); }
   for (const e of fleet.takeEvents()) { if (e.type === 'captain_no_route') toast('船長：' + (REASON[e.reason] ?? '行けない')); else if (EVT[e.type]) toast(`${e.shipId}：${EVT[e.type]}`); }
   for (const rec of fleet.list()) {
     let o = objs.get(rec.id); if (!o) { o = makeObj(rec); objs.set(rec.id, o); if (boarded === rec.id) o.player.visible = true; }
     const s = rec.vessel.state; o.group.position.set(s.X, 0, -s.Y); o.group.rotation.set(0, -s.psi, -s.heelDeg * DEG); Ship.updateShipObject(o, { leeSign: Math.sign(rec.vessel.apparentWind(env).y) || 1 }); if (o.setDetail) { const dist = camera.position.distanceTo(o.group.position); o.setDetail(dist > 400 ? 2 : dist > 120 ? 1 : 0); }
+    Ship.updateCrewFigures(o, boarded === rec.id ? o.pos.deck : null);
     Ship.placePlayer(o, o.pos); if (boarded === rec.id) Ship.setViewDeck(o, o.pos.deck, o.interior.roomOf(o.pos.deck, o.pos.x, o.pos.y)?.id ?? null);
   }
   walk(dt); updateCamera(); placeSea(); if (boarded) drawRoute();

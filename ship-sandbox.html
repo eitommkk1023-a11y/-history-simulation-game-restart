@@ -28,10 +28,11 @@ h4{margin:4px 0 2px;font-size:12px;color:#7fc8f0}
   <h4>天候</h4>
   <div class="row"><label>風速</label><input id="ws" type="range" min="0" max="25" step="0.5" value="10"><output id="wsO"></output></div>
   <div class="row"><label>風の来る方位</label><input id="wd" type="range" min="0" max="359" step="1" value="0"><output id="wdO"></output></div>
-  <div class="row"><button id="bX">倍速 ×1</button><button id="bClear">船を全部消す</button></div>
+  <div class="row"><button id="bX">倍速 ×1</button><button id="bClear">船を全部消す</button><button id="bEvid">史料と推定</button></div>
   <div style="color:var(--mu)">地図：島4つ（周りの浅瀬は水色の輪）。海をタップすると、乗船中の船の目的地になります。ドラッグで視点、ホイール／ピンチで拡大。</div>
 </div>
 <div id="bar" class="pn"><div id="info"></div><div id="ctrl"></div><div id="ladders" style="position:fixed;left:calc(150px + env(safe-area-inset-left));bottom:calc(86px + env(safe-area-inset-bottom));z-index:6"></div></div>
+<div id="evid" class="pn" style="display:none;left:50%;transform:translateX(-50%);top:calc(8px + env(safe-area-inset-top));width:min(620px,94vw);max-height:84vh;overflow:auto;touch-action:pan-y;z-index:8"></div>
 <div id="stick"><div id="knob"></div></div>
 <div id="toast"></div>
 <script>/**
@@ -483,7 +484,7 @@ function createVessel({ ship, analysis, hullParams, sails = [], rudder, oars = [
   if (new Set(oarList.map((o) => o.id)).size !== oarList.length) throw new TypeError('duplicate oar bank id');
   const events = [];
   const s0 = { x: 0, y: 0, headingDeg: 0, u: 0, v: 0, r: 0, ...initial };
-  const st = { time: 0, X: s0.x, Y: s0.y, psi: s0.headingDeg * DEG, u: s0.u, v: s0.v, r: s0.r, rudderDeg: 0, rudderTargetDeg: 0, headingTarget: null, heelDeg: 0, overpowered: false, anchor: null, aground: false, groundingDamageMJ: 0 };
+  const st = { time: 0, X: s0.x, Y: s0.y, psi: s0.headingDeg * DEG, u: s0.u, v: s0.v, r: s0.r, rudderDeg: 0, rudderTargetDeg: 0, rudderHealth: 1, sailSlewDegS: 0, headingTarget: null, heelDeg: 0, overpowered: false, anchor: null, aground: false, groundingDamageMJ: 0 };
   if (rud) rud.xRel = rud.x - hp.cgX;
 
   const fwd = () => [Math.sin(st.psi), Math.cos(st.psi)];
@@ -570,7 +571,7 @@ function createVessel({ ship, analysis, hullParams, sails = [], rudder, oars = [
       const vr = vw + st.r * rud.xRel, Vr2 = uw * uw + vr * vr;
       const alpha = st.rudderDeg * DEG + Math.atan2(vr, Math.abs(uw) + 1e-9) * Math.sign(uw || 1);
       const CN = Math.sin(2 * clamp(alpha, -35 * DEG, 35 * DEG));
-      const Yr = -q * rud.areaM2 * Vr2 * CN;
+      const Yr = -q * rud.areaM2 * Vr2 * CN * st.rudderHealth; // 1 = sound, 0 = disengaged or lost
       Y += Yr; N += Yr * rud.xRel;
       out.rudderForceN = Yr;
     }
@@ -616,6 +617,11 @@ function createVessel({ ship, analysis, hullParams, sails = [], rudder, oars = [
   }
 
   /** Choose, for each sail, the trim (within its brace limit) that maximises forward drive. */
+  /** With sailSlewDegS > 0 the sails move toward their target trim at that rate (hands on the braces and sheets); 0 = instant. */
+  function slewSails(dt) {
+    if (!(st.sailSlewDegS > 0)) return;
+    for (const s of sailList) if (s.targetTrimDeg !== undefined) { const d = s.targetTrimDeg - s.trimDeg, m = st.sailSlewDegS * dt; s.trimDeg += Math.abs(d) <= m ? d : Math.sign(d) * m; }
+  }
   function autoTrim(env = {}) {
     const aw = apparentWind(env);
     for (const s of sailList) {
@@ -624,7 +630,7 @@ function createVessel({ ship, analysis, hullParams, sails = [], rudder, oars = [
         const fx = sailForce(s, sg * a, aw, st.heelDeg)[0];
         if (fx > bestFx) { bestFx = fx; best = sg * a; }
       }
-      s.trimDeg = best;
+      if (st.sailSlewDegS > 0) s.targetTrimDeg = best; else s.trimDeg = best;
     }
   }
 
@@ -639,6 +645,7 @@ function createVessel({ ship, analysis, hullParams, sails = [], rudder, oars = [
 
   function step(dt = 0.1, env = {}) {
     if (st.headingTarget !== null && st.headingTarget !== undefined) steerTowards(st.headingTarget); // helm runs every physics step
+    slewSails(dt);
     // Rudder follows its target at a limited rate.
     if (rud) {
       const tgt = clamp(st.rudderTargetDeg, -rud.maxDeg, rud.maxDeg), dr = rud.rateDegS * dt;
@@ -699,6 +706,8 @@ function createVessel({ ship, analysis, hullParams, sails = [], rudder, oars = [
     forces, step, run, autoTrim, apparentWind, steerTowards,
     setRudder(deg) { st.headingTarget = null; st.rudderTargetDeg = deg; },
     /** Hold a compass heading (deg) automatically every physics step; null returns to manual rudder control. */
+    setRudderHealth(h) { st.rudderHealth = Math.min(1, Math.max(0, h)); },
+    setSailSlew(degPerS) { st.sailSlewDegS = Math.max(0, degPerS); },
     setHeadingTarget(deg) { st.headingTarget = deg === null ? null : ((deg % 360) + 360) % 360; },
     setOarEffort(id, e) { const o = oarList.find((x) => x.id === id); if (!o) throw new RangeError(`unknown oar bank ${id}`); o.effort = clamp(e, -1, 1); },
     setAllOarEffort(e) { for (const o of oarList) o.effort = clamp(e, -1, 1); },
@@ -721,7 +730,7 @@ function createVessel({ ship, analysis, hullParams, sails = [], rudder, oars = [
     setSailDeployed(id, frac) { sailById(id).deployed = clamp(frac, 0, 1); },
     snapshot() {
       const f = fwd(), s = stb(), sx = st.u * f[0] + st.v * s[0], sy = st.u * f[1] + st.v * s[1];
-      return { time: st.time, x: st.X, y: st.Y, headingDeg: ((st.psi / DEG) % 360 + 360) % 360, u: st.u, v: st.v, yawRateDegS: st.r / DEG, speedOverGround: Math.hypot(sx, sy), velocity: { x: sx, y: sy }, heelDeg: st.heelDeg, overpowered: st.overpowered, rudderDeg: st.rudderDeg, aground: st.aground, anchored: !!st.anchor, anchorDragging: !!st.anchor?.dragging, groundingDamageMJ: st.groundingDamageMJ, stamina: oarList.length ? Math.min(...oarList.map((o) => o.stamina)) : null };
+      return { time: st.time, x: st.X, y: st.Y, headingDeg: ((st.psi / DEG) % 360 + 360) % 360, u: st.u, v: st.v, yawRateDegS: st.r / DEG, speedOverGround: Math.hypot(sx, sy), velocity: { x: sx, y: sy }, heelDeg: st.heelDeg, overpowered: st.overpowered, rudderDeg: st.rudderDeg, rudderHealth: st.rudderHealth, aground: st.aground, anchored: !!st.anchor, anchorDragging: !!st.anchor?.dragging, groundingDamageMJ: st.groundingDamageMJ, stamina: oarList.length ? Math.min(...oarList.map((o) => o.stamina)) : null };
     },
   };
 }
@@ -1426,6 +1435,121 @@ function buildPintaDesign({ rigPreset = 'atlantic_square_rig', loadout = 'crossi
 
 return { LOA, LWL, BEAM, BEAM_WL, DRAFT, DECK_Z, RHO_SEA, keelZ, pintaHullSpec, pintaHullReport, pintaLightshipMassItems, pintaInterior, pintaSails, pintaLoad, buildPintaDesign };
 })();
+const M_interior = (() => {
+/**
+ * Ship interior (Ver.5 basic part): decks, rooms, doors and ladders in the hull frame
+ * (x = along the ship from hull.xMin, y = across, + starboard; z = deck height above the keel baseline).
+ * Walkable space is the union of room rectangles and door rectangles, kept inside the hull breadth at that deck height.
+ * Rooms on the same deck are separated by a wall gap; a door rectangle bridges the gap. Walls are the gaps, so the
+ * same data drives movement, rendering and the later flooding/fire/NPC-path networks (toFloodingBoxes).
+ * Prototype: axis-aligned rectangular rooms only; no furniture, no destructible walls, no closed doors yet.
+ * The layout is plain JSON (stored with the ship design).
+ */
+const { breadthAtZ } = M_hull_geometry;
+const R = 0.3; // player radius (m)
+const inside = (r, x, y) => x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1;
+const inset = (r, m) => ({ x0: r.x0 + m, x1: r.x1 - m, y0: r.y0 + m, y1: r.y1 - m });
+
+function createInterior(layout, { hull = null } = {}) {
+  if (!layout || !Array.isArray(layout.decks) || !Array.isArray(layout.rooms)) throw new TypeError('interior layout needs decks and rooms');
+  const decks = new Map(), rooms = new Map(), doors = layout.doors ?? [], ladders = layout.ladders ?? [];
+  for (const d of layout.decks) {
+    if (typeof d?.id !== 'string' || !Number.isFinite(d.z) || decks.has(d.id)) throw new TypeError('each deck needs a unique id and a z height');
+    decks.set(d.id, d);
+  }
+  const rectOk = (r) => Number.isFinite(r.x0) && Number.isFinite(r.x1) && Number.isFinite(r.y0) && Number.isFinite(r.y1) && r.x1 > r.x0 && r.y1 > r.y0;
+  for (const r of layout.rooms) {
+    if (typeof r?.id !== 'string' || rooms.has(r.id)) throw new TypeError('each room needs a unique id');
+    if (!decks.has(r.deck)) throw new RangeError(`room ${r.id}: unknown deck ${r.deck}`);
+    if (!rectOk(r) || r.x1 - r.x0 < 2 * R + 0.2 || r.y1 - r.y0 < 2 * R + 0.2) throw new RangeError(`room ${r.id}: invalid or too small rectangle`);
+    rooms.set(r.id, r);
+  }
+  const list = [...rooms.values()];
+  for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+    const a = list[i], b = list[j];
+    if (a.deck === b.deck && a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1) throw new RangeError(`rooms ${a.id} and ${b.id} overlap (leave a wall gap)`);
+  }
+  const grow = (r, m) => ({ x0: r.x0 - m, x1: r.x1 + m, y0: r.y0 - m, y1: r.y1 + m });
+  for (const d of doors) {
+    if (typeof d?.id !== 'string' || !decks.has(d.deck) || !rectOk(d) || !['x', 'y'].includes(d.along)) throw new TypeError(`door ${d?.id}: needs id, deck, rectangle and along x|y`);
+    const touching = list.filter((r) => r.deck === d.deck && inside(grow(r, 0.02), d.x0, d.y0) !== undefined && d.x0 <= r.x1 + 0.02 && d.x1 >= r.x0 - 0.02 && d.y0 <= r.y1 + 0.02 && d.y1 >= r.y0 - 0.02);
+    if (touching.length < 2) throw new RangeError(`door ${d.id} must join two rooms`);
+  }
+  // Walkable pieces per deck: rooms inset by the player radius; doors inset only across their width.
+  const pieces = new Map([...decks.keys()].map((k) => [k, []]));
+  for (const r of list) pieces.get(r.deck).push({ rect: inset(r, R), room: r });
+  for (const d of doors) {
+    // `along` is the direction the wall runs: keep a margin along it, and reach R into the rooms on both sides so the pieces overlap.
+    const across = d.along === 'y' ? { x0: d.x0 - R, x1: d.x1 + R, y0: d.y0 + R, y1: d.y1 - R } : { x0: d.x0 + R, x1: d.x1 - R, y0: d.y0 - R, y1: d.y1 + R };
+    if (across.x1 > across.x0 && across.y1 > across.y0) pieces.get(d.deck).push({ rect: across, door: d });
+  }
+  const breadthLimit = (x, z) => { if (!hull) return Infinity; if (x < hull.xMin || x > hull.xMax) return -1; return breadthAtZ(hull.sectionAt(x), z) - 0.25; };
+  for (const l of ladders) for (const end of [l.a, l.b]) {
+    if (!end || !decks.has(end.deck) || !Number.isFinite(end.x) || !Number.isFinite(end.y)) throw new TypeError(`ladder ${l.id}: bad end`);
+    if (!walkable(end.deck, end.x, end.y)) throw new RangeError(`ladder ${l.id}: an end is not on walkable floor`);
+  }
+
+  function walkable(deck, x, y) {
+    const ps = pieces.get(deck); if (!ps) return false;
+    if (Math.abs(y) > breadthLimit(x, decks.get(deck).z)) return false;
+    return ps.some((p) => inside(p.rect, x, y));
+  }
+  const roomOf = (deck, x, y) => list.find((r) => r.deck === deck && inside(r, x, y)) ?? null;
+
+  /** Move a position {x, y, deck} by (dx, dy), sliding along walls. Returns the new position (a new object). */
+  function move(pos, dx, dy) {
+    let { x, y } = pos;
+    if (walkable(pos.deck, x + dx, y + dy)) { x += dx; y += dy; }
+    else { if (walkable(pos.deck, x + dx, y)) x += dx; if (walkable(pos.deck, x, y + dy)) y += dy; }
+    return { x, y, deck: pos.deck };
+  }
+  /** Ladders within reach of the position (each with the end you stand at and the end you would reach). */
+  function laddersNear(pos, reach = 1.4) {
+    const out = [];
+    for (const l of ladders) for (const [here, there] of [[l.a, l.b], [l.b, l.a]]) {
+      if (here.deck === pos.deck && Math.hypot(here.x - pos.x, here.y - pos.y) <= reach) out.push({ id: l.id, name: l.name ?? l.id, to: there.deck, direction: decks.get(there.deck).z > decks.get(pos.deck).z ? 'up' : 'down' });
+    }
+    return out;
+  }
+  function climb(pos, ladderId) {
+    const l = ladders.find((q) => q.id === ladderId); if (!l) throw new RangeError(`unknown ladder ${ladderId}`);
+    for (const [here, there] of [[l.a, l.b], [l.b, l.a]]) if (here.deck === pos.deck && Math.hypot(here.x - pos.x, here.y - pos.y) <= 1.4) return { x: there.x, y: there.y, deck: there.deck };
+    throw new RangeError('not near that ladder');
+  }
+  /** Thin wall rectangles around a room on a deck, with door openings removed (for rendering). */
+  function wallRects(deck, thickness = 0.16) {
+    const out = [];
+    for (const r of list.filter((q) => q.deck === deck && !q.open)) { // open rooms (weather decks) have no walls
+      const ds = doors.filter((d) => d.deck === deck);
+      const edge = (fixed, a0, a1, axis) => { // axis 'x': wall runs along x at y=fixed; 'y': runs along y at x=fixed
+        const cuts = ds.filter((d) => (axis === 'x' ? d.along === 'x' && d.y0 <= fixed + 0.05 && d.y1 >= fixed - 0.05 : d.along === 'y' && d.x0 <= fixed + 0.05 && d.x1 >= fixed - 0.05))
+          .map((d) => (axis === 'x' ? [d.x0, d.x1] : [d.y0, d.y1])).filter(([c0, c1]) => c1 > a0 && c0 < a1).sort((p, q) => p[0] - q[0]);
+        let cur = a0;
+        for (const [c0, c1] of cuts) { if (c0 > cur) out.push(seg(fixed, cur, c0, axis)); cur = Math.max(cur, c1); }
+        if (cur < a1) out.push(seg(fixed, cur, a1, axis));
+      };
+      const seg = (fixed, a, b, axis) => ({ ...(axis === 'x' ? { x0: a, x1: b, y0: fixed - thickness / 2, y1: fixed + thickness / 2 } : { x0: fixed - thickness / 2, x1: fixed + thickness / 2, y0: a, y1: b }), room: r.id, h: r.wallHeight });
+      edge(r.y0, r.x0, r.x1, 'x'); edge(r.y1, r.x0, r.x1, 'x'); edge(r.x0, r.y0, r.y1, 'y'); edge(r.x1, r.y0, r.y1, 'y');
+    }
+    return out;
+  }
+  /** Room boxes for the flooding model: floor at the deck, ceiling at the next deck up (or `topZ`). */
+  function toFloodingBoxes(topZ) {
+    const zs = [...decks.values()].map((d) => d.z).sort((a, b) => a - b);
+    return list.map((r) => { const z0 = decks.get(r.deck).z, above = zs.find((z) => z > z0 + 1e-9) ?? topZ; return { id: r.id, box: { x0: r.x0, x1: r.x1, y0: r.y0, y1: r.y1, z0, z1: above } }; });
+  }
+  const startPosition = () => { const r = list.find((q) => q.use === 'deck') ?? list[0]; return { x: (r.x0 + r.x1) / 2, y: 0, deck: r.deck }; };
+
+  return Object.freeze({
+    layout, decks: [...decks.values()], rooms: list, doors, ladders,
+    walkable, roomOf, move, laddersNear, climb, wallRects, toFloodingBoxes, startPosition,
+    deckZ: (id) => decks.get(id)?.z,
+    floorRects: (deck) => list.filter((r) => r.deck === deck),
+  });
+}
+
+return { createInterior };
+})();
 const M_samples = (() => {
 const { buildPintaDesign } = M_pinta_design;
 /**
@@ -1538,6 +1662,183 @@ Object.freeze(sampleDesigns);
 Object.freeze(sampleInteriors);
 
 return { boxBarge, galleonLikeHull, galleonLikeMassItems, galleyHull, galleyMassItems, sampleDesigns, sampleInteriors };
+})();
+const M_cargo = (() => {
+/**
+ * Cargo as real mass items placed in the hold. Masses per unit are level D (hypotheses); the point is that loading or
+ * unloading changes total mass, centre of gravity and draft through the same physics (fleet.setLoad).
+ */
+const { PINTA_1492_PARAMS: G } = M_pinta_1492_params;
+const CARGO_KINDS = Object.freeze({
+  water_barrel: Object.freeze({ massKg: G.mass.waterBarrelKg.value, label: '水樽', evidence_level: 'D' }),
+  provision_sack: Object.freeze({ massKg: 50, label: '食料袋', evidence_level: 'D' }),
+  stone_ballast: Object.freeze({ massKg: 25, label: 'バラスト石', evidence_level: 'D' }),
+});
+
+/** One mass item for `count` units of a kind at hull position (x, y) and height z. */
+function cargoItem(kind, count, x, y, z, tag = '') {
+  const k = CARGO_KINDS[kind]; if (!k) throw new RangeError(`unknown cargo kind ${kind}`);
+  if (!Number.isInteger(count) || count < 0) throw new RangeError('count must be a non-negative integer');
+  return { id: `cargo:${kind}${tag ? ':' + tag : ''}`, massKg: count * k.massKg, x, y, z, ref: { kind, count } };
+}
+/** Design mass items with `cargo` items added (items with the same id replace the design's, never double count). */
+function withCargo(baseItems, cargo) {
+  const ids = new Set(cargo.map((c) => c.id)); return [...baseItems.filter((m) => !ids.has(m.id)), ...cargo.filter((c) => c.massKg > 0)];
+}
+
+return { CARGO_KINDS, cargoItem, withCargo };
+})();
+const M_pinta_1492_scenario = (() => {
+/**
+ * August 1492 scenario for the Pinta: rudder disengaged (8/6), repair after a repeat problem (8/7), leak reported (8/8).
+ * HISTORICAL (level A, Columbus diary abridgement): those three dated events happened. GAME (level D): everything about how:
+ * the lashing, the second failure, work times, the leak rate and pumping rate are hypotheses. One scenario day lasts `daySeconds`
+ * of simulated time (default 86400; use something short to play it). Bilge water is carried as mass in the hold.
+ */
+const { PINTA_1492_PROFILE: P } = M_pinta_1492_data;
+const { cargoItem, withCargo } = M_cargo;
+const src = (kind) => { const e = P.historical_events.find((x) => x.kind === kind); return { date: e.date, kind: e.kind, source: e.source, evidence_level: e.evidence_level }; };
+// Work and flow figures are per GAME hour (one scenario day = daySeconds), so the scenario can be played in minutes.
+const SCENARIO = Object.freeze({ lashRepairWorkH: 2, properRepairWorkH: 6, leakM3PerH: 0.5, pumpM3PerHPerPumper: 0.35, bilgeItemId: 'bilge-water', rudderLashHealth: 0.5 });
+
+function createAugust1492({ fleet, shipId, daySeconds = 86400, baseMass = null, hold = { x: 8.0, y: 0, z: 0.9 } }) {
+  const rec = () => fleet.get(shipId), base = baseMass ?? rec().vessel.analysis?.items ?? null;
+  const designMass = () => (rec().massItems ?? fleet.designMass(rec().designId));
+  const hourS = daySeconds / 24;
+  let t = 0, stage = 'sound', water = 0, appliedWater = 0, work = 0; const events = [];
+  const emit = (h, extra) => events.push({ time: t, historical: src(h), game: extra });
+  const apply = () => { // push the bilge water into the ship's mass items when it changed enough to matter
+    if (Math.abs(water - appliedWater) < 0.1) return;
+    const items = withCargo(designMass().filter((m) => m.id !== SCENARIO.bilgeItemId), [{ id: SCENARIO.bilgeItemId, massKg: water * 1025, ...hold }]);
+    fleet.setLoad(shipId, items); appliedWater = water;
+  };
+  return {
+    update(dt) {
+      t += dt; const crew = rec().crew, v = rec().vessel, day = t / daySeconds, fx = crew?.effects?.() ?? {};
+      if (stage === 'sound' && day >= 0.1) { v.setRudderHealth(0); stage = 'disengaged'; emit('rudder_disengaged', { note: 'rudder comes off its fittings; steering lost (D)' }); fleet.setCrewNeeds(shipId, { repairers: 2 }); }
+      if (stage === 'disengaged' && crew && crew.repairSeconds() >= SCENARIO.lashRepairWorkH * hourS) { v.setRudderHealth(SCENARIO.rudderLashHealth); stage = 'lashed'; work = 0; emit('rudder_repair_after_repeat_problem', { note: 'emergency lashing (D): reduced steering' }); fleet.setCrewNeeds(shipId, {}); }
+      if (stage === 'lashed' && day >= 1.1) { v.setRudderHealth(0.15); stage = 'repeat'; emit('rudder_disengaged', { note: 'the lashing works loose again (D)' }); fleet.setCrewNeeds(shipId, { repairers: 3 }); }
+      if (stage === 'repeat' && crew && crew.repairSeconds() >= SCENARIO.properRepairWorkH * hourS) { v.setRudderHealth(0.85); stage = 'repaired'; emit('rudder_repair_after_repeat_problem', { note: 'proper repair (D)' }); fleet.setCrewNeeds(shipId, {}); }
+      if (day >= 2.1 && !events.some((e) => e.historical.kind === 'leak_reported')) emit('leak_reported', { note: `leak of ${SCENARIO.leakM3PerH} m3/h (D)` });
+      if (day >= 2.1) {
+        const pumpers = fx.pumpers ?? 0; water = Math.max(0, water + (SCENARIO.leakM3PerH - pumpers * SCENARIO.pumpM3PerHPerPumper) * dt / hourS);
+        const needs = rec().crewNeeds; if (water > 0.3 && !needs.pumpers) fleet.setCrewNeeds(shipId, { ...needs, pumpers: 3 }); if (water < 0.05 && needs.pumpers) fleet.setCrewNeeds(shipId, { ...needs, pumpers: 0 });
+        apply();
+      }
+    },
+    get stage() { return stage; }, get bilgeWaterM3() { return water; }, get events() { return events; }, takeEvents: () => events.splice(0),
+  };
+}
+
+return { SCENARIO, createAugust1492 };
+})();
+const M_crew = (() => {
+/**
+ * Crew prototype for the Pinta 1492 scenario: individual ids, roles, watches, stations, walking through the ship
+ * interior, and the effects of who is where (is the helm manned, how many hands are at the masts, is there a lookout).
+ * Historical figures (level A/B, from the research profile): Martin Alonso Pinzon (captain), Francisco Martin Pinzon
+ * (maestre), Cristobal Garcia Sarmiento (piloto). Everyone else is a generic placeholder: the real roster is NOT
+ * reproduced, and 26 is only the scenario start size (level D). Where a person stands, which watch they keep and the
+ * task times are game hypotheses (level D). Person ids are placeholders until the population system exists.
+ */
+const { PINTA_1492_PARAMS: G } = M_pinta_1492_params;
+const WATCH_SECONDS = 4 * 3600; // D: two watches alternating every 4 hours
+const WALK = 1.4;                      // m/s on deck (D)
+const slug = (s) => s.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+function pintaRoster(size = G.crew.scenarioSize.value) {
+  const named = [
+    { name: 'Martín Alonso Pinzón', role: 'captain', evidence: 'A' },
+    { name: 'Francisco Martín Pinzón', role: 'maestre', evidence: 'A-B' },
+    { name: 'Cristóbal García Sarmiento', role: 'piloto', evidence: 'B' },
+  ];
+  const out = named.map((n) => ({ ...n, id: `person:pinta-1492:${slug(n.name)}`, generic: false }));
+  for (let i = out.length; i < size; i++) out.push({ id: `person:pinta-1492:crew-${String(i + 1).padStart(2, '0')}`, name: `乗組員${i + 1}`, role: 'seaman', evidence: 'D', generic: true });
+  return out;
+}
+
+/** Stations in the hull frame, derived from the interior and the design (all level D). */
+function pintaStations(interior, design) {
+  const main = interior.rooms.find((r) => r.id === 'main'), quarter = interior.rooms.find((r) => r.id === 'quarter');
+  const masts = design.sails.map((s) => ({ id: s.id, x: s.x })), hatch = interior.ladders.find((l) => l.id === 'l-hatch').a;
+  return {
+    helm: { x: quarter.x0 + 1.5, y: 0, deck: 'quarter' }, captain: { x: quarter.x1 - 1.0, y: -0.9, deck: 'quarter' }, repair: { x: quarter.x0 + 1.0, y: 0.8, deck: 'quarter' },
+    lookout: { x: main.x1 - 0.6, y: 0, deck: 'main' }, hatch: { x: hatch.x, y: 0.7, deck: 'main' },
+    // the mizzen stands under the quarterdeck, where nothing is walkable (that space is not modelled): its hands work on the quarterdeck
+    mastFoot: Object.fromEntries(masts.map((m) => [m.id, m.x + 0.7 < quarter.x1 ? { x: m.x + 0.7, y: 0.9, deck: 'quarter' } : { x: m.x + 0.7, y: 0.9, deck: 'main' }])),
+    rest: { x: main.x0 + 1.2, y: -1.2, deck: 'main' }, below: { x: hatch.x, y: 0, deck: 'hold' },
+  };
+}
+
+function createCrew({ interior, design, size = G.crew.scenarioSize.value, roster = pintaRoster(size) }) {
+  const st = pintaStations(interior, design), mastIds = Object.keys(st.mastFoot);
+  const members = roster.map((p, i) => ({ ...p, watch: i % 2, pos: { ...st.rest, y: st.rest.y + ((i % 5) - 2) * 0.35 }, task: 'rest', target: null, work: 0 }));
+  let time = 0, watchOn = 0;
+
+  const deckPath = (from, to) => { // BFS over decks joined by ladders: returns the first ladder to take
+    if (from === to) return null;
+    const q = [[from, null]], seen = new Set([from]);
+    while (q.length) { const [d, first] = q.shift(); for (const l of interior.ladders) for (const [a, b] of [[l.a, l.b], [l.b, l.a]]) if (a.deck === d && !seen.has(b.deck)) { const f = first ?? { ladder: l, from: a }; if (b.deck === to) return f; seen.add(b.deck); q.push([b.deck, f]); } }
+    return null;
+  };
+  /** One walking step toward `target` ({x, y, deck}); climbs a ladder when standing at its foot. Returns true when arrived. */
+  function walkTo(m, target, dt) {
+    let goal = target;
+    if (m.pos.deck !== target.deck) {
+      const hop = deckPath(m.pos.deck, target.deck); if (!hop) return false;
+      goal = { ...hop.from, deck: m.pos.deck };
+      if (Math.hypot(goal.x - m.pos.x, goal.y - m.pos.y) < 0.5) { m.pos = interior.climb(m.pos, hop.ladder.id); return false; }
+    }
+    const dx = goal.x - m.pos.x, dy = goal.y - m.pos.y, d = Math.hypot(dx, dy);
+    if (d < 0.15) return m.pos.deck === target.deck;
+    const step = Math.min(d, WALK * dt), np = interior.move(m.pos, dx / d * step, dy / d * step);
+    m.pos = np; return false;
+  }
+
+  /** Assign duties for the current watch (D rules): helm, lookout, sail hands at each mast, the rest idle; captain, maestre, pilot on deck. */
+  function assign(needs) {
+    const onWatch = members.filter((m) => m.role === 'seaman' && m.watch === watchOn), free = [...onWatch];
+    for (const m of members) { m.task = m.watch === watchOn || m.role !== 'seaman' ? 'rest' : 'off_watch'; m.target = null; }
+    const take = (task, target) => { const m = free.shift(); if (m) { m.task = task; m.target = target; } };
+    if (needs.helm !== false) take('helm', st.helm);
+    if (needs.lookout !== false) take('lookout', st.lookout);
+    for (const id of mastIds) for (let k = 0; k < (needs.sailHandsPerMast ?? 1); k++) take('sail', { ...st.mastFoot[id], y: st.mastFoot[id].y * (k % 2 ? -1 : 1) });
+    for (let k = 0; k < (needs.pumpers ?? 0); k++) take('pump', st.hatch);
+    for (let k = 0; k < (needs.repairers ?? 0); k++) take('repair', st.repair);
+    for (const m of members) {
+      if (m.role === 'captain') { m.task = 'command'; m.target = st.captain; } else if (m.role === 'piloto') { m.task = 'navigate'; m.target = { ...st.helm, x: st.helm.x + 1.2, y: -0.6 }; } else if (m.role === 'maestre') { m.task = 'supervise'; m.target = st.mastFoot[mastIds[1] ?? mastIds[0]]; }
+      else if (m.task === 'off_watch') m.target = st.below; else if (m.task === 'rest') m.target = { ...st.rest, y: st.rest.y + (members.indexOf(m) % 5 - 2) * 0.35 };
+    }
+  }
+  let lastNeeds = {}; assign(lastNeeds);
+
+  const near = (m, t, r = 1.0) => m.pos.deck === t.deck && Math.hypot(m.pos.x - t.x, m.pos.y - t.y) <= r;
+  function effects() {
+    const at = (task, tgt) => members.filter((m) => m.task === task && near(m, tgt));
+    return {
+      helmManned: at('helm', st.helm).length > 0,
+      lookout: at('lookout', st.lookout).length > 0,
+      sailHands: members.filter((m) => m.task === 'sail' && Object.values(st.mastFoot).some((f) => near(m, f))).length,
+      pumpers: at('pump', st.hatch).length, repairers: at('repair', st.repair).length,
+    };
+  }
+  /** Advance the crew by dt seconds with the current needs. */
+  function update(dt, needs = lastNeeds) {
+    time += dt;
+    const w = Math.floor(time / WATCH_SECONDS) % 2;
+    if (w !== watchOn || JSON.stringify(needs) !== JSON.stringify(lastNeeds)) { watchOn = w; lastNeeds = { ...needs }; assign(lastNeeds); }
+    for (const m of members) if (m.target) { const arrived = walkTo(m, m.target, dt); if (arrived && (m.task === 'repair')) m.work += dt; }
+    return effects();
+  }
+  return {
+    members, stations: st, interior, update, effects, get watchOn() { return watchOn; }, get time() { return time; },
+    repairSeconds: () => Math.max(0, ...members.filter((m) => m.task === 'repair').map((m) => m.work)),
+    serialize: () => JSON.parse(JSON.stringify({ time, watchOn, lastNeeds, members: members.map((m) => ({ id: m.id, pos: m.pos, task: m.task, target: m.target, watch: m.watch, work: m.work })) })),
+    restore(d) { time = d.time; watchOn = d.watchOn; lastNeeds = d.lastNeeds; for (const r of d.members) { const m = members.find((x) => x.id === r.id); if (m) Object.assign(m, r); } },
+  };
+}
+
+return { WATCH_SECONDS, pintaRoster, pintaStations, createCrew };
 })();
 const M_captain = (() => {
 /**
@@ -1784,6 +2085,9 @@ const { createShip } = M_ship_model;
 const { analyzeHydrostatics } = M_hydrostatics;
 const { createVessel } = M_dynamics;
 const { createCaptain } = M_captain;
+const { createCrew } = M_crew;
+const { createInterior } = M_interior;
+const { createHull } = M_hull_geometry;
 const FORMAT = 1;
 const LOD = Object.freeze({ near: 'near', far: 'far', dormant: 'dormant' });
 
@@ -1798,23 +2102,25 @@ function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0.1, far
     designs.set(id, JSON.parse(JSON.stringify(d))); analyses.delete(id);
   }
 
-  function build(designId) {
+  function build(designId, massOverride = null) {
     const d = designs.get(designId);
     if (!d) throw new RangeError(`unknown design ${designId}`);
-    const ship = createShip({ id: designId, hull: d.hull, massItems: d.massItems, openings: d.openings });
-    if (!analyses.has(designId)) analyses.set(designId, analyzeHydrostatics(ship));
-    const analysis = analyses.get(designId);
+    const ship = createShip({ id: designId, hull: d.hull, massItems: massOverride ?? d.massItems, openings: d.openings });
+    let analysis;
+    if (massOverride) analysis = analyzeHydrostatics(ship);
+    else { if (!analyses.has(designId)) analyses.set(designId, analyzeHydrostatics(ship)); analysis = analyses.get(designId); }
     if (analysis.status !== 'ok') throw new RangeError(`design ${designId} does not float (${analysis.status})`);
     return createVessel({ ship, analysis, sails: d.sails ?? [], rudder: d.rudder, oars: d.oars ?? [], windageAreaM2: d.windageAreaM2 ?? 0, ...(d.tuning ?? {}) });
   }
 
-  function addShip({ designId, X = 0, Y = 0, headingDeg = 0, id, refs = {} } = {}) {
+  function addShip({ designId, X = 0, Y = 0, headingDeg = 0, id, refs = {}, crew = false } = {}) {
     const shipId = id ?? `ship-${nextId++}`;
     if (ships.has(shipId)) throw new RangeError(`duplicate ship id ${shipId}`);
     if (id) { const m = /^ship-(\d+)$/.exec(id); if (m) nextId = Math.max(nextId, +m[1] + 1); }
     const vessel = build(designId);
     Object.assign(vessel.state, { X, Y, psi: headingDeg * Math.PI / 180 });
-    const rec = { id: shipId, designId, vessel, captain: null, lod: LOD.near, lifecycle: 'afloat', dormantSeconds: 0, refs: { owner: null, crew: [], cargo: [], ...refs }, history: [{ type: 'ship_created', time }] };
+    const rec = { id: shipId, designId, vessel, captain: null, crew: null, crewNeeds: {}, massItems: null, lod: LOD.near, lifecycle: 'afloat', dormantSeconds: 0, refs: { owner: null, crew: [], cargo: [], ...refs }, history: [{ type: 'ship_created', time }] };
+    if (crew) rec.crew = makeCrew(designId);
     ships.set(shipId, rec);
     return shipId;
   }
@@ -1826,6 +2132,22 @@ function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0.1, far
     return rec.captain.setDestination(env, dest);
   }
   function cancelDestination(id) { get(id).captain?.cancel(); }
+
+  function makeCrew(designId) {
+    const d = designs.get(designId); if (!d?.interior) throw new RangeError(`design ${designId} has no interior, so it cannot carry a walking crew`);
+    return createCrew({ interior: createInterior(d.interior, { hull: createHull(d.hull) }), design: d });
+  }
+  /** Replace the ship's mass items (cargo, water, bilge) and rebuild its physics from them, keeping its motion and state. */
+  function setLoad(id, massItems) {
+    const rec = get(id), old = rec.vessel, nv = build(rec.designId, massItems);
+    Object.assign(nv.state, old.state);
+    for (const s of nv.sails) { const o = old.sails.find((x) => x.id === s.id); if (o) { s.trimDeg = o.trimDeg; s.deployed = o.deployed; s.targetTrimDeg = o.targetTrimDeg; } }
+    for (const o of nv.oars) { const q = old.oars.find((x) => x.id === o.id); if (q) { o.effort = q.effort; o.stamina = q.stamina; } }
+    rec.vessel = nv; rec.massItems = massItems.map((m) => ({ ...m }));
+    if (rec.captain) { const data = rec.captain.serialize(); rec.captain = createCaptain(nv); rec.captain.restore(data); }
+    return nv.params;
+  }
+  const setCrewNeeds = (id, needs) => { get(id).crewNeeds = { ...needs }; };
 
   const get = (id) => { const s = ships.get(id); if (!s) throw new RangeError(`unknown ship ${id}`); return s; };
 
@@ -1839,7 +2161,9 @@ function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0.1, far
       if (s.lod === LOD.dormant) { s.dormantSeconds += dt; continue; }
       const h = s.lod === LOD.near ? nearDt : farDt, n = Math.min(maxSubsteps, Math.max(1, Math.round(dt / h)));
       const sub = dt / n;
-      for (let i = 0; i < n; i++) { v.step(sub, env); s.captain?.update(env, sub); }
+      const fx = s.crew?.update(dt, s.crewNeeds);
+      if (fx) v.setSailSlew(fx.sailHands > 0 ? 1.2 * fx.sailHands : 0.05); // braces and sheets move only as fast as the hands at the masts allow
+      for (let i = 0; i < n; i++) { v.step(sub, env); s.captain?.update(env, sub); if (fx && !fx.helmManned) { v.setHeadingTarget(null); v.setRudder(0); } } // nobody at the tiller: the rudder stays amidships
       for (const e of [...v.takeEvents(), ...(s.captain?.takeEvents() ?? [])]) { const ev = { ...e, shipId: s.id }; events.push(ev); s.history.push(ev); }
     }
   }
@@ -1857,7 +2181,7 @@ function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0.1, far
           state: { ...st, anchor: st.anchor ? { ...st.anchor, breakingN: num(st.anchor.breakingN) } : null },
           sails: v.sails.map((x) => ({ id: x.id, trimDeg: x.trimDeg, deployed: x.deployed })),
           oars: v.oars.map((o) => ({ id: o.id, effort: o.effort, stamina: o.stamina })),
-          captain: s.captain ? s.captain.serialize() : null,
+          captain: s.captain ? s.captain.serialize() : null, crew: s.crew ? s.crew.serialize() : null, crewNeeds: s.crewNeeds, massItems: s.massItems,
         };
       }),
     }));
@@ -1869,19 +2193,21 @@ function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0.1, far
     for (const [id, d] of Object.entries(data.designs)) registerDesign(id, d);
     nextId = data.nextId; time = data.time;
     for (const r of data.ships) {
-      const vessel = build(r.designId);
+      const vessel = build(r.designId, r.massItems ?? null);
       Object.assign(vessel.state, r.state);
       if (r.state.anchor) vessel.state.anchor = { ...r.state.anchor, breakingN: r.state.anchor.breakingN ?? Infinity };
       for (const x of r.sails) { const sl = vessel.sails.find((s) => s.id === x.id); if (sl) { sl.trimDeg = x.trimDeg; sl.deployed = x.deployed; } }
       for (const x of r.oars) { const o = vessel.oars.find((q) => q.id === x.id); if (o) { o.effort = x.effort; o.stamina = x.stamina; } }
       let captain = null;
       if (r.captain) { captain = createCaptain(vessel); captain.restore(r.captain); }
-      ships.set(r.id, { id: r.id, designId: r.designId, vessel, captain, lod: LOD.near, lifecycle: r.lifecycle, dormantSeconds: r.dormantSeconds, refs: r.refs, history: r.history });
+      let crew = null; if (r.crew) { crew = makeCrew(r.designId); crew.restore(r.crew); }
+      ships.set(r.id, { id: r.id, designId: r.designId, vessel, captain, crew, crewNeeds: r.crewNeeds ?? {}, massItems: r.massItems ?? null, lod: LOD.near, lifecycle: r.lifecycle, dormantSeconds: r.dormantSeconds, refs: r.refs, history: r.history });
     }
   }
 
   return {
-    registerDesign, addShip, step, serialize, restore, get, setDestination, cancelDestination,
+    registerDesign, addShip, step, serialize, restore, get, setDestination, cancelDestination, setLoad, setCrewNeeds,
+    designMass: (designId) => designs.get(designId).massItems,
     has: (id) => ships.has(id),
     list: () => [...ships.values()],
     ids: () => [...ships.keys()],
@@ -1954,121 +2280,6 @@ function buildHullMesh(hull, { stations = 28, levels = 14 } = {}) {
 }
 
 return { buildHullMesh };
-})();
-const M_interior = (() => {
-/**
- * Ship interior (Ver.5 basic part): decks, rooms, doors and ladders in the hull frame
- * (x = along the ship from hull.xMin, y = across, + starboard; z = deck height above the keel baseline).
- * Walkable space is the union of room rectangles and door rectangles, kept inside the hull breadth at that deck height.
- * Rooms on the same deck are separated by a wall gap; a door rectangle bridges the gap. Walls are the gaps, so the
- * same data drives movement, rendering and the later flooding/fire/NPC-path networks (toFloodingBoxes).
- * Prototype: axis-aligned rectangular rooms only; no furniture, no destructible walls, no closed doors yet.
- * The layout is plain JSON (stored with the ship design).
- */
-const { breadthAtZ } = M_hull_geometry;
-const R = 0.3; // player radius (m)
-const inside = (r, x, y) => x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1;
-const inset = (r, m) => ({ x0: r.x0 + m, x1: r.x1 - m, y0: r.y0 + m, y1: r.y1 - m });
-
-function createInterior(layout, { hull = null } = {}) {
-  if (!layout || !Array.isArray(layout.decks) || !Array.isArray(layout.rooms)) throw new TypeError('interior layout needs decks and rooms');
-  const decks = new Map(), rooms = new Map(), doors = layout.doors ?? [], ladders = layout.ladders ?? [];
-  for (const d of layout.decks) {
-    if (typeof d?.id !== 'string' || !Number.isFinite(d.z) || decks.has(d.id)) throw new TypeError('each deck needs a unique id and a z height');
-    decks.set(d.id, d);
-  }
-  const rectOk = (r) => Number.isFinite(r.x0) && Number.isFinite(r.x1) && Number.isFinite(r.y0) && Number.isFinite(r.y1) && r.x1 > r.x0 && r.y1 > r.y0;
-  for (const r of layout.rooms) {
-    if (typeof r?.id !== 'string' || rooms.has(r.id)) throw new TypeError('each room needs a unique id');
-    if (!decks.has(r.deck)) throw new RangeError(`room ${r.id}: unknown deck ${r.deck}`);
-    if (!rectOk(r) || r.x1 - r.x0 < 2 * R + 0.2 || r.y1 - r.y0 < 2 * R + 0.2) throw new RangeError(`room ${r.id}: invalid or too small rectangle`);
-    rooms.set(r.id, r);
-  }
-  const list = [...rooms.values()];
-  for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
-    const a = list[i], b = list[j];
-    if (a.deck === b.deck && a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1) throw new RangeError(`rooms ${a.id} and ${b.id} overlap (leave a wall gap)`);
-  }
-  const grow = (r, m) => ({ x0: r.x0 - m, x1: r.x1 + m, y0: r.y0 - m, y1: r.y1 + m });
-  for (const d of doors) {
-    if (typeof d?.id !== 'string' || !decks.has(d.deck) || !rectOk(d) || !['x', 'y'].includes(d.along)) throw new TypeError(`door ${d?.id}: needs id, deck, rectangle and along x|y`);
-    const touching = list.filter((r) => r.deck === d.deck && inside(grow(r, 0.02), d.x0, d.y0) !== undefined && d.x0 <= r.x1 + 0.02 && d.x1 >= r.x0 - 0.02 && d.y0 <= r.y1 + 0.02 && d.y1 >= r.y0 - 0.02);
-    if (touching.length < 2) throw new RangeError(`door ${d.id} must join two rooms`);
-  }
-  // Walkable pieces per deck: rooms inset by the player radius; doors inset only across their width.
-  const pieces = new Map([...decks.keys()].map((k) => [k, []]));
-  for (const r of list) pieces.get(r.deck).push({ rect: inset(r, R), room: r });
-  for (const d of doors) {
-    // `along` is the direction the wall runs: keep a margin along it, and reach R into the rooms on both sides so the pieces overlap.
-    const across = d.along === 'y' ? { x0: d.x0 - R, x1: d.x1 + R, y0: d.y0 + R, y1: d.y1 - R } : { x0: d.x0 + R, x1: d.x1 - R, y0: d.y0 - R, y1: d.y1 + R };
-    if (across.x1 > across.x0 && across.y1 > across.y0) pieces.get(d.deck).push({ rect: across, door: d });
-  }
-  const breadthLimit = (x, z) => { if (!hull) return Infinity; if (x < hull.xMin || x > hull.xMax) return -1; return breadthAtZ(hull.sectionAt(x), z) - 0.25; };
-  for (const l of ladders) for (const end of [l.a, l.b]) {
-    if (!end || !decks.has(end.deck) || !Number.isFinite(end.x) || !Number.isFinite(end.y)) throw new TypeError(`ladder ${l.id}: bad end`);
-    if (!walkable(end.deck, end.x, end.y)) throw new RangeError(`ladder ${l.id}: an end is not on walkable floor`);
-  }
-
-  function walkable(deck, x, y) {
-    const ps = pieces.get(deck); if (!ps) return false;
-    if (Math.abs(y) > breadthLimit(x, decks.get(deck).z)) return false;
-    return ps.some((p) => inside(p.rect, x, y));
-  }
-  const roomOf = (deck, x, y) => list.find((r) => r.deck === deck && inside(r, x, y)) ?? null;
-
-  /** Move a position {x, y, deck} by (dx, dy), sliding along walls. Returns the new position (a new object). */
-  function move(pos, dx, dy) {
-    let { x, y } = pos;
-    if (walkable(pos.deck, x + dx, y + dy)) { x += dx; y += dy; }
-    else { if (walkable(pos.deck, x + dx, y)) x += dx; if (walkable(pos.deck, x, y + dy)) y += dy; }
-    return { x, y, deck: pos.deck };
-  }
-  /** Ladders within reach of the position (each with the end you stand at and the end you would reach). */
-  function laddersNear(pos, reach = 1.4) {
-    const out = [];
-    for (const l of ladders) for (const [here, there] of [[l.a, l.b], [l.b, l.a]]) {
-      if (here.deck === pos.deck && Math.hypot(here.x - pos.x, here.y - pos.y) <= reach) out.push({ id: l.id, name: l.name ?? l.id, to: there.deck, direction: decks.get(there.deck).z > decks.get(pos.deck).z ? 'up' : 'down' });
-    }
-    return out;
-  }
-  function climb(pos, ladderId) {
-    const l = ladders.find((q) => q.id === ladderId); if (!l) throw new RangeError(`unknown ladder ${ladderId}`);
-    for (const [here, there] of [[l.a, l.b], [l.b, l.a]]) if (here.deck === pos.deck && Math.hypot(here.x - pos.x, here.y - pos.y) <= 1.4) return { x: there.x, y: there.y, deck: there.deck };
-    throw new RangeError('not near that ladder');
-  }
-  /** Thin wall rectangles around a room on a deck, with door openings removed (for rendering). */
-  function wallRects(deck, thickness = 0.16) {
-    const out = [];
-    for (const r of list.filter((q) => q.deck === deck && !q.open)) { // open rooms (weather decks) have no walls
-      const ds = doors.filter((d) => d.deck === deck);
-      const edge = (fixed, a0, a1, axis) => { // axis 'x': wall runs along x at y=fixed; 'y': runs along y at x=fixed
-        const cuts = ds.filter((d) => (axis === 'x' ? d.along === 'x' && d.y0 <= fixed + 0.05 && d.y1 >= fixed - 0.05 : d.along === 'y' && d.x0 <= fixed + 0.05 && d.x1 >= fixed - 0.05))
-          .map((d) => (axis === 'x' ? [d.x0, d.x1] : [d.y0, d.y1])).filter(([c0, c1]) => c1 > a0 && c0 < a1).sort((p, q) => p[0] - q[0]);
-        let cur = a0;
-        for (const [c0, c1] of cuts) { if (c0 > cur) out.push(seg(fixed, cur, c0, axis)); cur = Math.max(cur, c1); }
-        if (cur < a1) out.push(seg(fixed, cur, a1, axis));
-      };
-      const seg = (fixed, a, b, axis) => ({ ...(axis === 'x' ? { x0: a, x1: b, y0: fixed - thickness / 2, y1: fixed + thickness / 2 } : { x0: fixed - thickness / 2, x1: fixed + thickness / 2, y0: a, y1: b }), room: r.id, h: r.wallHeight });
-      edge(r.y0, r.x0, r.x1, 'x'); edge(r.y1, r.x0, r.x1, 'x'); edge(r.x0, r.y0, r.y1, 'y'); edge(r.x1, r.y0, r.y1, 'y');
-    }
-    return out;
-  }
-  /** Room boxes for the flooding model: floor at the deck, ceiling at the next deck up (or `topZ`). */
-  function toFloodingBoxes(topZ) {
-    const zs = [...decks.values()].map((d) => d.z).sort((a, b) => a - b);
-    return list.map((r) => { const z0 = decks.get(r.deck).z, above = zs.find((z) => z > z0 + 1e-9) ?? topZ; return { id: r.id, box: { x0: r.x0, x1: r.x1, y0: r.y0, y1: r.y1, z0, z1: above } }; });
-  }
-  const startPosition = () => { const r = list.find((q) => q.use === 'deck') ?? list[0]; return { x: (r.x0 + r.x1) / 2, y: 0, deck: r.deck }; };
-
-  return Object.freeze({
-    layout, decks: [...decks.values()], rooms: list, doors, ladders,
-    walkable, roomOf, move, laddersNear, climb, wallRects, toFloodingBoxes, startPosition,
-    deckZ: (id) => decks.get(id)?.z,
-    floorRects: (deck) => list.filter((r) => r.deck === deck),
-  });
-}
-
-return { createInterior };
 })();
 const M_ship_render = (() => {
 /**
@@ -2181,7 +2392,26 @@ function placePlayer(obj, pos) {
   const { cgX, draft } = obj.frame; obj.player.position.set(pos.y, obj.interior.deckZ(pos.deck) - draft + 0.02, cgX - pos.x);
 }
 
-return { buildShipObject, updateShipObject, addInterior, setViewDeck, placePlayer };
+const ROLE_COLOR = { captain: 0xb3262e, maestre: 0x2d5fa8, piloto: 0x2a8a5a, seaman: 0xc9b27a };
+/** One simple 1:1 figure per crew member, children of the ship group (they roll and pitch with the ship). */
+function addCrewFigures(T, obj, crew) {
+  obj.crewFigs = [];
+  for (const m of crew.members) {
+    const f = new T.Group(), body = new T.Mesh(new T.CylinderGeometry(0.26, 0.26, 1.15, 8), new T.MeshLambertMaterial({ color: ROLE_COLOR[m.role] ?? 0xc9b27a })), head = new T.Mesh(new T.SphereGeometry(0.22, 10, 8), new T.MeshLambertMaterial({ color: 0xe8c79a }));
+    body.position.y = 0.58; head.position.y = 1.42; f.add(body, head); obj.group.add(f); obj.crewFigs.push({ m, f });
+  }
+  obj.crewInterior = crew.interior;
+}
+/** Place the figures; below-deck figures show only while the player is on that deck. */
+function updateCrewFigures(obj, playerDeck = null) {
+  const it = obj.crewInterior; if (!it) return; const { cgX, draft } = obj.frame;
+  for (const { m, f } of obj.crewFigs) {
+    f.position.set(m.pos.y, it.deckZ(m.pos.deck) - draft + 0.02, cgX - m.pos.x);
+    f.visible = !!it.decks.find((d) => d.id === m.pos.deck)?.exterior || playerDeck === m.pos.deck;
+  }
+}
+
+return { buildShipObject, updateShipObject, addInterior, setViewDeck, placePlayer, addCrewFigures, updateCrewFigures };
 })();
 const M_pinta_render = (() => {
 /**
@@ -2415,7 +2645,7 @@ function createWorldEnvironment(world, {
 
 return { createWorldEnvironment };
 })();
-const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_params, M_dynamics, M_flooding, M_ship_model, M_pinta_1492_data, M_pinta_1492_params, M_pinta_design, M_samples, M_captain, M_fleet, M_hull_mesh, M_interior, M_ship_render, M_pinta_render, M_world_environment);
+const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_params, M_dynamics, M_flooding, M_ship_model, M_pinta_1492_data, M_pinta_1492_params, M_pinta_design, M_interior, M_samples, M_cargo, M_pinta_1492_scenario, M_crew, M_captain, M_fleet, M_hull_mesh, M_ship_render, M_pinta_render, M_world_environment);
 
 (() => {
 'use strict';
@@ -2467,12 +2697,13 @@ function makeObj(rec) {
   pl.visible = false; o.group.add(pl); o.player = pl;
   const d = Ship.sampleDesigns[rec.designId];
   o.interior = Ship.createInterior(d.interior ?? Ship.sampleInteriors[d.interiorId], { hull: Ship.createHull(d.hull) });
+  if (rec.crew) Ship.addCrewFigures(T, o, rec.crew); else o.crewFigs = [];
   Ship.addInterior(T, o, o.interior); o.pos = o.interior.startPosition(); o.facing = 0; Ship.placePlayer(o, o.pos); Ship.setViewDeck(o, o.pos.deck); return o;
 }
 function spawn(designId) {
   const n = fleet.list().length, X = (n % 4) * 90 - 135, Y = -Math.floor(n / 4) * 90 - 40;
   const heading = (wind.from + 90) % 360; // beam reach to start
-  const id = fleet.addShip({ designId, X, Y, headingDeg: heading }); fleet.get(id).vessel.state.u = 1.5;
+  const id = fleet.addShip({ designId, X, Y, headingDeg: heading, crew: !!Ship.sampleDesigns[designId].evidence }); fleet.get(id).vessel.state.u = 1.5;
   ctl[id] = { heading, held: 0, auto: true, oar: 0.8 }; toast(`${id} を出した`); refresh(); save();
 }
 function removeAll() { for (const o of objs.values()) { scene.remove(o.group); o.dispose(); } objs.clear(); newFleet(); ctl = {}; boarded = null; refresh(); save(); }
@@ -2559,6 +2790,7 @@ function refresh() {
   C.append(hold('◀ 左へ', -1), hold('右へ ▶', 1), el('button', { textContent: '前方3km', onclick: () => { const s = v.state; setDest(boarded, s.X + Math.sin(s.psi) * 3000, s.Y + Math.cos(s.psi) * 3000); } }));
   if (active(rec)) C.append(el('button', { textContent: '航海をやめる', onclick: () => { fleet.cancelDestination(boarded); v.setHeadingTarget(null); c.heading = v.snapshot().headingDeg; drawRoute(); refresh(); } }));
   C.append(el('button', { textContent: v.state.anchor ? '錨を上げる' : '錨を下ろす', onclick: () => { if (v.state.anchor) v.raiseAnchor(); else { const r = v.dropAnchor(env, { anchorKg: 400, rodeM: 60 }); if (r.status !== 'ok') toast('投錨できない：' + r.status); } refresh(); } }));
+  if (rec.crew) C.append(el('button', { textContent: '樽±10', onclick: () => { toggleCargo(); refresh(); } }), el('button', { textContent: '8月の舵故障', onclick: startScenario }));
   if (v.sails.length) C.append(el('button', { textContent: c.auto ? '帆：自動' : '帆：固定', className: c.auto ? 'on' : '', onclick: () => { c.auto = !c.auto; refresh(); } }));
   if (v.oars.length) { const r = el('input', { type: 'range', min: -100, max: 100, step: 5, value: Math.round(c.oar * 100), style: 'width:90px' }); r.oninput = () => { c.oar = r.value / 100; }; C.append(el('span', { textContent: '櫂 ' }), r); }
 }
@@ -2576,7 +2808,7 @@ function info() {
   const dd = cap?.destination && Math.hypot(cap.destination.X - v.state.X, cap.destination.Y - v.state.Y);
   const capTxt = cap && active(rec) ? `／航海中 残り${dd > 1000 ? (dd / 1000).toFixed(1) + 'km' : Math.round(dd) + 'm'}（約${Math.round(dd / Math.max(0.8, s.speedOverGround) / 60)}分）${cap.reef < 1 ? '／帆を絞っている' : ''}` : cap?.mode === 'arrived' ? '／到着' : '';
   const here = objs.get(boarded), room = here ? here.interior.roomOf(here.pos.deck, here.pos.x, here.pos.y) : null, deckName = here?.interior.decks.find((d) => d.id === here.pos.deck)?.name ?? '';
-  $('info').textContent = `現在地：${room?.name ?? deckName}／速度 ${(s.speedOverGround * 1.9438).toFixed(1)} kt／方位 ${s.headingDeg.toFixed(0)}°／風 ${Math.hypot(w.x, w.y).toFixed(1)} m/s・${wind.from.toFixed(0)}°から／傾斜 ${s.heelDeg.toFixed(1)}°／水深余裕 ${f.clearanceM.toFixed(1)} m${s.aground ? '／座礁中' : ''}${s.anchored ? (s.anchorDragging ? '／走錨中' : '／錨泊中') : ''}${capTxt}`;
+  $('info').textContent = `現在地：${room?.name ?? deckName}／速度 ${(s.speedOverGround * 1.9438).toFixed(1)} kt／方位 ${s.headingDeg.toFixed(0)}°／風 ${Math.hypot(w.x, w.y).toFixed(1)} m/s・${wind.from.toFixed(0)}°から／傾斜 ${s.heelDeg.toFixed(1)}°／水深余裕 ${f.clearanceM.toFixed(1)} m${rec.crew ? `／喫水 ${v.params.draftM.toFixed(2)} m／舵${s.rudderHealth < 1 ? '損傷' + Math.round(s.rudderHealth * 100) + '%' : '正常'}／${rec.crew.effects().helmManned ? '操舵手あり' : '操舵手なし'}・帆の手${rec.crew.effects().sailHands}人` : ''}${s.aground ? '／座礁中' : ''}${s.anchored ? (s.anchorDragging ? '／走錨中' : '／錨泊中') : ''}${capTxt}`;
 }
 const out = () => { $('wsO').textContent = wind.speed + ' m/s'; $('wdO').textContent = wind.from + '°'; };
 $('ws').oninput = () => { wind.speed = +$('ws').value; out(); save(); }; $('wd').oninput = () => { wind.from = +$('wd').value; out(); save(); };
@@ -2585,6 +2817,36 @@ $('bClear').onclick = removeAll;
 $('bMenu').onclick = () => { const t = $('top'); t.style.display = t.style.display === 'none' ? 'block' : 'none'; };
 $('bMenu').addEventListener('pointerdown', (e) => e.stopPropagation()); $('bMenu').addEventListener('pointerup', (e) => e.stopPropagation());
 for (const id of ['top', 'bar']) for (const ev of ['pointerdown', 'pointerup', 'wheel']) $(id).addEventListener(ev, (e) => e.stopPropagation());
+
+// ---------- evidence panel, cargo, scenario ----------
+const LV = { A: '史料(A)', B: '研究(B)', C: '類例(C)', D: '仮説(D)', derived: '計算' };
+function evidence() {
+  const P = Ship.PINTA_1492_PROFILE, G = Ship.PINTA_1492_PARAMS, rows = [], flat = (o, path) => { for (const [k, v] of Object.entries(o)) { if (v && typeof v === 'object' && 'evidence_level' in v) rows.push([path + k, v]); else if (v && typeof v === 'object' && !Array.isArray(v)) flat(v, path + k + '.'); } };
+  flat(G, '');
+  const td = (t) => `<td style="padding:2px 6px;vertical-align:top">${t}</td>`;
+  const fmt = (v) => (typeof v === 'object' ? JSON.stringify(v) : String(v));
+  const dims = Object.entries(P.dimensions).map(([k, v]) => `<tr>${td(k)}${td(v.value === null ? '<b>未確定</b>' : v.value + ' ' + v.unit)}${td(LV[v.evidence_level])}${td(v.notes_ja)}</tr>`).join('');
+  const hyp = rows.map(([k, v]) => `<tr>${td(k)}${td(fmt(v.value))}${td(LV[v.evidence_level])}${td(v.note)}</tr>`).join('');
+  $('evid').innerHTML = `<div class="row"><b style="flex:1;font-size:14px">ピンタ号1492：推定復元（原船の図面は現存しない）</b><button id="evClose">閉じる</button></div>
+  <p>採用プロファイル：<b>${P.selected_profile}</b>。数値は学術的な復元案で、原船の実測値ではありません。歴史的容積<b>約40.10 toneladas de arqueo</b>は重量ではなく、排水量・積載量には使っていません。軽荷時の排水量は船体形状と喫水1.58mから計算しています。</p>
+  <h4>研究で示された値（資料のまま）</h4><table style="border-collapse:collapse;font-size:11px">${dims}</table>
+  <h4>このゲームでの仮説・計算値</h4><table style="border-collapse:collapse;font-size:11px">${hyp}</table>
+  <h4>史料に異説・未確定</h4><ul style="margin:2px 0 6px 16px;padding:0"><li>帆装の改装対象：日誌の抄録はピンタ号をラテン帆から横帆へ変更と読めるが、フェルナンド・コロンの記述ではニーニャ号。→「大西洋横断」と「出航時ラテン帆仮説」の2案を保持。</li><li>乗員：26人は初期値。文献で異なる。</li><li>武装：砲の数・口径・位置は未確定（このモデルには砲を付けていない）。</li><li>帆の意匠・旗：未確定（付けていない）。</li><li>${P.unresolved.join(', ')}</li></ul>`;
+  $('evClose').onclick = () => { $('evid').style.display = 'none'; };
+}
+$('bEvid').onclick = () => { const e = $('evid'); if (e.style.display === 'none') { evidence(); e.style.display = 'block'; } else e.style.display = 'none'; };
+for (const ev of ['pointerdown', 'pointerup', 'wheel']) $('evid').addEventListener(ev, (e) => e.stopPropagation());
+const scenarios = new Map(), HLABEL = { rudder_disengaged: '舵が外れる', rudder_repair_after_repeat_problem: '舵の修理', leak_reported: '漏水の報告' };
+function toggleCargo() {
+  const rec = fleet.get(boarded), o = objs.get(boarded), has = (rec.massItems ?? []).some((m) => m.id === 'cargo:water_barrel:player');
+  const base = rec.massItems ?? Ship.sampleDesigns[rec.designId].massItems;
+  fleet.setLoad(boarded, has ? base.filter((m) => m.id !== 'cargo:water_barrel:player') : Ship.withCargo(base, [Ship.cargoItem('water_barrel', 10, 3.5, 0, o.interior.deckZ('hold') + 0.2, 'player')]));
+  toast(has ? '樽10個を降ろした' : '水樽10個を船倉の船尾側に積んだ');
+}
+function startScenario() {
+  if (scenarios.has(boarded)) { toast('すでに再現中'); return; }
+  scenarios.set(boarded, Ship.createAugust1492({ fleet, shipId: boarded, daySeconds: 900 })); toast('1492年8月の舵故障を再現開始（1日=15分）');
+}
 
 // ---------- save / load ----------
 function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ fleet: fleet.serialize(), ctl, wind })); } catch (_) { /* storage unavailable */ } }
@@ -2608,10 +2870,12 @@ function frame(t) {
   }
   acc += dt; if (acc > 1) { acc = 0; for (const rec of fleet.list()) if (ctl[rec.id]?.auto && !active(rec)) rec.vessel.autoTrim(env); }
   if (dt > 0) fleet.step(dt * speedX, env, null);
+  for (const [sid, sc] of scenarios) { if (!fleet.has(sid)) { scenarios.delete(sid); continue; } sc.update(dt * speedX); for (const e of sc.takeEvents()) toast(`${e.historical.date} ${HLABEL[e.historical.kind]}（史料A）：${e.game.note}`); }
   for (const e of fleet.takeEvents()) { if (e.type === 'captain_no_route') toast('船長：' + (REASON[e.reason] ?? '行けない')); else if (EVT[e.type]) toast(`${e.shipId}：${EVT[e.type]}`); }
   for (const rec of fleet.list()) {
     let o = objs.get(rec.id); if (!o) { o = makeObj(rec); objs.set(rec.id, o); if (boarded === rec.id) o.player.visible = true; }
     const s = rec.vessel.state; o.group.position.set(s.X, 0, -s.Y); o.group.rotation.set(0, -s.psi, -s.heelDeg * DEG); Ship.updateShipObject(o, { leeSign: Math.sign(rec.vessel.apparentWind(env).y) || 1 }); if (o.setDetail) { const dist = camera.position.distanceTo(o.group.position); o.setDetail(dist > 400 ? 2 : dist > 120 ? 1 : 0); }
+    Ship.updateCrewFigures(o, boarded === rec.id ? o.pos.deck : null);
     Ship.placePlayer(o, o.pos); if (boarded === rec.id) Ship.setViewDeck(o, o.pos.deck, o.interior.roomOf(o.pos.deck, o.pos.x, o.pos.y)?.id ?? null);
   }
   walk(dt); updateCamera(); placeSea(); if (boarded) drawRoute();

@@ -108,3 +108,22 @@ export function setViewDeck(obj, deckId, roomId = null) {
 export function placePlayer(obj, pos) {
   const { cgX, draft } = obj.frame; obj.player.position.set(pos.y, obj.interior.deckZ(pos.deck) - draft + 0.02, cgX - pos.x);
 }
+
+const ROLE_COLOR = { captain: 0xb3262e, maestre: 0x2d5fa8, piloto: 0x2a8a5a, seaman: 0xc9b27a };
+/** One simple 1:1 figure per crew member, children of the ship group (they roll and pitch with the ship). */
+export function addCrewFigures(T, obj, crew) {
+  obj.crewFigs = [];
+  for (const m of crew.members) {
+    const f = new T.Group(), body = new T.Mesh(new T.CylinderGeometry(0.26, 0.26, 1.15, 8), new T.MeshLambertMaterial({ color: ROLE_COLOR[m.role] ?? 0xc9b27a })), head = new T.Mesh(new T.SphereGeometry(0.22, 10, 8), new T.MeshLambertMaterial({ color: 0xe8c79a }));
+    body.position.y = 0.58; head.position.y = 1.42; f.add(body, head); obj.group.add(f); obj.crewFigs.push({ m, f });
+  }
+  obj.crewInterior = crew.interior;
+}
+/** Place the figures; below-deck figures show only while the player is on that deck. */
+export function updateCrewFigures(obj, playerDeck = null) {
+  const it = obj.crewInterior; if (!it) return; const { cgX, draft } = obj.frame;
+  for (const { m, f } of obj.crewFigs) {
+    f.position.set(m.pos.y, it.deckZ(m.pos.deck) - draft + 0.02, cgX - m.pos.x);
+    f.visible = !!it.decks.find((d) => d.id === m.pos.deck)?.exterior || playerDeck === m.pos.deck;
+  }
+}

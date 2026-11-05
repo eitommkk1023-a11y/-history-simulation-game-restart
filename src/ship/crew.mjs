@@ -97,7 +97,7 @@ export function createCrew({ interior, design, size = G.crew.scenarioSize.value,
     return effects();
   }
   return {
-    members, stations: st, update, effects, get watchOn() { return watchOn; }, get time() { return time; },
+    members, stations: st, interior, update, effects, get watchOn() { return watchOn; }, get time() { return time; },
     repairSeconds: () => Math.max(0, ...members.filter((m) => m.task === 'repair').map((m) => m.work)),
     serialize: () => JSON.parse(JSON.stringify({ time, watchOn, lastNeeds, members: members.map((m) => ({ id: m.id, pos: m.pos, task: m.task, target: m.target, watch: m.watch, work: m.work })) })),
     restore(d) { time = d.time; watchOn = d.watchOn; lastNeeds = d.lastNeeds; for (const r of d.members) { const m = members.find((x) => x.id === r.id); if (m) Object.assign(m, r); } },
