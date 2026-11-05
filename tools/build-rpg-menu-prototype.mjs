@@ -4,7 +4,7 @@ let html=await readFile(basePath,'utf8');const baseHash=createHash('sha256').upd
 const gate=await read('prototypes/rpg-menu/pause-gate.js'),css=await read('prototypes/rpg-menu/menu.css'),model=(await read('prototypes/rpg-menu/model.mjs')).replace(/^export /gm,''),app=(await read('prototypes/rpg-menu/menu.mjs')).replace(/^import .*;\r?\n/gm,'').replace(/^export /gm,'');
 const gameFrames=html.match(/(?<![.\w])requestAnimationFrame\((frame|loop|tick)\)/g);if(gameFrames?.length!==5)throw Error('Unexpected baseline animation loops');html=html.replace(/(?<![.\w])requestAnimationFrame\((frame|loop|tick)\)/g,'window.__rpgMenuGate.frame($1)');
 html=html.replace('<meta charset=utf8>','<meta charset=utf8><script>'+gate+'</script>').replace("indexedDB.open('geo-world-saves', 1)","indexedDB.open('geo-world-saves-prototype-rpg-menu-v1', 1)").replace('`world-${currentSeed}-${clock.day}.json`','`prototype-menu-world-${currentSeed}-${clock.day}.json`').replaceAll('generate(randomSeed())',"generate('12345')");
-html=html.replace(/<title>[^<]*<\/title>/,'<title>World of History — メニュー試作01</title>');
+html=html.replace(/<title>[^<]*<\/title>/,'<title>World of History — メニュー試作02</title>');
 html=html.replace('</body></html>','<style>'+css+'</style><script>(()=>{'+model+'\n'+app+'\ninstallRPGMenuPrototype();})();</script></body></html>');
-await mkdir(new URL('exports/',root),{recursive:true});const output=new URL('exports/World-of-History-menu-prototype-v1.html',root);await writeFile(output,html);
+await mkdir(new URL('exports/',root),{recursive:true});const output=new URL('exports/World-of-History-menu-prototype-v2.html',root);await writeFile(output,html);
 console.log(JSON.stringify({output:output.pathname,bytes:Buffer.byteLength(html),baseHash,prototypeSaveDB:'geo-world-saves-prototype-rpg-menu-v1'}));

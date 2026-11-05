@@ -5,6 +5,10 @@
     "1180x820"
   ],
   "tabs": 3,
+  "fullscreen": true,
+  "mainContentPriority": true,
+  "largeItemTargets": true,
+  "itemActionVisible": true,
   "inventoryUseEquip": true,
   "missionTracking": true,
   "missionFilters": true,
