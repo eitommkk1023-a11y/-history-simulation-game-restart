@@ -276,6 +276,7 @@
   #bagPanel.show{display:block}#bagPanel .bh{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-weight:700}
   #bagPanel .br{display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid #ffffff14}#bagPanel .br i{color:#9fb0c3;font-style:normal}
   #bagPanel .bst{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0;color:#c9d6e4;font-size:11.5px}#bagPanel .bar{flex:0 0 90px;height:8px;border-radius:4px;background:#ffffff1a;overflow:hidden}#bagPanel .bar b{display:block;height:100%;background:#6fbf5a}#bagPanel .bar b.hungry{background:#e0a640}#bagPanel .bar b.starving{background:#d9534f}
+  #bagPanel .bsec{margin-top:6px;color:#9fd0ff;font-weight:700}#bagPanel .bnote{color:#8fa3b8;font-size:10px;line-height:1.35;margin-bottom:4px}#bagPanel button.dim{opacity:.45}
   #bagPanel .bact{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 4px}
   #bagPanel button{height:26px;padding:0 8px;border-radius:13px;border:1px solid #ffffff44;background:#24384f;color:#e8eef5;font-size:11px}
 </style>
@@ -6089,13 +6090,21 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     { id: 'firewood', name: '薪',                     kg: 1.5,  kcal: 0,   group: 'material' },
     { id: 'stone',    name: '石',                     kg: 1.0,  kcal: 0,   group: 'material' },
     { id: 'fiber',    name: '繊維（草・つる）',         kg: 0.08, kcal: 0,   group: 'material' },
-    // 加工したもの（水さらし・焼いた）：そのまま食べられる
+    { id: 'clay',     name: '粘土',                   kg: 0.5,  kcal: 0,   group: 'material' },
+    { id: 'rope',     name: '縄',                     kg: 0.1,  kcal: 0,   group: 'material' },
+    // 道具（使うほど傷み、やがて壊れる）
+    { id: 'knife',    name: '石のナイフ',              kg: 0.3,  kcal: 0,   group: 'tool' },
+    { id: 'axe',      name: '石斧',                   kg: 1.2,  kcal: 0,   group: 'tool' },
+    { id: 'net',      name: '魚網',                   kg: 0.8,  kcal: 0,   group: 'tool' },
+    { id: 'pot',      name: '土器',                   kg: 2.0,  kcal: 0,   group: 'tool' },
+    // 加工したもの（水さらし・焼いた・煮た）：そのまま食べられる
     { id: 'nutL',     name: '水さらしした木の実',       kg: 0.05, kcal: 65,  group: 'food' },
     { id: 'nutC',     name: '焼いた木の実',            kg: 0.05, kcal: 80,  group: 'food' },
     { id: 'rootC',    name: '焼いた根',                kg: 0.14, kcal: 120, group: 'food' },
     { id: 'seedC',    name: '炒った草の実',            kg: 0.03, kcal: 45,  group: 'food' },
     { id: 'shellC',   name: '焼き貝',                  kg: 0.06, kcal: 35,  group: 'food' },
     { id: 'fishC',    name: '焼き魚',                  kg: 0.25, kcal: 280, group: 'food' },
+    { id: 'stew',     name: '煮物',                    kg: 0.4,  kcal: 260, group: 'food' },
   ];
   const IDX = {}; ITEMS.forEach((it, i) => { IDX[it.id] = i; });
   const CARRY_KG = 25;           // 運べる重さの基本値［仮］
@@ -6103,7 +6112,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
 
   // 体と暮らしの状態：kcal＝おなかの蓄え、t＝最後に時間を反映した日、sickUntil＝体調不良が続く日、fire＝焚き火、soak＝水にさらした木の実
   const KCAL_MAX = 3000, KCAL_DAY = 2000, KCAL_START = 2200;
-  function newState() { return { inv: {}, depl: {}, total: {}, seq: 0, kcal: KCAL_START, t: 0, sickUntil: 0, fire: null, soak: null }; }
+  function newState() { return { inv: {}, depl: {}, total: {}, wear: {}, seq: 0, kcal: KCAL_START, t: 0, sickUntil: 0, fire: null, soak: null }; }
   function weight(st) { let w = 0; for (const id in st.inv) if (IDX[id] != null) w += st.inv[id] * ITEMS[IDX[id]].kg; return w; }
   function count(st, id) { return st.inv[id] || 0; }
 
@@ -6122,6 +6131,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
       firewood: f * 1.3 + g * 0.05,
       stone: (ctx.rock || 0) * 1.2,
       fiber: p[0] * 0.5 + f * 0.25 + g * 0.5,
+      clay: ctx.water ? 0.9 : ctx.coast ? 0.25 : 0,
     };
     for (const k in a) a[k] = Math.max(0, a[k]);
     return a;
@@ -6156,19 +6166,27 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     let r = rng() * tot, pick = ids[ids.length - 1];
     for (const k of ids) { r -= av[k]; if (r <= 0) { pick = k; break; } }
     // 見つかる確率：豊かさ・残り・腕前
-    const chance = Math.min(0.97, (0.25 + 0.6 * Math.min(1, av[pick])) * (0.5 + 0.5 * left) * (0.8 + 0.4 * skill) * (opt.vigor == null ? 1 : opt.vigor));
+    const has = (id) => (st.inv[id] || 0) > 0;
+    const netBoost = pick === 'fish' && has('net') ? 1.6 : 1;
+    const chance = Math.min(0.97, (0.25 + 0.6 * Math.min(1, av[pick])) * (0.5 + 0.5 * left) * (0.8 + 0.4 * skill) * (opt.vigor == null ? 1 : opt.vigor) * netBoost);
     if (rng() > chance) return { ok: false, why: '見つけられなかった' };
     const it = ITEMS[IDX[pick]];
     // 数：重い物は少なく、軽い物は多く。豊かさ・残り・腕前で増える
     const base = it.kg >= 1 ? 1 : it.kg >= 0.25 ? 1 + (rng() < 0.3 ? 1 : 0) : 3 + Math.floor(rng() * 4);
     let n = Math.max(1, Math.round(base * (0.6 + 0.4 * Math.min(1.5, av[pick])) * (0.7 + 0.6 * skill) * (0.4 + 0.6 * left)));
+    // 道具の効き目：斧→薪が2倍、網→魚が2倍、ナイフ→根・繊維・貝・新芽が3割増
+    let used = null;
+    if (pick === 'firewood' && has('axe')) { n *= 2; used = 'axe'; }
+    else if (pick === 'fish' && has('net')) { n *= 2; used = 'net'; }
+    else if ((pick === 'root' || pick === 'fiber' || pick === 'shell' || pick === 'bud') && has('knife')) { n = Math.ceil(n * 1.3); used = 'knife'; }
     const room = Math.floor((cap - weight(st)) / it.kg + 1e-9);
     if (room <= 0) return { ok: false, why: '持ちきれない（重さ ' + weight(st).toFixed(1) + '/' + cap + 'kg）' };
     if (n > room) n = room;
     st.inv[pick] = (st.inv[pick] || 0) + n;
     st.total[pick] = (st.total[pick] || 0) + n;
     spotTake(st, bx, by, monthIdx, 1);
-    return { ok: true, id: pick, n, name: it.name };
+    const broke = used ? wearTool(st, used) : null;
+    return { ok: true, id: pick, n, name: it.name, broke };
   }
 
   function drop(st, id, n) {
@@ -6266,11 +6284,62 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     return { ok: true, n };
   }
 
+  // ---------------------------------------------------------------- 道具づくり・土器・煮る
+  const LIFE = { knife: 40, axe: 40, net: 30, pot: 25 };      // 使える回数［仮］
+  function wearTool(st, id) {
+    st.wear = st.wear || {}; st.wear[id] = (st.wear[id] || 0) + 1;
+    if (st.wear[id] >= LIFE[id]) { st.wear[id] = 0; drop(st, id, 1); return ITEMS[IDX[id]].name; }
+    return null;
+  }
+  // 作り方：need＝材料、lose＝失敗したときに失う材料、fire＝火が要る、p＝成功率の基本（腕前で上がる）
+  const RECIPES = {
+    rope:  { need: { fiber: 3 }, lose: { fiber: 1 }, p: 0.85, out: 1 },
+    knife: { need: { stone: 1 }, lose: { stone: 1 }, p: 0.75, out: 1 },
+    axe:   { need: { stone: 2, firewood: 1, rope: 1 }, lose: { rope: 1 }, p: 0.65, out: 1 },
+    net:   { need: { rope: 3 }, lose: { rope: 1 }, p: 0.6, out: 1 },
+    pot:   { need: { clay: 4, firewood: 2 }, lose: { clay: 2 }, p: 0.5, out: 1, fire: true },
+  };
+  function canCraft(st, id) { const r = RECIPES[id]; if (!r) return false; for (const k in r.need) if ((st.inv[k] || 0) < r.need[k]) return false; return true; }
+  function craft(st, id, skill, rng, bx, by, day) {
+    const r = RECIPES[id]; if (!r) return { ok: false, why: '作れない' };
+    const name = ITEMS[IDX[id]].name;
+    for (const k in r.need) if ((st.inv[k] || 0) < r.need[k]) return { ok: false, why: name + 'の材料が足りない（' + needText(r) + '）' };
+    if (r.fire && !fireActive(st, bx, by, day)) return { ok: false, why: '土器は火のそばで焼いて作る' };
+    // 持ちきれないなら作らない
+    let w = weight(st); for (const k in r.need) w -= r.need[k] * ITEMS[IDX[k]].kg; w += r.out * ITEMS[IDX[id]].kg;
+    if (w > CARRY_KG + 1e-9) return { ok: false, why: '持ちきれない（重さ ' + weight(st).toFixed(1) + '/' + CARRY_KG + 'kg）' };
+    const p = Math.min(0.95, r.p + 0.3 * (skill == null ? 0.3 : skill));
+    if (rng() > p) { for (const k in r.lose) drop(st, k, r.lose[k]); return { ok: false, why: name + 'づくりに失敗した（' + lostText(r) + 'を失った）' }; }
+    for (const k in r.need) drop(st, k, r.need[k]);
+    st.inv[id] = (st.inv[id] || 0) + r.out; st.total[id] = (st.total[id] || 0) + r.out;
+    if (r.fire && st.fire) st.fire.until = Math.max(day, st.fire.until - 0.3);   // 焼成で火を使う
+    return { ok: true, name };
+  }
+  function needText(r) { return Object.keys(r.need).map(k => ITEMS[IDX[k]].name + '×' + r.need[k]).join('・'); }
+  function lostText(r) { return Object.keys(r.lose).map(k => ITEMS[IDX[k]].name + '×' + r.lose[k]).join('・'); }
+
+  // 煮る：土器・火・真水のそばで、素朴な食材4つを煮物1つに（1回に最大4つ。土器は使うほど傷む）
+  const STEW_IN = ['nut', 'nutL', 'shell', 'root', 'bud', 'seed', 'fruit'], STEW_N = 4, STEW_MAX = 4;
+  function boil(st, bx, by, day, freshWater) {
+    if (!(st.inv.pot > 0)) return { ok: false, why: '土器がない' };
+    if (!fireActive(st, bx, by, day)) return { ok: false, why: '火のそばでしか煮られない' };
+    if (!freshWater) return { ok: false, why: '水（川や湖）のそばでしか煮られない' };
+    let total = 0; for (const k of STEW_IN) total += st.inv[k] || 0;
+    if (total < STEW_N) return { ok: false, why: '食材が足りない（' + STEW_N + '個で煮物1つ。木の実・貝・根・新芽・草の実・果実）' };
+    const batches = Math.min(STEW_MAX, Math.floor(total / STEW_N)); let need = batches * STEW_N;
+    for (const k of STEW_IN) { const t = Math.min(need, st.inv[k] || 0); if (t) { drop(st, k, t); need -= t; } if (!need) break; }
+    st.inv.stew = (st.inv.stew || 0) + batches; st.total.stew = (st.total.stew || 0) + batches;
+    st.fire.until = Math.max(day, st.fire.until - 0.15);
+    const broke = wearTool(st, 'pot');
+    return { ok: true, n: batches, broke };
+  }
+
   function save(st) { return JSON.parse(JSON.stringify(st)); }
   function load(o) {
     const st = newState();
     if (o && typeof o === 'object') {
       st.seq = Number.isFinite(o.seq) ? o.seq >>> 0 : 0;
+      for (const k in (o.wear || {})) if (LIFE[k] && Number.isFinite(o.wear[k])) st.wear[k] = Math.max(0, o.wear[k] | 0);
       if (Number.isFinite(o.kcal)) st.kcal = Math.max(0, Math.min(KCAL_MAX, o.kcal));
       if (Number.isFinite(o.t)) st.t = o.t; if (Number.isFinite(o.sickUntil)) st.sickUntil = o.sickUntil;
       const f = o.fire; if (f && Number.isFinite(f.bx) && Number.isFinite(f.by) && Number.isFinite(f.until)) st.fire = { bx: f.bx, by: f.by, until: f.until };
@@ -6288,7 +6357,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     return function () { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   }
 
-  const api = { tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, CARRY_KG, SPOT_CAP, newState, weight, count, availability, spotLeft, gather, drop, list, save, load, prune };
+  const api = { RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, CARRY_KG, SPOT_CAP, newState, weight, count, availability, spotLeft, gather, drop, list, save, load, prune };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohForage = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
@@ -9191,7 +9260,7 @@ function forageContext() {
   return { ctx: ctxo, bx, by };
 }
 function forageSkill(kind) {
-  try { const y = people && WohPeople.peopleYou(people); if (!y || y.over) return 0.3; const P = people.npc, SK = P.skills, N = WohNpc.NSKILL; return Math.min(1, SK[y.id * N + (kind === 'fish' ? 2 : 0)] / 255); } catch (e) { return 0.3; }
+  try { const y = people && WohPeople.peopleYou(people); if (!y || y.over) return 0.3; const P = people.npc, SK = P.skills, N = WohNpc.NSKILL; return Math.min(1, SK[y.id * N + (kind === 'fish' ? 2 : kind === 'craft' ? 3 : 0)] / 255); } catch (e) { return 0.3; }
 }
 function forageSay(t) { const el = document.getElementById('forageMsg'); if (!el) return; el.textContent = t; el.style.display = 'block'; clearTimeout(forageMsgTimer); forageMsgTimer = setTimeout(() => { el.style.display = 'none'; }, 3500); }
 function forageNow() { WohForage.tick(forageSt, clock.day); return clock.day; }
@@ -9202,7 +9271,7 @@ function forageDo(group) {
   WohForage.prune(forageSt, mi - 1);
   const av = WohForage.availability(f.ctx);
   const r = WohForage.gather(forageSt, f.ctx, f.bx, f.by, mi, rng, { group, skill: forageSkill(av.fish > 0 ? 'fish' : 'plant'), vigor: WohForage.vigor(forageSt, day) });
-  forageSay(r.ok ? r.name + ' ×' + r.n + ' を手に入れた' : r.why);
+  forageSay(r.ok ? r.name + ' ×' + r.n + ' を手に入れた' + (r.broke ? '（' + r.broke + 'が壊れた）' : '') : r.why);
   forageBagRender();
 }
 // 暮らしの操作（火・焼く・水さらし・食べる）
@@ -9215,6 +9284,8 @@ function forageAct(act, id) {
   else if (act === 'roast') { r = F.roast(forageSt, f.bx, f.by, day); msg = r.ok ? r.n + '個を焼いた' : r.why; }
   else if (act === 'soak') { r = F.soakStart(forageSt, f.bx, f.by, day, f.ctx.water && !f.ctx.coast); msg = r.ok ? '木の実' + r.n + '個を水にさらした（2日後に受け取れる）' : r.why; }
   else if (act === 'collect') { r = F.soakCollect(forageSt, f.bx, f.by, day); msg = r.ok ? '水さらしした木の実を' + r.n + '個受け取った' : r.why; }
+  else if (act === 'craft') { r = F.craft(forageSt, id, forageSkill('craft'), rng, f.bx, f.by, day); msg = r.ok ? r.name + 'を作った' : r.why; }
+  else if (act === 'boil') { r = F.boil(forageSt, f.bx, f.by, day, f.ctx.water && !f.ctx.coast); msg = r.ok ? '煮物を' + r.n + 'つ作った' + (r.broke ? '（' + r.broke + 'が壊れた）' : '') : r.why; }
   else if (act === 'eat') { r = F.eat(forageSt, id, rng, day); msg = r.ok ? r.name + 'を食べた（+' + r.kcal + 'kcal）' + (r.sick ? '。おなかをこわしたようだ' : '') : r.why; }
   forageSay(msg); forageBagRender();
 }
@@ -9227,7 +9298,9 @@ function forageBagRender() {
     '<div class="bst"><span>おなか：' + hg.name + (F.sick(forageSt, day) ? '・体調不良' : '') + '</span><span class="bar"><b style="width:' + pct + '%" class="' + hg.id + '"></b></span></div>' +
     '<div class="bst"><span>焚き火：' + (fl > 0 ? '燃えている（残り約' + fl.toFixed(1) + '日）' : 'なし') + '</span><span>' + (so ? '水さらし：' + so.n + '個（' + (day >= so.ready ? '受け取れる' : 'あと' + Math.ceil(so.ready - day) + '日') + '）' : '') + '</span></div>' +
     '<div class="bact"><button data-act="fire">火を起こす</button><button data-act="stoke">薪をくべる</button><button data-act="roast">焼く</button><button data-act="soak">木の実を水にさらす</button><button data-act="collect">受け取る</button></div>' +
-    (L.length ? L.map(it => '<div class="br"><span>' + it.name + (it.raw ? ' <i>（生）</i>' : '') + '</span><span>×' + it.n + ' ' + (edible(it.id) ? '<button data-act="eat" data-id="' + it.id + '">食べる</button> ' : '') + '<button data-drop="' + it.id + '">捨てる</button></span></div>').join('') : '<div class="br"><i>何も持っていない</i></div>') +
+    '<div class="bsec">作る</div><div class="bact">' + Object.keys(F.RECIPES).map(id => '<button data-act="craft" data-id="' + id + '" class="' + (F.canCraft(forageSt, id) ? '' : 'dim') + '" title="' + Object.keys(F.RECIPES[id].need).map(k => F.ITEMS[F.IDX[k]].name + '×' + F.RECIPES[id].need[k]).join('・') + (F.RECIPES[id].fire ? '（火のそばで）' : '') + '">' + F.ITEMS[F.IDX[id]].name + '</button>').join('') + '<button data-act="boil">煮る</button></div>' +
+    '<div class="bnote">' + Object.keys(F.RECIPES).map(id => F.ITEMS[F.IDX[id]].name + '＝' + Object.keys(F.RECIPES[id].need).map(k => F.ITEMS[F.IDX[k]].name.replace(/（.*）/, '') + F.RECIPES[id].need[k]).join('+') + (F.RECIPES[id].fire ? '(火)' : '')).join('　') + '　煮る＝土器・火・水辺で食材4つ→煮物</div>' +
+    (L.length ? L.map(it => '<div class="br"><span>' + it.name + (it.raw ? ' <i>（生）</i>' : '') + (F.LIFE[it.id] ? ' <i>（あと' + (F.LIFE[it.id] - ((forageSt.wear || {})[it.id] || 0)) + '回ほど）</i>' : '') + '</span><span>×' + it.n + ' ' + (edible(it.id) ? '<button data-act="eat" data-id="' + it.id + '">食べる</button> ' : '') + '<button data-drop="' + it.id + '">捨てる</button></span></div>').join('') : '<div class="br"><i>何も持っていない</i></div>') +
     '<div class="bh" style="margin-top:6px"><span></span><button id="bagClose">閉じる</button></div>';
 }
 globalThis.__wohForage = { context: forageContext, get state() { return forageSt; } };

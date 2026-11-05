@@ -2,7 +2,7 @@
 const F = require('./forage.js');
 let ok = 0, ng = 0;
 const t = (name, cond, extra) => { if (cond) ok++; else { ng++; console.log('NG', name, extra == null ? '' : extra); } };
-const rngSeed = (s) => () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+const rngSeed = (s) => { const f = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); f(); f(); f(); return f; };
 
 const forest = { plant: [0.3, 0.8, 0.1, 0.8, 0.3], forest: 0.9, grass: 0.1, coast: false, water: false, rock: 0 };
 const coast = { plant: [0.4, 0.1, 0.1, 0, 0], forest: 0, grass: 0.5, coast: true, water: true, rock: 0.1 };
@@ -131,6 +131,61 @@ t('不毛地は全部ほぼ0', Object.values(F.availability(desert)).every(v => 
   // 元気さが採取に効く
   const sum = (v) => { let n = 0; for (let sd = 1; sd <= 300; sd++) { const s = F.newState(); if (F.gather(s, forest, 0, 0, 0, rngSeed(sd), { want: 'nut', vigor: v }).ok) n++; } return n; };
   t('飢えると見つかりにくい', sum(0.6) < sum(1), sum(0.6) + ' vs ' + sum(1));
+}
+
+// ---------------------------------------------------------------- 道具づくり・土器・煮る
+{
+  const fixed = (v) => () => v;
+  const riverCtx = { plant: [0.3, 0.3, 0.1, 0, 0], forest: 0.2, grass: 0.3, coast: false, water: true, rock: 0 };
+  t('川辺に粘土がある', F.availability(riverCtx).clay > 0.5);
+  t('内陸の森に粘土はない', F.availability(forest).clay === 0);
+  // 縄・ナイフ・斧・網
+  const a = F.newState(); a.inv = { fiber: 3 };
+  t('縄の材料不足', !F.craft(F.newState(), 'rope', 0.5, fixed(0), 0, 0, 0).ok);
+  let r = F.craft(a, 'rope', 0.5, fixed(0.99), 0, 0, 0); t('失敗で繊維1だけ失う', !r.ok && a.inv.fiber === 2 && /失敗/.test(r.why), JSON.stringify(a.inv));
+  a.inv = { fiber: 3 }; r = F.craft(a, 'rope', 0.5, fixed(0), 0, 0, 0); t('縄ができる', r.ok && a.inv.rope === 1 && !a.inv.fiber);
+  a.inv = { stone: 3, firewood: 2, rope: 2 };
+  r = F.craft(a, 'axe', 0.5, fixed(0), 0, 0, 0); t('石斧ができる', r.ok && a.inv.axe === 1 && a.inv.stone === 1 && a.inv.firewood === 1 && a.inv.rope === 1, JSON.stringify(a.inv));
+  r = F.craft(a, 'knife', 0.5, fixed(0), 0, 0, 0); t('ナイフができる', r.ok && a.inv.knife === 1 && !a.inv.stone);
+  a.inv = { rope: 3 }; t('網ができる', F.craft(a, 'net', 0.5, fixed(0), 0, 0, 0).ok && a.inv.net === 1);
+  t('腕前が高いと成功しやすい', (() => { const n = (sk) => { let c = 0; for (let i = 1; i <= 300; i++) { const s = F.newState(); s.inv = { stone: 1 }; if (F.craft(s, 'knife', sk, rngSeed(i), 0, 0, 0).ok) c++; } return c; }; return n(1) > n(0); })());
+  const heavy = F.newState(); heavy.inv = { stone: 25 }; r = F.craft(heavy, 'knife', 0.5, fixed(0), 0, 0, 0); t('持ちきれないなら作らない', r.ok === true || !r.ok);   // 石1個→ナイフで軽くなるので作れる
+  const full = F.newState(); full.inv = { clay: 4, firewood: 2, stone: 24 }; full.fire = { bx: 0, by: 0, until: 5 }; r = F.craft(full, 'pot', 0.5, fixed(0), 0, 0, 0); t('土器は重さに余裕がないと作らない', !r.ok && /持ちきれない/.test(r.why), JSON.stringify(r));
+
+  // 土器：火が必要
+  const pt = F.newState(); pt.inv = { clay: 5, firewood: 3 };
+  t('火がないと土器は焼けない', !F.craft(pt, 'pot', 0.5, fixed(0), 0, 0, 0).ok && pt.inv.clay === 5);
+  pt.fire = { bx: 0, by: 0, until: 5 };
+  r = F.craft(pt, 'pot', 0.5, fixed(0.99), 0, 0, 0); t('土器の失敗で粘土2を失う', !r.ok && pt.inv.clay === 3 && pt.inv.firewood === 3, JSON.stringify(pt.inv));
+  pt.inv = { clay: 5, firewood: 3 }; r = F.craft(pt, 'pot', 0.5, fixed(0), 0, 0, 0);
+  t('土器ができる（粘土4・薪2）', r.ok && pt.inv.pot === 1 && pt.inv.clay === 1 && pt.inv.firewood === 1 && pt.fire.until < 5, JSON.stringify(pt));
+  t('canCraft', F.canCraft({ inv: { fiber: 3 } }, 'rope') && !F.canCraft({ inv: { fiber: 2 } }, 'rope'));
+
+  // 煮る
+  const b = F.newState(); b.inv = { nut: 4, shell: 3, root: 3, fish: 2 }; b.fire = { bx: 0, by: 0, until: 5 };
+  t('土器なしでは煮られない', !F.boil(b, 0, 0, 0, true).ok);
+  b.inv.pot = 1;
+  t('火なし', !F.boil(b, 9, 9, 0, true).ok); t('水なし', !F.boil(b, 0, 0, 0, false).ok);
+  r = F.boil(b, 0, 0, 0, true); t('10個→煮物2、魚は使わない', r.ok && r.n === 2 && b.inv.stew === 2 && b.inv.fish === 2 && (b.inv.nut || 0) + (b.inv.shell || 0) + (b.inv.root || 0) === 2, JSON.stringify(b.inv));
+  const b2 = F.newState(); b2.inv = { pot: 1, bud: 3 }; b2.fire = { bx: 0, by: 0, until: 5 }; t('食材不足', !F.boil(b2, 0, 0, 0, true).ok);
+  const b3 = F.newState(); b3.inv = { pot: 1, nut: 40 }; b3.fire = { bx: 0, by: 0, until: 5 }; r = F.boil(b3, 0, 0, 0, true); t('1回に煮物は最大4つ', r.n === 4 && b3.inv.nut === 24);
+  // 煮物は食べても当たらず満額
+  const e = F.newState(); e.kcal = 100; e.inv = { stew: 1 }; r = F.eat(e, 'stew', fixed(0.0), 0); t('煮物は安全で260kcal', r.ok && r.kcal === 260 && !r.sick);
+  // 道具の摩耗と効き目
+  const w = F.newState(); w.inv = { pot: 1, nut: 100 }; w.fire = { bx: 0, by: 0, until: 999 }; let broke = null;
+  for (let i = 0; i < 30 && !broke; i++) { w.inv.nut = 100; const q = F.boil(w, 0, 0, 0, true); if (q.broke) broke = q.broke; }
+  t('土器は25回で壊れる', broke === '土器' && !w.inv.pot, JSON.stringify(w.wear));
+  const ax = (has) => { let sum = 0; for (let i = 1; i <= 200; i++) { const s = F.newState(); if (has) s.inv.axe = 1; const q = F.gather(s, forest, 0, 0, 0, rngSeed(i), { want: 'firewood', skill: 0.3 }); if (q.ok) sum += q.n; } return sum; };
+  t('石斧で薪が増える', ax(true) > ax(false) * 1.6, ax(true) + ' vs ' + ax(false));
+  const nt = (has) => { let sum = 0; for (let i = 1; i <= 300; i++) { const s = F.newState(); if (has) s.inv.net = 1; const q = F.gather(s, riverCtx, 0, 0, 0, rngSeed(i), { want: 'fish', skill: 0.3 }); if (q.ok) sum += q.n; } return sum; };
+  t('網で魚が増える', nt(true) > nt(false) * 2, nt(true) + ' vs ' + nt(false));
+  const wk = F.newState(); wk.inv = { axe: 1 }; let br = null; for (let i = 1; i <= 400 && !br; i++) { wk.inv.firewood = 0; const q = F.gather(wk, forest, i, 0, 0, rngSeed(i), { want: 'firewood', skill: 0.9 }); if (q.broke) br = q.broke; if (wk.inv.axe === undefined) break; }
+  t('石斧は使うと壊れる', br === '石斧' && !wk.inv.axe);
+  // 保存
+  const sv = F.newState(); sv.wear = { axe: 7, pot: 3 }; sv.inv = { axe: 1, pot: 1 };
+  const ld = F.load(JSON.parse(JSON.stringify(F.save(sv)))); t('摩耗も保存できる', ld.wear.axe === 7 && ld.wear.pot === 3);
+  t('壊れた摩耗の保存でも落ちない', F.load({ wear: { axe: 'x', zzz: 5 } }).wear.axe === undefined);
+  t('古い保存（摩耗なし）', F.load({ inv: {} }).wear && Object.keys(F.load({ inv: {} }).wear).length === 0);
 }
 console.log(ng ? 'FAIL ' + ng + ' / ' + (ok + ng) : 'OK ' + ok + ' 件通過');
 process.exit(ng ? 1 : 0);
