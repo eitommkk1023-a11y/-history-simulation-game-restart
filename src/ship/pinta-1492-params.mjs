@@ -28,6 +28,9 @@ export const PINTA_1492_PARAMS = Object.freeze({
   interior: Object.freeze({
     holdWalkClearance: d(1.85, 'head room under the deck beams used to place the hold walking level (cargo and ballast fill below)'),
     hatch: d({ u0: 0.44, u1: 0.56, width: 1.3 }, 'main hatch to the hold'),
+    // The research gives only the hold's overall internal size; how it was divided is unknown. This 3-way split follows the spec's list of hold contents
+    // (water casks, food, gear, repair materials, ballast, cargo) and is a hypothesis.
+    holdPartitions: d({ aft: { x0: 1.4, x1: 4.6 }, main: { x0: 5.0, x1: 12.6 }, fore: { x0: 13.0, x1: 15.3 }, doorWidth: 1.4, gap: 0.4 }, 'hold divided into an after store (casks, food), a central cargo hold (with the hatch) and a fore locker (sails, rope, repair material); two doorways'),
   }),
   rudder: Object.freeze({ hingeX: d(0.15, 'sternpost-hung rudder hinge, metres from the transom'), bladeWidth: d(0.85, 'm'), bladeDepth: d(2.0, 'm, from the keel line down/up'), tillerLength: d(2.2, 'm'), maxDeg: d(35, 'deg'), areaM2: d(1.4, 'm2 effective blade area') }),
   rig: Object.freeze({

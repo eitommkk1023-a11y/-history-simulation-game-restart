@@ -83,16 +83,21 @@ export function pintaLightshipMassItems(hull = createHull(pintaHullSpec()), rep 
 // ---------- interior, rig presets, loadouts and the fleet design ----------
 export function pintaInterior() {
   const q = LOA * G.quarterdeck.lengthU.value, qz = DECK_Z + G.quarterdeck.rise.value, holdZ = DECK_Z - G.interior.holdWalkClearance.value;
-  const hatchX = ((G.interior.hatch.value.u0 + G.interior.hatch.value.u1) / 2) * LOA;
+  const hatchX = ((G.interior.hatch.value.u0 + G.interior.hatch.value.u1) / 2) * LOA, hp = G.interior.holdPartitions.value;
   return {
     // No cabin: the original layout is unknown, and a lavish captain's cabin is forbidden by the spec. The low space under the quarterdeck is not modelled.
     decks: [{ id: 'quarter', z: qz, name: '船尾甲板', exterior: true }, { id: 'main', z: DECK_Z, name: '主甲板', exterior: true }, { id: 'hold', z: holdZ, name: '船倉' }],
     rooms: [
       { id: 'main', deck: 'main', name: '主甲板', use: 'deck', open: true, floor: false, x0: q + 0.35, x1: LOA - 0.9, y0: -2.3, y1: 2.3 },
       { id: 'quarter', deck: 'quarter', name: '船尾甲板', use: 'deck', open: true, x0: 0.7, x1: q - 0.1, y0: -1.9, y1: 1.9 },
-      { id: 'hold', deck: 'hold', name: '船倉', use: 'cargo', x0: 1.4, x1: 15.3, y0: -2.2, y1: 2.2 },
+      { id: 'hold-aft', deck: 'hold', name: '後部倉庫（水樽・食料）', use: 'store', x0: hp.aft.x0, x1: hp.aft.x1, y0: -2.2, y1: 2.2 },
+      { id: 'hold', deck: 'hold', name: '中央の貨物倉', use: 'cargo', x0: hp.main.x0, x1: hp.main.x1, y0: -2.2, y1: 2.2 },
+      { id: 'hold-fore', deck: 'hold', name: '前部倉庫（帆・索具・補修材）', use: 'store', x0: hp.fore.x0, x1: hp.fore.x1, y0: -2.2, y1: 2.2 },
     ],
-    doors: [],
+    doors: [
+      { id: 'd-hold-aft', deck: 'hold', along: 'y', x0: hp.aft.x1 - 0.05, x1: hp.main.x0 + 0.05, y0: -hp.doorWidth / 2, y1: hp.doorWidth / 2 },
+      { id: 'd-hold-fore', deck: 'hold', along: 'y', x0: hp.main.x1 - 0.05, x1: hp.fore.x0 + 0.05, y0: -hp.doorWidth / 2, y1: hp.doorWidth / 2 },
+    ],
     ladders: [
       { id: 'l-quarter', name: '船尾甲板への階段', a: { deck: 'main', x: q + 0.7, y: 1.4 }, b: { deck: 'quarter', x: q - 0.6, y: 1.4 } },
       { id: 'l-hatch', name: '昇降口（船倉）', a: { deck: 'main', x: hatchX, y: 0 }, b: { deck: 'hold', x: hatchX, y: 0 } },

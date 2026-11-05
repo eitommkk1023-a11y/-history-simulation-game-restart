@@ -69,8 +69,13 @@ test('rooms convert to flooding boxes with floors and ceilings from the decks', 
 
 test('Pinta 1492 interior: open main deck, small quarterdeck, hold below; no cabin is invented', () => {
   const d = sampleDesigns['pinta-1492'], ph = createHull(d.hull), pi = createInterior(d.interior, { hull: ph });
-  assert.deepEqual(pi.rooms.map((r) => r.id).sort(), ['hold', 'main', 'quarter']);
+  assert.deepEqual(pi.rooms.map((r) => r.id).sort(), ['hold', 'hold-aft', 'hold-fore', 'main', 'quarter']);
   assert.equal(pi.wallRects('main').length + pi.wallRects('quarter').length, 0, 'no walls on the open decks');
+  assert.ok(pi.wallRects('hold').length > 0, 'the hold is partitioned');
+  const walkHold = (from, dx, n) => { let p = from; for (let i = 0; i < n; i++) p = pi.move(p, dx, 0); return p; };
+  assert.ok(walkHold({ x: 8.4, y: 0, deck: 'hold' }, 0.1, 60).x > 13.2, 'through the fore doorway');
+  assert.ok(walkHold({ x: 8.4, y: 0, deck: 'hold' }, -0.1, 60).x < 4.6, 'through the aft doorway');
+  assert.ok(walkHold({ x: 8.4, y: 1.5, deck: 'hold' }, 0.1, 60).x < 12.7, 'blocked by the bulkhead away from the doorway');
   assert.ok(!pi.rooms.some((r) => r.use === 'cabin'));
   assert.equal(pi.deckZ('main'), 2.6); assert.ok(pi.deckZ('quarter') > pi.deckZ('main')); assert.ok(pi.deckZ('hold') < pi.deckZ('main') - 1.5);
   const start = pi.startPosition(); assert.equal(start.deck, 'main');

@@ -280,6 +280,7 @@ function frame(t) {
   }
   walk(dt);
   if (boarded && objs.has(boarded)) { const o = objs.get(boarded), foot = o.interior.laddersNear(o.pos).find((l) => l.dist < 0.7); dwell = uiHidden && foot ? dwell + dt : 0; if (dwell > 1) { o.pos = o.interior.climb(o.pos, foot.id); dwell = 0; ladderSig = ''; } }
+  SEA.visible = !(boarded && objs.get(boarded)?.cutaway); // below deck the hold lies under the sea surface: hide the sea in the cutaway view
   updateCamera(); placeSea(); if (boarded) drawRoute();
   renderer.render(scene, camera);
   infoT += dt; if (infoT > 0.25) { infoT = 0; info(); }
