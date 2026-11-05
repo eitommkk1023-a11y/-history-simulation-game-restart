@@ -81,6 +81,7 @@
       this.members = [];   // 集団ごとの住民の番号（交流の相手を選ぶ用。移った人・亡くなった人は、選ぶときに取り除く）
       this.groupEth = new Uint16Array(0); this.ethSecondary = new Map(); this.adultAgeFn = null; this.pendingCause = 0;
       this.actId = -1; this.actKind = 'auto'; this.actJob = 0;   // プレイヤーの人物の今の活動（auto／work／gather／hunt／fish／study／body／family）。actJob＝活動が食料の仕事のときの職業番号
+      this.crossFn = null; this.residenceFn = null; this.onCross = null;   // 集団をまたぐ結婚：相手の集団を選ぶ／夫が妻の集団へ移るか／記録
       this.hazardFn = null; this.fertFn = null; this.onBirth = null; this.onDeath = null;   // 民族・集団の状況（飢え・寒さ・病気）を人の死亡・出産に反映するための関数
       this.gdemand = new Float32Array(0); this.gflags = new Uint8Array(0); this.gcount = new Uint32Array(0); this.gwork = new Uint32Array(0); this.groups = 0;
       this.ensureGroups(groups);
@@ -341,16 +342,18 @@
         if (!(this.flags[i] & 1) && this.spouse[i] === NONE) { this.flags[i] |= 1; this.pool[g].push(i); }
         return;
       }
-      if (this.spouse[i] === NONE) {   // 女性：未婚なら候補から探す
+      if (this.spouse[i] === NONE) {   // 女性：未婚なら候補から探す。文化によっては、隣の集団の男性から選ぶ（crossFn）
         if (this.random() < 0.15) {
-          const pl = this.pool[g];
+          const g2 = this.crossFn ? (this.crossFn(g, i) || g) : g, pl = this.pool[g2];
           for (let t = 0; t < 4 && pl.length; t++) {
             const k = Math.floor(this.random() * pl.length), j = pl[k];
-            if (this.death[j] !== ALIVE || this.spouse[j] !== NONE || this.group[j] !== g) { pl[k] = pl[pl.length - 1]; pl.pop(); this.flags[j] &= ~1; continue; }
+            if (this.death[j] !== ALIVE || this.spouse[j] !== NONE || this.group[j] !== g2) { pl[k] = pl[pl.length - 1]; pl.pop(); this.flags[j] &= ~1; continue; }
             const kin = this.mother[i] !== NONE && (this.mother[i] === this.mother[j] || this.father[i] === this.father[j]);
             if (kin || Math.abs(this.birth[i] - this.birth[j]) > 15 * YEAR) continue;
             pl[k] = pl[pl.length - 1]; pl.pop(); this.flags[j] &= ~1;
-            this.spouse[i] = j; this.spouse[j] = i; this.house[i] = j; this.house[j] = j; this.stats.marriages++; break;   // 新しい世帯（夫のIDが世帯ID）
+            this.spouse[i] = j; this.spouse[j] = i; this.house[i] = j; this.house[j] = j; this.stats.marriages++;   // 新しい世帯（夫のIDが世帯ID）
+            if (g2 !== g) { this.stats.crossMarriages = (this.stats.crossMarriages || 0) + 1; const husbandMoves = this.residenceFn ? this.residenceFn(g, g2) : false; if (husbandMoves) this.moveToGroup(j, g); else this.moveToGroup(i, g2); if (this.onCross) this.onCross(i, j, g, g2); }
+            break;
           }
         }
         return;

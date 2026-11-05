@@ -237,6 +237,136 @@ function peNearestRiver(S, x, y, maxD) {
 }
 
 
+// ---------------------------------------------------------------- 文化の特徴（集団ごと、0〜1の8つ）と、そこから決まる民族の決まり
+// 0外婚性 1母系性 2年長者の尊重 3世襲性 4合議性 5男系性 6成人年齢（0＝15歳〜1＝21歳） 7言葉のずれ（親の言語からの離れ具合）
+const CULT_DIMS = 8;
+const CULT_NAMES = ['外婚性', '母系性', '年長者の尊重', '世襲性', '合議性', '男系性', '成人年齢', '言葉のずれ'];
+// 民族の決まり：継承（0長子 1男系長子 2末子 3母系 4兄弟 5選出 6指名）・首長（0長老 1能力 2世襲 3合議）・成人年齢
+function peCultureRules(v) {
+  // 係数は、各決まりが25・17・10・16・7・15・10%ほどになるように調整した［仮］
+  const sc = [0.44 + 0.3 * v[3], 1.96 * v[5] * (1 - v[1]) * (0.5 + 0.5 * v[3]), 1.07 * (1 - v[3]) * (1 - v[2]) + 0.02, v[1] * v[1], 1.61 * v[2] * (1 - v[3]) * (1 - v[4]), 0.89 * v[4], 2.15 * v[2] * (1 - v[3]) * v[4]];
+  let succession = 0; for (let k = 1; k < 7; k++) if (sc[k] > sc[succession]) succession = k;
+  const ld = [v[2], 1.05 * (1 - v[3]) * (1 - v[2] * 0.5) + 0.12, 0.85 * v[3], 0.9 * v[4]];
+  let leadership = 0; for (let k = 1; k < 4; k++) if (ld[k] > ld[leadership]) leadership = k;
+  return { succession, leadership, adultAge: Math.round(15 + 6 * v[6]) };
+}
+function peCultDist(a, b) { let s2 = 0; for (let k = 0; k < CULT_DIMS; k++) s2 += (a[k] - b[k]) ** 2; return Math.sqrt(s2 / CULT_DIMS); }
+// ---------------------------------------------------------------- 民族の形成・分裂・融合・吸収（年に1回、集団単位で計算する）
+// 設定［仮］。ethSpeed（変化の速さ）は、ゲーム内の長い時間を短くして確かめるための倍率（標準 1）
+const ETHNO = {
+  LINK_D: 35,          // 同じ民族の集団が「つながっている」距離（ブロック）。近隣の距離（結婚・接触）と同じ
+  NOISE: 0.035,        // 文化の特徴が毎年揺れる幅（一様乱数の±）
+  PULL_CORE: 0.2,      // 本体・同じ塊の平均へ寄る強さ（1年）
+  PULL_NEIGHBOR: 0.03, // 近くの他の民族の文化に寄る強さ（1年）
+  SPLIT_DIST: 0.2,     // 分裂：本体との文化の距離（RMS）
+  SPLIT_ISO: 60,       // 分裂：離れている年数（約3世代）
+  SPLIT_POP: 80,       // 分裂：塊の人口
+  SPLIT_P: 0.06,       // 分裂が起こる確率（1年）。距離が大きいほど高い
+  MERGE_CONTACT: 40,   // 融合・吸収：接触している年数
+  MERGE_X: 0.12,       // 融合・吸収：小さい民族の成人に対する、集団をまたぐ結婚（直近）の割合
+  MERGE_DIST: 0.25,    // 融合：二つの民族の文化の距離
+  ABSORB_DIST: 0.4,    // 吸収：文化の距離（小さい民族が依存している）
+  ABSORB_RATIO: 0.3,   // この人口比より小さいと、融合でなく吸収
+  MERGE_P: 0.05,       // 融合・吸収が起こる確率（1年）
+  REIDENT_P: 0.2,      // 民族が変わった集団の大人が、新しい民族を自分の帰属にする確率（1年）
+};
+function peEthNew(people, parents, groupsMoved, core, kind) {
+  const P = people.npc, id = people.nextEthId++, parent = people.ethnicities[parents[0] - 1];
+  const h = peHash('ethcolor' + id) / 4294967296, rules = peCultureRules(core);
+  const eth = { id, nameKey: 'eth:' + id, langId: parent.langId, family: parent.family, parent: parents[0], parents: parents.slice(), founded: P.day, alive: true, state: 'alive', origin: kind,
+    color: peHsl((h + 0.31) % 1, 0.55 + 0.3 * ((h * 7) % 1), 0.45 + 0.15 * ((h * 13) % 1)), cult0: core.slice() };
+  Object.assign(eth, rules); people.ethnicities.push(eth);
+  for (const g of groupsMoved) g.ethId = id;
+  peSyncEth(people); return eth;
+}
+function peEthYear(people, ev, rel) {
+  const P = people.npc, speed = people.ethSpeed || 1, rnd = () => P.random();
+  const live = people.groups.filter(g => g.alive && g.cult), byEth = new Map();
+  for (const g of live) { if (!byEth.has(g.ethId)) byEth.set(g.ethId, []); byEth.get(g.ethId).push(g); }
+  const nb = peNeighbors(people), gById = new Map(live.map(g => [g.id, g]));
+  const wmean = (arr) => { const o = new Array(CULT_DIMS).fill(0); let w = 0; for (const g of arr) { const x = Math.max(1, g.pop); w += x; for (let k = 0; k < CULT_DIMS; k++) o[k] += g.cult[k] * x; } for (let k = 0; k < CULT_DIMS; k++) o[k] /= w || 1; return o; };
+  // 民族ごとに、同じ民族でつながった集団の塊を作る。一番人口の多い塊が本体
+  const info = new Map();
+  for (const [eid, arr] of byEth) {
+    const seen = new Set(), comps = [];
+    for (const g of arr) { if (seen.has(g.id)) continue; const comp = [], q = [g]; seen.add(g.id); while (q.length) { const x = q.pop(); comp.push(x); for (const o of arr) if (!seen.has(o.id) && Math.hypot(o.x - x.x, o.y - x.y) <= ETHNO.LINK_D) { seen.add(o.id); q.push(o); } } comps.push(comp); }
+    comps.sort((a, b) => b.reduce((s, g) => s + g.pop, 0) - a.reduce((s, g) => s + g.pop, 0));
+    info.set(eid, { comps, core: wmean(comps[0]) });
+  }
+  // 文化の特徴の変化：本体は本体へ、離れた塊はその塊の平均へ寄り、近くの他の民族の文化へも少し寄る。毎年揺れる
+  const pc = Math.min(0.6, ETHNO.PULL_CORE * speed), pn = Math.min(0.3, ETHNO.PULL_NEIGHBOR * speed), nz = ETHNO.NOISE * Math.sqrt(speed);
+  const next = new Map();
+  for (const [eid, I] of info) for (let c = 0; c < I.comps.length; c++) {
+    const mean = c === 0 ? I.core : wmean(I.comps[c]);
+    for (const g of I.comps[c]) {
+      const v = g.cult.slice(), others = (nb[g.id] || []).map(i => gById.get(i)).filter(o => o && o.ethId !== g.ethId);
+      for (let k = 0; k < CULT_DIMS; k++) {
+        v[k] += pc * (mean[k] - v[k]) + (rnd() - 0.5) * 2 * nz;
+        for (const o of others) v[k] += pn * (o.cult[k] - v[k]) / Math.max(1, others.length);
+        v[k] = v[k] < 0 ? 0 : v[k] > 1 ? 1 : v[k];
+      }
+      next.set(g.id, v); g.iso = c === 0 ? 0 : (g.iso || 0) + 1;
+    }
+  }
+  for (const g of live) g.cult = next.get(g.id);
+  for (const [eid, I] of info) I.core = wmean(I.comps[0]);
+  const you = people.player && people.player.id, youG = you >= 0 ? P.group[you] : 0;
+  const mine = (arr) => arr.some(g => g.id === youG);
+  // 分裂：離れた塊が、文化の距離・離れている年数・人口の条件をそろえたとき、確率的に新しい民族になる
+  const touched = new Set();
+  for (const [eid, I] of info) {
+    const parent = people.ethnicities[eid - 1]; if (!parent || !parent.alive) continue;
+    for (let c = 1; c < I.comps.length; c++) {
+      const comp = I.comps[c], pop = comp.reduce((s, g) => s + g.pop, 0), iso = Math.min(...comp.map(g => g.iso || 0)), mean = wmean(comp), dist = peCultDist(mean, I.core);
+      if (pop < ETHNO.SPLIT_POP || iso < ETHNO.SPLIT_ISO / speed || dist < ETHNO.SPLIT_DIST) continue;
+      if (rnd() >= Math.min(0.5, ETHNO.SPLIT_P * speed * dist / ETHNO.SPLIT_DIST)) continue;
+      const eth = peEthNew(people, [eid], comp, mean, 'split'); touched.add(eid);
+      const g0 = comp[0]; ev.push({ type: 'ethSplit', imp: mine(comp) || rel(eid) ? 2 : 1, relevant: mine(comp) || rel(eid), eth: eth.id, parent: eid, groups: comp.map(g => g.id), x: g0.x, y: g0.y, iso, dist: +dist.toFixed(2), pop });
+    }
+  }
+  // 融合・吸収：接触が長く、集団をまたぐ結婚が多く、文化が近い二つの民族
+  const adultsOf = new Map(); for (const g of live) adultsOf.set(g.ethId, (adultsOf.get(g.ethId) || 0) + Math.max(0, g.pop - (g.c6 ? g.c6[0] + g.c6[3] : 0)));
+  const popOf = new Map(); for (const g of live) popOf.set(g.ethId, (popOf.get(g.ethId) || 0) + g.pop);
+  const pairs = new Set();
+  for (const g of live) for (const id of nb[g.id] || []) { const o = gById.get(id); if (o && o.ethId !== g.ethId) pairs.add(Math.min(g.ethId, o.ethId) + '-' + Math.max(g.ethId, o.ethId)); }
+  for (const [k, T] of Object.entries(people.ties)) { if (!pairs.has(k)) { T.ct = Math.max(0, T.ct - 2); } T.x *= 0.97; }
+  for (const k of pairs) { const T = people.ties[k] || (people.ties[k] = { ct: 0, x: 0 }); T.ct++; }
+  for (const k of pairs) {
+    const [A, B] = k.split('-').map(Number), T = people.ties[k], ea = people.ethnicities[A - 1], eb = people.ethnicities[B - 1];
+    if (!ea || !eb || !ea.alive || !eb.alive || touched.has(A) || touched.has(B) || !info.has(A) || !info.has(B)) continue;
+    if (T.ct < ETHNO.MERGE_CONTACT / speed) continue;
+    const pa = popOf.get(A) || 0, pb = popOf.get(B) || 0, small = pa <= pb ? A : B, big = small === A ? B : A, ratio = Math.min(pa, pb) / Math.max(1, Math.max(pa, pb));
+    const dist = peCultDist(info.get(A).core, info.get(B).core);
+    if (T.x < ETHNO.MERGE_X * Math.max(1, adultsOf.get(small) || 0)) continue;
+    const absorb = ratio < ETHNO.ABSORB_RATIO;
+    if (dist > (absorb ? ETHNO.ABSORB_DIST : ETHNO.MERGE_DIST)) continue;
+    if (rnd() >= Math.min(0.5, ETHNO.MERGE_P * speed)) continue;
+    const gA = byEth.get(A) || [], gB = byEth.get(B) || [], all = gA.concat(gB);
+    touched.add(A); touched.add(B);
+    if (absorb) {
+      const es = people.ethnicities[small - 1]; es.alive = false; es.state = 'absorbed'; es.absorbedBy = big; for (const g of byEth.get(small) || []) g.ethId = big; peSyncEth(people);
+      ev.push({ type: 'ethAbsorb', imp: all.some(g => g.id === youG) || rel(small) || rel(big) ? 2 : 1, relevant: all.some(g => g.id === youG) || rel(small) || rel(big), eth: big, small, x: all[0].x, y: all[0].y, ratio: +ratio.toFixed(2), dist: +dist.toFixed(2) });
+    } else {
+      const core = info.get(A).core.map((x, i) => (x * pa + info.get(B).core[i] * pb) / Math.max(1, pa + pb));
+      const eth = peEthNew(people, [pa >= pb ? A : B, pa >= pb ? B : A], all, core, 'merge'); ea.alive = false; ea.state = 'merged'; ea.mergedInto = eth.id; eb.alive = false; eb.state = 'merged'; eb.mergedInto = eth.id;
+      ev.push({ type: 'ethMerge', imp: all.some(g => g.id === youG) || rel(A) || rel(B) ? 2 : 1, relevant: all.some(g => g.id === youG) || rel(A) || rel(B), eth: eth.id, parents: eth.parents, x: all[0].x, y: all[0].y, ratio: +ratio.toFixed(2), dist: +dist.toFixed(2), w: pb / Math.max(1, pa + pb) });
+    }
+    delete people.ties[k];
+  }
+  // 帰属の移り変わり：民族が変わった集団の大人は、毎年一部が新しい民族を自分の帰属にする（元の民族は副次的な帰属として残る）
+  const rp = Math.min(0.9, ETHNO.REIDENT_P * speed);
+  for (let i = 0; i < P.n; i++) {
+    if (P.death[i] !== ALIVE || !P.eth[i]) continue; const ge = P.groupEth[P.group[i]];
+    if (ge && P.eth[i] !== ge && rnd() < rp) { P.ethSecondary.set(i, [P.eth[i]]); P.eth[i] = ge; }
+  }
+  if (you >= 0 && P.death[you] === ALIVE) people.playerEth = P.eth[you] || P.groupEth[P.group[you]];
+}
+// 動作確認用：民族が2集団以上ある民族から、1集団を新しい民族として分ける（開発者・テスト用）
+function peopleForceEthSplit(people, ev) {
+  const live = people.groups.filter(g => g.alive && g.cult), byEth = new Map(); for (const g of live) { if (!byEth.has(g.ethId)) byEth.set(g.ethId, []); byEth.get(g.ethId).push(g); }
+  for (const [eid, arr] of byEth) if (arr.length >= 2) { const g = arr.slice().sort((a, b) => a.pop - b.pop)[0], eth = peEthNew(people, [eid], [g], g.cult, 'split'); ev.push({ type: 'ethSplit', imp: 2, relevant: true, eth: eth.id, parent: eid, groups: [g.id], x: g.x, y: g.y, iso: 0, dist: 0, pop: g.pop, forced: true }); return eth; }
+  return null;
+}
 // ---------------------------------------------------------------- 首長（集団の長）：決め方は文化ごと
 // 0長老制（年長で尊敬される人）／1能力制（尊敬・技能・判断力などの総合）／2世襲（前の首長の跡継ぎ）／3合議（上位3人の中で、一番尊敬される人が代表）。割合［仮］
 const LEADERSHIP = ['長老制', '能力制', '世襲', '合議'];
@@ -471,6 +601,14 @@ function peInstall(people) {
   };
   P.fertFn = (a, g, i) => { const ai = Math.floor(a); return ai >= 15 && ai < 50 ? PE_ASFR[ai] * hz.fert[g] * PE.FERT_ADJ * (i !== undefined && P.actKind === 'family' && P.spouse[i] === P.actId ? 1.4 : 1) : 0; };   // 家族の時間：配偶者の出産が増える
   P.onBirth = (g) => { people.groups[g - 1].born++; };
+  // 集団をまたぐ結婚：外婚性の高い文化ほど、隣の集団の男性を選ぶ。夫が妻の集団へ移るのは、母系性の高い集団［仮］
+  P.crossFn = (g, i) => {
+    const gr = people.groups[g - 1], nb = people.nbr && people.nbr[g]; if (!gr || !nb || !nb.length) return 0;
+    const exo = gr.cult ? 0.03 + 0.45 * gr.cult[0] : 0.03; if (P.random() >= exo) return 0;
+    const ok = nb.filter(x => P.pool[x] && P.pool[x].length); return ok.length ? ok[Math.floor(P.random() * ok.length)] : 0;
+  };
+  P.residenceFn = (gWife, gHusband) => { const w = people.groups[gWife - 1]; return !!(w && w.cult && w.cult[1] > 0.6); };
+  P.onCross = (i, j) => { const a = P.eth[i] || P.groupEth[P.group[i]], b = P.eth[j] || P.groupEth[P.group[j]]; if (a && b && a !== b) peTie(people, a, b).x++; };
   P.adultAgeFn = (e) => { const x = people.ethnicities[e - 1]; return x && x.adultAge ? x.adultAge : 18; };
   // 死因（10分類）：1老衰 2非感染性疾患 3感染症 4戦死 5殺害 6事故 7飢餓 8出産関連 9災害 10環境（戦死・殺害・出産関連はまだ起こらない）
   P.onDeath = (i) => {
@@ -482,6 +620,15 @@ function peInstall(people) {
     else { D.cold++; P.pendingCause = 10; }
   };
 }
+// 近くの集団（他の民族も含む）：結婚・接触・文化の影響の範囲
+const NBR_D = 35;   // ブロック（約115km）［仮］
+function peNeighbors(people) {
+  const live = people.groups.filter(g => g.alive), nb = {};
+  for (const g of live) nb[g.id] = [];
+  for (let i = 0; i < live.length; i++) for (let j = i + 1; j < live.length; j++) { const a = live[i], b = live[j], dx = a.x - b.x, dy = a.y - b.y; if (dx * dx + dy * dy <= NBR_D * NBR_D) { nb[a.id].push(b.id); nb[b.id].push(a.id); } }
+  people.nbr = nb; return nb;
+}
+function peTie(people, a, b) { const k = Math.min(a, b) + '-' + Math.max(a, b); return people.ties[k] || (people.ties[k] = { ct: 0, x: 0 }); }
 function peEnsureGroups(people) { people.npc.ensureGroups(people.groups.length + 1); return peHazards(people); }
 // 集団の民族を住民の側の表に写す（12歳で民族が決まるときに使う）
 function peSyncEth(people) { const P = people.npc; for (const g of people.groups) P.groupEth[g.id] = g.ethId; }
@@ -524,7 +671,7 @@ function peopleGenerate(seed, W) {
     const d = peDryNear(S, world, x, y);
     sites.push({ rx: x, ry: y, x: d.x, y: d.y });
   }
-  const people = { version: 2, nextGroupId: 1, nextEthId: 1, rngState: 0, playerEth: 0, ethnicities: [], groups: [], contacts: {}, languages: [], npc: null, haz: null, stat: null };
+  const people = { version: 2, ties: {}, ethSpeed: 1, nbr: {}, nextGroupId: 1, nextEthId: 1, rngState: 0, playerEth: 0, ethnicities: [], groups: [], contacts: {}, languages: [], npc: null, haz: null, stat: null };
   // 安定人口に近い年齢構成（基本の死亡率での生存率）の累積
   const surv = new Float64Array(PE_AGES);
   let l = 1;
@@ -535,9 +682,7 @@ function peopleGenerate(seed, W) {
     const s = sites[i];
     const eth = { id: people.nextEthId++, nameKey: '', langId: 0, family: 0, parent: 0, founded: 0, alive: true, color: null };
     eth.nameKey = 'eth:' + eth.id;
-    { const w = (peHash('succ' + eth.id + '/' + sd) % 1000) / 1000; let acc = 0, k = 0; for (; k < SUCC_W.length - 1; k++) { acc += SUCC_W[k]; if (w < acc) break; } eth.succession = k; }   // 継承の決まりは文化ごと［仮］
-    { const w = (peHash('lead' + eth.id + '/' + sd) % 1000) / 1000; let acc = 0, k = 0; for (; k < LEAD_W.length - 1; k++) { acc += LEAD_W[k]; if (w < acc) break; } eth.leadership = k; }   // 首長の決め方は文化ごと［仮］
-    eth.adultAge = 18 + (peHash('adult' + eth.id + '/' + sd) % 7) - 3;   // 成人の年齢は文化ごとに違う：15〜21歳（基本18歳）［仮］
+    eth.state = 'alive'; eth.parents = [];
     eth.color = peHsl((hue0 + i * 0.6180339887) % 1, 0.55 + 0.3 * rng(), 0.45 + 0.15 * rng());
     people.ethnicities.push(eth);
     let r = rng(), cls = PE.SIZE_CLASS[0];
@@ -545,6 +690,8 @@ function peopleGenerate(seed, W) {
     pops.push(Math.round(cls[1] + (cls[2] - cls[1]) * rng()));
     const g = peNewGroup(people, eth.id, s.x, s.y);
     g.radius = peRadius(pops[i]);
+    g.cult = Array.from({ length: CULT_DIMS }, (_, k) => peHash('cult' + eth.id + ':' + k + '/' + sd) / 4294967296);   // 民族の文化の特徴［仮］
+    Object.assign(eth, peCultureRules(g.cult)); eth.cult0 = g.cult.slice();
   }
   people.playerEth = people.ethnicities.length ? people.ethnicities[Math.floor(rng() * people.ethnicities.length)].id : 0;
   people.rngState = (rng() * 4294967296) | 0;
@@ -591,6 +738,7 @@ function peopleGenerate(seed, W) {
   for (let r = 0; r < 36; r++) for (let i = 0; i < npc.n; i++) if (npc.death[i] === ALIVE && npc.age(i) >= 10) npc._interact(i);   // それまでの暮らしでできた人間関係
   peStats(people);
   peLeaders(people, [], () => false, true, false, true);
+  peNeighbors(people);
   peopleCreatePlayer(people, sd);
   return people;
 }
@@ -600,7 +748,7 @@ function peNewGroup(people, ethId, x, y) {
     id, ethId, alive: true, nameKey: 'grp:' + id, x, y, homeX: x, homeY: y, radius: PE.R_MIN, food: 0, policy: 'auto', moveTo: null,
     labor: { hunt: 0, gather: 0, fish: 0 }, lastFood: { need: 0, got: 0, hunt: 0, gather: 0, fish: 0 },
     hunger: 0, born: 0, died: { natural: 0, starvation: 0, cold: 0, disease: 0 },
-    fed: 1, epi: 0, kills: 0, pop: 0, c6: [0, 0, 0, 0, 0, 0], leader: -1, council: [], leaderSince: 0,
+    fed: 1, epi: 0, kills: 0, pop: 0, c6: [0, 0, 0, 0, 0, 0], leader: -1, council: [], leaderSince: 0, cult: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0], iso: 0,
   };
   people.groups.push(g);
   if (people.npc) { peEnsureGroups(people); people.npc.groupEth[id] = ethId; }
@@ -695,6 +843,7 @@ function peopleMonthly(people, ctx) {
   const ev = [], month = ctx.month;
   if (ctx.day !== undefined) P.day = ctx.day;
   peApplyActivity(people);
+  { const pl = people.player; if (pl && pl.id >= 0 && P.death[pl.id] === ALIVE) people.playerEth = P.eth[pl.id] || P.groupEth[P.group[pl.id]]; }   // プレイヤーの民族は、人物の主な民族に従う
   S.tick++;
   const sc = peMonthSetup(people, ctx, S);
   const st = peStats(people);
@@ -703,12 +852,14 @@ function peopleMonthly(people, ctx) {
   const contacted = new Set();
   for (const k in people.contacts) { const [a, b] = k.split('-'); if (+a === people.playerEth) contacted.add(+b); if (+b === people.playerEth) contacted.add(+a); }
   const rel = (eth) => eth === people.playerEth || contacted.has(eth);
+  peNeighbors(people);   // 近くの集団（結婚・接触・文化の影響）
   for (const g of alive) peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel);
   for (let d = 0; d < 30; d++) P.stepDay();   // 住民を30日進める（人ごとに月に1回判定。日付はずれている）
   peStats(people);
   peopleSuccession(people, ev);   // プレイヤーの人物が亡くなっていれば、その文化の決まりで継承
   peApplyActivity(people);
   peLeaders(people, ev, rel, false, month === 0, false);   // 首長：いなくなった集団は決め直し、年に1回は見直す
+  if (month === 6) peEthYear(people, ev, rel);   // 民族の形成・分裂・融合（年に1回）
   // 分裂
   for (const g of alive) {
     if (!g.alive || g.moveTo) continue;
@@ -911,7 +1062,7 @@ function peSplit(people, g, S, world, rng, ev, rel) {
   }
   const f = all ? moved / all : 0;
   c.food = g.food * f; g.food -= c.food;
-  c.policy = g.policy; c.fed = g.fed; c.homeX = g.homeX; c.homeY = g.homeY;
+  c.cult = (g.cult || []).slice(); c.policy = g.policy; c.fed = g.fed; c.homeX = g.homeX; c.homeY = g.homeY;
   c.moveTo = { x: d.x, y: d.y, by: 'ai' };
   const hz = peHazards(people); hz.fert[c.id] = hz.fert[g.id]; hz.starv[c.id] = hz.starv[g.id]; hz.cold[c.id] = hz.cold[g.id]; hz.dis[c.id] = hz.dis[g.id]; hz.hungerDis[c.id] = hz.hungerDis[g.id];
   P.gdemand.set(P.gdemand.subarray(g.id * NJOB, g.id * NJOB + NJOB), c.id * NJOB);
@@ -941,7 +1092,7 @@ function peopleSave(people) {
   const P = people.npc, n = P.n, cut = (a, per = 1) => a.slice(0, n * per);
   const pool = [], poolStart = [0]; for (let g = 0; g < P.groups; g++) { for (const v of P.pool[g]) pool.push(v); poolStart.push(pool.length); }
   const meta = { version: people.version, nextGroupId: people.nextGroupId, nextEthId: people.nextEthId, rngState: people.rngState, playerEth: people.playerEth,
-    ethnicities: people.ethnicities, groups: people.groups.map(g => Object.assign({}, g, { c6: undefined })), contacts: people.contacts, languages: people.languages, autoNames: people.autoNames || {}, placeLangs: people.placeLangs || {}, nextLangId: people.nextLangId || 0, player: people.player,
+    ethnicities: people.ethnicities, groups: people.groups.map(g => Object.assign({}, g, { c6: undefined })), contacts: people.contacts, ties: people.ties || {}, ethSpeed: people.ethSpeed || 1, languages: people.languages, autoNames: people.autoNames || {}, placeLangs: people.placeLangs || {}, nextLangId: people.nextLangId || 0, player: people.player,
     npc: { seed: P.seed, n, day: P.day, rng: P.rng, stats: P.stats, delta: Array.from(P.delta), focus: Array.from(P.focus), ethSecondary: Array.from(P.ethSecondary), groups: P.groups } };
   return { meta, birth: cut(P.birth), death: cut(P.death), sex: cut(P.sex), group: cut(P.group), mother: cut(P.mother), father: cut(P.father), spouse: cut(P.spouse), job: cut(P.job), flags: cut(P.flags),
     eth: cut(P.eth), house: cut(P.house), cause: cut(P.cause), groupEth: P.groupEth.slice(), relId: cut(P.relId, SOC_K), relV: cut(P.relV, SOC_K * 3), pers: cut(P.pers, 4), skills: cut(P.skills, NSKILL), train: cut(P.train, Npc.NABIL), gdemand: P.gdemand.slice(), gflags: P.gflags.slice(), pool: Int32Array.from(pool), poolStart: Int32Array.from(poolStart),
@@ -949,7 +1100,7 @@ function peopleSave(people) {
 }
 function peopleLoad(sv) {
   const m = sv.meta, people = { version: m.version, nextGroupId: m.nextGroupId, nextEthId: m.nextEthId, rngState: m.rngState, playerEth: m.playerEth, ethnicities: m.ethnicities,
-    groups: m.groups.map(g => Object.assign(g, { c6: [0, 0, 0, 0, 0, 0] })), contacts: m.contacts, languages: m.languages, autoNames: m.autoNames || {}, placeLangs: m.placeLangs || {}, nextLangId: m.nextLangId || 0, player: m.player || null, npc: null, haz: null, stat: null };
+    groups: m.groups.map(g => Object.assign(g, { c6: [0, 0, 0, 0, 0, 0] })), contacts: m.contacts, ties: m.ties || {}, ethSpeed: m.ethSpeed || 1, nbr: {}, languages: m.languages, autoNames: m.autoNames || {}, placeLangs: m.placeLangs || {}, nextLangId: m.nextLangId || 0, player: m.player || null, npc: null, haz: null, stat: null };
   const n = m.npc.n, P = people.npc = new Population(m.npc.seed, m.npc.groups, Math.max(1024, n * 2));
   const put = (name, src, per = 1) => { P[name].set(src.subarray ? src.subarray(0, n * per) : src); };
   for (const k of ['birth', 'death', 'sex', 'group', 'mother', 'father', 'spouse', 'job', 'flags']) put(k, sv[k]);
@@ -974,6 +1125,6 @@ function peopleEthCounts(people) {
   const P = people.npc, o = {}; for (let i = 0; i < P.n; i++) { if (P.death[i] !== ALIVE) continue; const e = P.eth[i] || P.groupEth[P.group[i]]; o[e] = (o[e] || 0) + 1; } return o;
 }
 
-if (typeof module !== 'undefined' && module.exports) module.exports = { PROPOSALS, peopleProposal, LEADERSHIP, peLeaders, ACTIVITIES, peopleSetActivity, peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
-else root.WohPeople = { PROPOSALS, peopleProposal, LEADERSHIP, ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+if (typeof module !== 'undefined' && module.exports) module.exports = { peopleForceEthSplit, ETHNO, CULT_NAMES, peCultureRules, PROPOSALS, peopleProposal, LEADERSHIP, peLeaders, ACTIVITIES, peopleSetActivity, peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+else root.WohPeople = { peopleForceEthSplit, ETHNO, CULT_NAMES, PROPOSALS, peopleProposal, LEADERSHIP, ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

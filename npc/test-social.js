@@ -23,3 +23,5 @@ edgeStats(YEARS + '年後'); leaderInfo(YEARS + '年後');
 console.log(`首長の交代 ${cnt.leaderChange}回（${YEARS}年、集団あたり年 ${(cnt.leaderChange / YEARS / people.groups.filter(g => g.alive).length).toFixed(2)}回）`);
 times.sort((a, b) => a - b); console.log(`1か月の計算：平均 ${(times.reduce((a, b) => a + b, 0) / times.length).toFixed(1)}ms 95% ${times[Math.floor(times.length * .95)].toFixed(1)}ms 最大 ${times[times.length - 1].toFixed(1)}ms`);
 const sv = P.peopleSave(people), p2 = P.peopleLoad(sv); console.log('保存→読み込み：関係が一致', Buffer.compare(Buffer.from(sv.relV.buffer, 0, 600), Buffer.from(p2.npc.relV.buffer, 0, 600)) === 0, '首長が一致', JSON.stringify(people.groups.map(g => g.leader)) === JSON.stringify(p2.groups.map(g => g.leader)));
+console.log('集団をまたぐ結婚', N.stats.crossMarriages || 0, '／結婚 ', N.stats.marriages, `（${(100 * (N.stats.crossMarriages || 0) / N.stats.marriages).toFixed(1)}%）`);
+let mixed = 0, adults = 0; for (let i = 0; i < N.n; i++) if (N.death[i] === ALIVE && N.age(i) >= 12) { adults++; if (N.ethSecondary.has(i)) mixed++; } console.log('副次的な民族を持つ人', mixed, '／12歳以上', adults);
