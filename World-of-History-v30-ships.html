@@ -267,20 +267,102 @@
   #actions button.active{background:#efb52c;color:#172436;box-shadow:0 0 8px 3px #ffd34e88}
 
 .integration-ui-hidden #toolbar,.integration-ui-hidden #info,.integration-ui-hidden #legend,.integration-ui-hidden #lab,.integration-ui-hidden #timebar,.integration-ui-hidden #toasts,.integration-ui-hidden #labels,.integration-ui-hidden #hist,.integration-ui-hidden #menu,.integration-ui-hidden #movementNotice{display:none!important}.integration-third #labels{display:none!important}#uiToggle{z-index:100;min-height:44px;min-width:80px;padding:8px;border:1px solid #ffffff88;border-radius:8px;color:white;font:14px system-ui;top:calc(8px + env(safe-area-inset-top))}#toolbar{padding-right:105px;max-height:45vh;overflow:auto}#actions,#joystick{z-index:20}#loading{z-index:200}#integrationCompat{display:none!important}#displayChoices{position:fixed;left:8px;z-index:130;display:grid;grid-template-columns:repeat(4,minmax(65px,1fr));gap:6px;max-width:calc(100vw - 16px);padding:10px;background:#142a40f5;border:1px solid #8badcb;border-radius:10px}#displayChoices[hidden],.integration-ui-hidden #displayChoices{display:none!important}#displayChoices button{min-height:44px;padding:8px;background:#294e70;color:white;border:1px solid #8badcb;border-radius:6px;font:14px system-ui}#displayChoices button.selected{background:#8b601d}
-  #forageBar{position:fixed;z-index:20;right:calc(16px + env(safe-area-inset-right));bottom:calc(16px + 64px*2 + 12px + 12px + env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+  #forageBar{display:none!important;position:fixed;z-index:20;right:calc(16px + env(safe-area-inset-right));bottom:calc(16px + 64px + 10px + env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:flex-end;gap:6px}
   #forageBar .fb{display:flex;gap:6px}
   #forageBar button{height:44px;min-width:64px;padding:0 10px;border-radius:22px;border:1px solid #ffffff88;background:#2d5a2fe8;color:#fff;font:13px system-ui;touch-action:manipulation}
   #forageBar button.mat{background:#5a4a2de8}#forageBar button.bag{background:#183d5ce8}
-  #forageMsg{max-width:min(320px,60vw);padding:4px 10px;border-radius:10px;background:#0c1420dd;color:#ffe6a8;font:12px system-ui;text-align:right;display:none;pointer-events:none}
-  #bagPanel{position:fixed;z-index:21;left:50%;transform:translateX(-50%);bottom:calc(10px + env(safe-area-inset-bottom));width:min(340px,48vw);max-height:78vh;overflow:auto;background:#0c1420f2;border:1px solid #ffffff44;border-radius:12px;padding:8px 10px;font:12px system-ui;color:#e8eef5;display:none}
+  body:not(.integration-third) #forageBar,body:not(.integration-third) #bagPanel{display:none!important}
+  /* ---- 新しいHUD（モックに合わせた配置）。--hs は画面の大きさに合わせた倍率（JSが設定） */
+  :root { --hs: 1; --u: calc(var(--hs) * 1px); --hud-gold: #f0d27a; --hud-cream: #f2ead2; --hud-line: #9c8650; --hud-bg: rgba(15, 18, 11, .86); }
+  body:not(.integration-third) .hud { display: none !important; }
+  body.hud-off .hud:not(#hudBtns) { display: none !important; }
+  .hud { position: fixed; z-index: 40; color: var(--hud-cream); font-size: calc(var(--u) * 12); font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif; text-shadow: 0 1px 2px #000c; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+  .hud svg { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; display: block; }
+  /* 左上：季節・日付・天気・時間 */
+  #hudTL { left: calc(8px + env(safe-area-inset-left)); top: calc(6px + env(safe-area-inset-top)); width: calc(var(--u) * 272); padding: calc(var(--u) * 6) calc(var(--u) * 10) calc(var(--u) * 6) calc(var(--u) * 12); background: linear-gradient(90deg, rgba(14,17,10,.9) 0%, rgba(14,17,10,.78) 72%, rgba(14,17,10,0) 100%); border-radius: 10px 0 0 10px; }
+  #hudTL .r1 { display: flex; align-items: baseline; gap: calc(var(--u) * 8); white-space: nowrap; cursor: pointer; }
+  #hudTL .season { color: var(--hud-gold); font-weight: 800; font-size: calc(var(--u) * 21); line-height: 1; }
+  #hudTL .date { font-size: calc(var(--u) * 13); font-weight: 600; font-variant-numeric: tabular-nums; }
+  #hudTL .r2 { display: flex; align-items: center; gap: calc(var(--u) * 6); margin-top: calc(var(--u) * 5); }
+  #hudTL .wx { display: flex; align-items: center; gap: calc(var(--u) * 4); font-size: calc(var(--u) * 12.5); white-space: nowrap; min-width: calc(var(--u) * 92); }
+  #hudTL .wx svg { width: calc(var(--u) * 17); height: calc(var(--u) * 17); color: var(--hud-gold); }
+  #hudTL #timebar { position: static; display: flex; align-items: center; gap: calc(var(--u) * 3); text-shadow: none; z-index: auto; margin: 0; }
+  #hudTL #timebar #tDate { display: none; }
+  #hudTL #timebar button { height: calc(var(--u) * 24); min-width: calc(var(--u) * 28); padding: 0 calc(var(--u) * 6); font-size: calc(var(--u) * 11); border-radius: calc(var(--u) * 12); border: 1px solid var(--hud-line); background: rgba(30,28,16,.8); color: var(--hud-cream); }
+  /* 左：目標 */
+  #hudGoal { left: calc(8px + env(safe-area-inset-left)); top: calc(6px + env(safe-area-inset-top) + var(--u) * 70); width: calc(var(--u) * 252); padding: calc(var(--u) * 6) calc(var(--u) * 10) calc(var(--u) * 7) calc(var(--u) * 12); background: linear-gradient(90deg, rgba(14,17,10,.9) 0%, rgba(14,17,10,.78) 72%, rgba(14,17,10,0) 100%); border-radius: 10px 0 0 10px; }
+  #hudGoal .gt { display: flex; align-items: center; gap: calc(var(--u) * 5); color: var(--hud-gold); font-weight: 800; font-size: calc(var(--u) * 12.5); }
+  #hudGoal .gt i { width: calc(var(--u) * 9); height: calc(var(--u) * 9); border: 2px solid var(--hud-gold); transform: rotate(45deg); display: inline-block; }
+  #hudGoal .gt span { margin-left: auto; font-weight: 600; color: #cdbf93; font-size: calc(var(--u) * 10.5); }
+  #hudGoal .gl { display: flex; align-items: center; gap: calc(var(--u) * 6); margin-top: calc(var(--u) * 4); font-size: calc(var(--u) * 12); }
+  #hudGoal .gl b { width: calc(var(--u) * 11); height: calc(var(--u) * 11); border: 1.5px solid var(--hud-cream); border-radius: 2px; flex: 0 0 auto; }
+  #hudGoal.all .gl b { background: var(--hud-gold); border-color: var(--hud-gold); }
+  /* 上中央：方位 */
+  #hudCompass { left: calc(8px + env(safe-area-inset-left) + var(--u) * 288); top: calc(8px + env(safe-area-inset-top)); width: calc(var(--u) * 212); height: calc(var(--u) * 40); pointer-events: none; }
+  #hudCompass .cl { position: absolute; top: calc(var(--u) * 10); transform: translateX(-50%); font-weight: 700; font-size: calc(var(--u) * 12); }
+  #hudCompass .cl.n { color: var(--hud-gold); font-size: calc(var(--u) * 19); top: calc(var(--u) * 5); font-weight: 800; }
+  #hudCompass .ct { position: absolute; top: calc(var(--u) * 28); width: 1px; height: calc(var(--u) * 5); background: #cdbf93aa; transform: translateX(-50%); }
+  #hudCompass .ct.m { height: calc(var(--u) * 8); background: #e8dcb4; }
+  #hudCompass .ca { position: absolute; left: 50%; top: 0; transform: translateX(-50%); width: 0; height: 0; border: calc(var(--u) * 5) solid transparent; border-top: calc(var(--u) * 7) solid var(--hud-gold); }
+  #hudCompass .cb { position: absolute; left: 0; right: 0; top: calc(var(--u) * 32); height: 1px; background: linear-gradient(90deg, transparent, #cdbf93 20%, #cdbf93 80%, transparent); }
+  /* 右上：ボタン */
+  #hudBtns { top: calc(8px + env(safe-area-inset-top)); right: calc(8px + env(safe-area-inset-right) + var(--u) * 134); display: flex; gap: calc(var(--u) * 6); }
+  .hb { width: calc(var(--u) * 46); height: calc(var(--u) * 46); border-radius: calc(var(--u) * 10); border: 1.5px solid var(--hud-line); background: linear-gradient(180deg, rgba(34,36,24,.92), rgba(14,17,10,.94)); color: var(--hud-cream); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(var(--u) * 2); font-size: calc(var(--u) * 9.5); padding: 0; touch-action: manipulation; box-shadow: inset 0 0 0 1px #0007; }
+  .hb svg { width: calc(var(--u) * 21); height: calc(var(--u) * 21); }
+  .hb:active, .hb.on { background: linear-gradient(180deg, #6b5420, #3b2e10); }
+  body.hud-off #hudBtns .hb:not(.ui) { display: none; }
+  /* 右上：丸いミニマップとその操作 */
+  #miniZoom { right: calc(8px + env(safe-area-inset-right) + var(--u) * 132); top: calc(8px + env(safe-area-inset-top) + var(--u) * 54); display: flex; flex-direction: column; gap: calc(var(--u) * 5); z-index: 41; }
+  .mz { width: calc(var(--u) * 28); height: calc(var(--u) * 28); border-radius: 50%; border: 1.5px solid var(--hud-line); background: rgba(14,17,10,.92); color: var(--hud-cream); font-size: calc(var(--u) * 17); line-height: 1; padding: 0; display: flex; align-items: center; justify-content: center; touch-action: manipulation; }
+  .mz svg { width: calc(var(--u) * 15); height: calc(var(--u) * 15); }
+  .mz.on { background: #6b5420; }
+  body:has(#info.show) #miniMap, body:has(#info.show) #miniZoom { display: none !important; }
+  body:has(.sheet.show) #miniZoom { display: none !important; }
+  /* 左下：ステータス */
+  #hudStatus { left: calc(8px + env(safe-area-inset-left)); bottom: calc(8px + env(safe-area-inset-bottom)); width: calc(var(--u) * 178); padding: calc(var(--u) * 6) calc(var(--u) * 8); background: var(--hud-bg); border: 1.5px solid var(--hud-line); border-radius: calc(var(--u) * 8); display: flex; flex-direction: column; gap: calc(var(--u) * 4); }
+  #hudStatus .sr { display: flex; align-items: center; gap: calc(var(--u) * 6); }
+  #hudStatus .sr svg { width: calc(var(--u) * 13); height: calc(var(--u) * 13); flex: 0 0 auto; }
+  #hudStatus .tr { flex: 1; height: calc(var(--u) * 8); border-radius: 5px; background: #00000099; border: 1px solid #5b5036; overflow: hidden; }
+  #hudStatus .tr b { display: block; height: 100%; border-radius: 4px; }
+  #hudStatus .sr.hp { color: #e5524a; } #hudStatus .hp b { background: linear-gradient(#f26b61, #c23a33); }
+  #hudStatus .sr.st { color: #7fd35a; } #hudStatus .st b { background: linear-gradient(#9be276, #5eae3c); }
+  #hudStatus .sr.fd { color: #f1c24a; } #hudStatus .fd b { background: linear-gradient(#f6d567, #d3a02b); }
+  #hudStatus .sr.wt { color: #5bb4ea; } #hudStatus .wt b { background: linear-gradient(#78c8f4, #3d8fc9); }
+  #hudStatus .sr.soon { opacity: .55; }
+  /* 下中央：ホットバー */
+  #hudHot { left: 50%; transform: translateX(-50%); bottom: calc(8px + env(safe-area-inset-bottom)); display: flex; gap: calc(var(--u) * 6); }
+  #hudHot .hb { width: calc(var(--u) * 52); height: calc(var(--u) * 52); font-size: calc(var(--u) * 10); }
+  #hudHot .hb svg { width: calc(var(--u) * 22); height: calc(var(--u) * 22); }
+  /* 右下：操作ボタン（弧に並べる） */
+  .rb { position: fixed; z-index: 41; border-radius: 50% !important; border: 2px solid #d9cfae !important; background: radial-gradient(circle at 50% 35%, rgba(40,42,30,.94), rgba(12,15,9,.96)) !important; color: var(--hud-cream) !important; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(var(--u) * 2); padding: 0; font-size: calc(var(--u) * 10.5); font-weight: 600; touch-action: none; box-shadow: 0 0 0 1px #000a, inset 0 0 0 1px #0007; text-shadow: 0 1px 2px #000; -webkit-user-select: none; user-select: none; }
+  .rb svg { width: calc(var(--u) * 24); height: calc(var(--u) * 24); fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .rb:active, .rb.active { background: radial-gradient(circle at 50% 35%, #8a6a22, #4a3a14) !important; }
+  #hudMode { position: fixed; z-index: 41; display: flex; gap: calc(var(--u) * 4); right: calc(8px + env(safe-area-inset-right) + var(--u) * 140); bottom: calc(8px + env(safe-area-inset-bottom) + var(--u) * 188); }
+  #hudMode button { height: calc(var(--u) * 24); padding: 0 calc(var(--u) * 9); border-radius: calc(var(--u) * 12); border: 1px solid var(--hud-line); background: rgba(14,17,10,.88); color: var(--hud-cream); font-size: calc(var(--u) * 11); }
+  #hudMode button.on { background: #6b5420; border-color: var(--hud-gold); }
+
+  body.integration-third #actions #jump { right: calc(14px + env(safe-area-inset-right)); bottom: calc(var(--u) * 134 + env(safe-area-inset-bottom)); width: calc(var(--u) * 64); height: calc(var(--u) * 64); }
+  body.integration-third #actions #sprint { right: calc(var(--u) * 70 + env(safe-area-inset-right)); bottom: calc(var(--u) * 91 + env(safe-area-inset-bottom)); width: calc(var(--u) * 64); height: calc(var(--u) * 64); }
+  body.integration-third #actions #crouch { right: calc(14px + env(safe-area-inset-right)); bottom: calc(var(--u) * 53 + env(safe-area-inset-bottom)); width: calc(var(--u) * 64); height: calc(var(--u) * 64); }
+  body.integration-third #hudTalk { right: calc(var(--u) * 156 + env(safe-area-inset-right)); bottom: calc(var(--u) * 91 + env(safe-area-inset-bottom)); width: calc(var(--u) * 76); height: calc(var(--u) * 76); }
+  body.integration-third #actions .rb { position: fixed; }
+
+  #forageMsg{position:fixed;z-index:60;left:50%;transform:translateX(-50%);bottom:calc(8px + env(safe-area-inset-bottom) + var(--u,1px) * 62);max-width:min(380px,56vw);padding:4px 10px;border-radius:10px;background:#0c1420dd;color:#ffe6a8;font:12px system-ui;text-align:center;display:none;pointer-events:none}
+  #bagPanel{position:fixed;z-index:60;left:50%;transform:translateX(-50%);bottom:calc(10px + env(safe-area-inset-bottom) + var(--u,1px) * 62);width:min(340px,48vw);max-height:calc(100vh - 80px - var(--u,1px) * 62);overflow:auto;background:#0c1420f2;border:1px solid #ffffff44;border-radius:12px;padding:8px 10px;font:12px system-ui;color:#e8eef5;display:none}
   #bagPanel.show{display:block}#bagPanel .bh{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-weight:700}
   #bagPanel .br{display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid #ffffff14}#bagPanel .br i{color:#9fb0c3;font-style:normal}
   #bagPanel .bst{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:3px 0;color:#c9d6e4;font-size:11.5px}#bagPanel .bar{flex:0 0 90px;height:8px;border-radius:4px;background:#ffffff1a;overflow:hidden}#bagPanel .bar b{display:block;height:100%;background:#6fbf5a}#bagPanel .bar b.hungry{background:#e0a640}#bagPanel .bar b.starving{background:#d9534f}
+
+  #talkPanel{position:fixed;z-index:60;left:50%;transform:translateX(-50%);bottom:calc(10px + env(safe-area-inset-bottom) + var(--u,1px) * 62);width:min(360px,52vw);max-height:calc(100vh - 80px - var(--u,1px) * 62);overflow:auto;background:#0c1420f2;border:1px solid #ffffff44;border-radius:12px;padding:8px 10px;font:12px system-ui;color:#e8eef5;display:none}
+  #talkPanel.show{display:block}#talkPanel .th{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:4px}#talkPanel .th b{font-size:14px}#talkPanel .tm{color:#9fb0c3;font-size:11px;margin-bottom:4px}
+  #talkPanel .tsay{background:#16263a;border-radius:8px;padding:6px 8px;margin:6px 0;line-height:1.5;min-height:2.4em}
+  #talkPanel .tact{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}#talkPanel button{height:28px;padding:0 10px;border-radius:14px;border:1px solid #ffffff44;background:#24384f;color:#e8eef5;font-size:12px}
+  #bagPanel .bstand{display:flex;align-items:center;gap:8px;color:#c9d6e4;font-size:11.5px;padding:3px 0}#bagPanel .bstand .bar{flex:1}
   #bagPanel .bsec{margin-top:6px;color:#9fd0ff;font-weight:700}#bagPanel .bnote{color:#8fa3b8;font-size:10px;line-height:1.35;margin-bottom:4px}#bagPanel button.dim{opacity:.45}
   #bagPanel .bact{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 4px}
   #bagPanel button{height:26px;padding:0 8px;border-radius:13px;border:1px solid #ffffff44;background:#24384f;color:#e8eef5;font-size:11px}
 </style>
-<button id="uiToggle">UIを表示</button><button id="joystick" aria-label="移動スティック"><span id="stick"></span></button><div id="actions"><button id="sprint" aria-pressed="false">ダッシュ</button><button id="jump">ジャンプ</button><button id="crouch" aria-pressed="false">しゃがむ</button></div><div id="forageBar"><div id="forageMsg"></div><div class="fb"><button id="fgFood">食料を探す</button><button id="fgMat" class="mat">素材を探す</button><button id="fgView" class="bag">視点：3人称</button><button id="fgBag" class="bag">持ち物</button></div></div><div id="bagPanel"></div><div id="movementNotice"></div><div id="integrationCompat"><details id="settings"></details><p id="status"></p><button id="generate"></button><input id="wire" type="checkbox"></div>
+<button id="uiToggle">UIを表示</button><button id="joystick" aria-label="移動スティック"><span id="stick"></span></button><div id="actions"><button id="sprint" aria-pressed="false">ダッシュ</button><button id="jump">ジャンプ</button><button id="crouch" aria-pressed="false">しゃがむ</button></div><div id="forageMsg"></div><div id="forageBar"><div class="fb"><button id="fgFood">食料を探す</button><button id="fgMat" class="mat">素材を探す</button><button id="fgView" class="bag">視点：3人称</button><button id="fgBag" class="bag">持ち物</button></div></div><div id="bagPanel"></div><div id="talkPanel"></div><div id="movementNotice"></div><div id="integrationCompat"><details id="settings"></details><p id="status"></p><button id="generate"></button><input id="wire" type="checkbox"></div>
 
 <div id="toolbar">
   <button id="btnRegen" class="primary">大陸を再生成</button>
@@ -335,7 +417,7 @@
 </div>
 <div id="menu" class="sheet">
   <div class="shead"><b>メニュー</b><button id="menuClose">閉じる</button></div>
-  <div class="sfilter"><button id="menuTitle">タイトルへ戻る</button><button id="menuHist">歴史を見る</button><button id="menuExport">ファイルに書き出す</button><button id="menuImport">ファイルから読み込む</button></div>
+  <div class="sfilter"><button id="menuTitle">タイトルへ戻る</button><button id="menuDevBar" class="dev-only">開発ツール（上のボタン列）</button><button id="menuHist">歴史を見る</button><button id="menuExport">ファイルに書き出す</button><button id="menuImport">ファイルから読み込む</button></div>
   <input type="file" id="menuFile" accept=".json,application/json" style="display:none">
   <div id="menuSlots" class="scrollable"></div>
   <div id="menuMsg"></div>
@@ -6122,7 +6204,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
 
   // 体と暮らしの状態：kcal＝おなかの蓄え、t＝最後に時間を反映した日、sickUntil＝体調不良が続く日、fire＝焚き火、soak＝水にさらした木の実
   const KCAL_MAX = 3000, KCAL_DAY = 2000, KCAL_START = 2200;
-  function newState() { return { inv: {}, depl: {}, total: {}, wear: {}, home: null, store: {}, seq: 0, kcal: KCAL_START, t: 0, sickUntil: 0, fire: null, soak: null }; }
+  function newState() { return { inv: {}, depl: {}, total: {}, wear: {}, home: null, store: {}, n: {}, hp: 100, sp: 100, water: 80, exhausted: false, standing: 0, given: 0, rationAt: -99, lessons: {}, talkDay: {}, seq: 0, kcal: KCAL_START, t: 0, sickUntil: 0, fire: null, soak: null }; }
   function count(st, id) { return st.inv[id] || 0; }
 
   // 場所の状況から、拾えるものの「豊かさ」を求める（0〜）
@@ -6208,11 +6290,54 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     return ITEMS.filter(it => st.inv[it.id]).map(it => ({ id: it.id, name: it.name, n: st.inv[it.id], bulk: st.inv[it.id] * it.bulk, raw: !!it.raw }));
   }
 
+  // ---------------------------------------------------------------- 体力・スタミナ・水分
+  function rest(st, hp) { st.hp = Math.min(HP_MAX, (st.hp == null ? 100 : st.hp) + hp); st.sp = staminaCap(st); st.exhausted = false; }
+  // スタミナの上限：体力が低い・喉が渇いている・飢えていると下がる
+  function staminaCap(st) {
+    const hp = st.hp == null ? 100 : st.hp, wt = st.water == null ? 80 : st.water;
+    return Math.max(10, SP_MAX * (0.55 + 0.45 * hp / HP_MAX) * (wt < 15 ? 0.6 : 1) * (st.kcal < 250 ? 0.6 : 1));
+  }
+  // 実時間で動く：ダッシュ中は減り、休むと戻る。尽きたら、25まで戻るまでダッシュできない
+  const SP_DASH = 6, SP_REST = 7, SP_WALK = 2, SP_RECOVER = 25;
+  function staminaStep(st, dt, mv) {
+    mv = mv || {}; if (st.sp == null) st.sp = SP_MAX;
+    const cap = staminaCap(st), dash = !!(mv.sprinting && mv.moving && !st.exhausted);
+    if (dash) { st.sp -= SP_DASH * dt; st.water = Math.max(0, (st.water == null ? 80 : st.water) - 0.25 * dt); }
+    else st.sp += (mv.moving ? SP_WALK : SP_REST) * dt;
+    if (st.sp > cap) st.sp = cap;
+    if (st.sp <= 0) { st.sp = 0; st.exhausted = true; } else if (st.exhausted && st.sp >= SP_RECOVER) st.exhausted = false;
+    return { lockSprint: !!st.exhausted || (st.hp != null && st.hp <= 10), lockJump: st.sp < JUMP_COST };
+  }
+  const JUMP_COST = 8;
+  function jumpCost(st) { st.sp = Math.max(0, (st.sp == null ? SP_MAX : st.sp) - JUMP_COST); if (st.sp <= 0) st.exhausted = true; }
+  // 水を飲む：川や湖のそば（真水）で。海の水は飲めない
+  function drink(st, freshWater) {
+    if (!freshWater) return { ok: false, why: '飲める水がない（川や湖のそばで。海の水は飲めない）' };
+    const w = st.water == null ? 80 : st.water; if (w >= 98) return { ok: false, why: 'いまは喉が渇いていない' };
+    st.water = Math.min(WATER_MAX, w + 45); bump(st, 'drink'); return { ok: true, gain: Math.round(st.water - w) };
+  }
+  function vitalsInfo(st) {
+    const hp = st.hp == null ? 100 : st.hp, sp = st.sp == null ? 100 : st.sp, wt = st.water == null ? 80 : st.water;
+    return { hp, sp, water: wt, food: 100 * st.kcal / KCAL_MAX, spCap: staminaCap(st), exhausted: !!st.exhausted, dying: hp <= 10, thirsty: wt < 25 };
+  }
+
   // ---------------------------------------------------------------- 食べる・火・調理
+  const HP_MAX = 100, SP_MAX = 100, WATER_MAX = 100, WATER_DAY = 30;
+  // 周りの様子（気温・屋根や火のそばか）。画面側が毎回設定する（保存しない）
+  function setEnv(st, e) { st.env = e && Number.isFinite(e.temp) ? { temp: e.temp, sheltered: !!e.sheltered } : null; }
   // 時間：day は日数（ゲームの時計）。時計が進んだ分だけおなかが減る
   function tick(st, day) {
     if (day < st.t) { st.t = day; return; }           // 時計が戻った（別の記録を読み込んだ等）
-    const d = day - st.t; if (d > 0) { st.kcal = Math.max(0, st.kcal - d * KCAL_DAY); st.t = day; }
+    const d = day - st.t;
+    if (d > 0) {
+      st.kcal = Math.max(0, st.kcal - d * KCAL_DAY); st.standing = Math.max(0, (st.standing || 0) - d * 0.04); st.t = day;
+      st.water = Math.max(0, (st.water == null ? 80 : st.water) - d * WATER_DAY);
+      // 体力：飢え・渇き・病気・寒さで減り、満たされていれば少しずつ戻る
+      const env = st.env || {}, cold = env.temp != null && env.temp < 0 && !env.sheltered ? Math.min(8, -env.temp * 0.4) : 0;
+      const loss = (st.water <= 0 ? 12 : 0) + (st.kcal <= 0 ? 8 : 0) + (day < st.sickUntil ? 3 : 0) + cold;
+      const regen = loss === 0 && st.kcal > 900 && st.water > 30 ? 5 : 0;
+      st.hp = Math.max(1, Math.min(HP_MAX, (st.hp == null ? 100 : st.hp) + (regen - loss) * Math.min(d, 30)));
+    }
   }
   function hunger(st) {
     const k = st.kcal;
@@ -6220,11 +6345,12 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
   }
   function sick(st, day) { return day < st.sickUntil; }
   // 採取に効く元気さ（空腹・体調不良で下がる）
-  function vigor(st, day) { return hunger(st).vigor * (sick(st, day) ? 0.75 : 1); }
+  function vigor(st, day) { const hp = st.hp == null ? 100 : st.hp, wt = st.water == null ? 80 : st.water; return hunger(st).vigor * (sick(st, day) ? 0.75 : 1) * (hp < 10 ? 0.5 : hp < 30 ? 0.7 : 1) * (wt < 15 ? 0.85 : 1); }
 
   // 生で食べたときの扱い：kcal の割合、体調を崩す確率。木の実（ドングリ）は渋くてそのままでは食べられない
   const RAW = { nut: null, root: { f: 0.5, bad: 0.3 }, shell: { f: 0.6, bad: 0.4 }, fish: { f: 0.6, bad: 0.4 } };
   const EAT_FULL = 3000;
+  const WATER_GAIN = { fruit: 8, bud: 4, shell: 2, stew: 18, shellC: 2 };      // 食べ物からとれる水分
   // 食べる：1個ずつ。返り値 { ok, why?, kcal?, sick? }
   function eat(st, id, rng, day) {
     const it = ITEMS[IDX[id]]; if (!it || it.group !== 'food') return { ok: false, why: '食べ物ではない' };
@@ -6234,7 +6360,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     if (it.raw) { const r = RAW[id]; if (!r) return { ok: false, why: it.name + 'は渋くてそのままでは食べられない（水にさらして焼く）' }; f = r.f; bad = r.bad; }
     const gain = it.kcal * f;
     st.kcal = Math.min(EAT_FULL, st.kcal + gain);
-    drop(st, id, 1);
+    drop(st, id, 1); if (WATER_GAIN[id]) st.water = Math.min(WATER_MAX, (st.water == null ? 80 : st.water) + WATER_GAIN[id]);
+    if (!it.raw && id !== 'fruit' && id !== 'bud' && id !== 'seed') bump(st, 'cooked');
     let ill = false;
     if (bad && rng() < bad) { st.sickUntil = Math.max(st.sickUntil, day + 2); ill = true; }
     return { ok: true, name: it.name, kcal: Math.round(gain), sick: ill };
@@ -6242,7 +6369,12 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
 
   // 焚き火：薪2と繊維1（火口）を使う。失敗すると繊維だけ失う
   const FIRE_WOOD = 2, WOOD_DAYS = 0.75, FIRE_RANGE = 2;
-  function fireActive(st, bx, by, day) { const f = st.fire; return !!f && day < f.until && Math.abs(f.bx - bx) <= FIRE_RANGE && Math.abs(f.by - by) <= FIRE_RANGE; }
+  function ownFireActive(st, bx, by, day) { const f = st.fire; return !!f && day < f.until && Math.abs(f.bx - bx) <= FIRE_RANGE && Math.abs(f.by - by) <= FIRE_RANGE; }
+  // 集団の野営地の中心にある、みんなの炉（保存しない。画面側が今の野営地に合わせて毎回設定する）
+  const COMMONS_RANGE = 1;
+  function setCommons(st, c) { st.commons = c && Number.isFinite(c.bx) && Number.isFinite(c.by) ? { bx: Math.floor(c.bx), by: Math.floor(c.by) } : null; }
+  function atCommons(st, bx, by) { const c = st.commons; return !!c && Math.abs(c.bx - Math.floor(bx)) <= COMMONS_RANGE && Math.abs(c.by - Math.floor(by)) <= COMMONS_RANGE; }
+  function fireActive(st, bx, by, day) { return ownFireActive(st, bx, by, day) || atCommons(st, bx, by); }
   function fireLeft(st, day) { return st.fire && day < st.fire.until ? st.fire.until - day : 0; }
   function makeFire(st, bx, by, day, skill, rng, wet) {
     if (st.fire && day < st.fire.until && Math.abs(st.fire.bx - bx) <= FIRE_RANGE && Math.abs(st.fire.by - by) <= FIRE_RANGE) return { ok: false, why: 'ここにはもう火がある' };
@@ -6253,11 +6385,13 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     if (rng() > p) return { ok: false, why: '火がつかなかった（繊維を1つ失った）' + (wet ? '。水辺は湿っている。少し離れてみよう' : '') };
     drop(st, 'firewood', FIRE_WOOD);
     st.fire = { bx: Math.floor(bx), by: Math.floor(by), until: day + FIRE_WOOD * WOOD_DAYS };
+    bump(st, 'fire');
     return { ok: true, days: FIRE_WOOD * WOOD_DAYS };
   }
   function stoke(st, bx, by, day) {
     if (!fireActive(st, bx, by, day)) return { ok: false, why: '近くに火がない' };
     if (!(st.inv.firewood > 0)) return { ok: false, why: '薪がない' };
+    if (!ownFireActive(st, bx, by, day)) { drop(st, 'firewood', 1); gainStanding(st, 1.5); bump(st, 'give'); return { ok: true, commons: true }; }   // みんなの炉に薪をくべる
     drop(st, 'firewood', 1); st.fire.until += WOOD_DAYS; return { ok: true, days: fireLeft(st, day) };
   }
 
@@ -6269,7 +6403,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     for (const raw in ROAST) { const c = st.inv[raw] || 0; if (c > 0) { const k = Math.min(c, 30 - n); if (k <= 0) break; drop(st, raw, k); st.inv[ROAST[raw]] = (st.inv[ROAST[raw]] || 0) + k; made[ROAST[raw]] = k; n += k; } }
     if (!n) return { ok: false, why: '焼ける物がない（魚・貝・根・草の実・水さらしした木の実）' };
     // 焼くには火の勢いを少し使う
-    st.fire.until = Math.max(day, st.fire.until - 0.1 - n * 0.01);
+    if (ownFireActive(st, bx, by, day)) st.fire.until = Math.max(day, st.fire.until - 0.1 - n * 0.01); else bump(st, 'commonCook');
     return { ok: true, made, n };
   }
 
@@ -6322,7 +6456,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     if (rng() > p) { for (const k in r.lose) drop(st, k, r.lose[k]); return { ok: false, why: name + 'づくりに失敗した（' + lostText(r) + 'を失った）' }; }
     for (const k in r.need) drop(st, k, r.need[k]);
     st.inv[id] = (st.inv[id] || 0) + r.out; st.total[id] = (st.total[id] || 0) + r.out;
-    if (r.fire && st.fire) st.fire.until = Math.max(day, st.fire.until - 0.3);   // 焼成で火を使う
+    if (r.fire && ownFireActive(st, bx, by, day)) st.fire.until = Math.max(day, st.fire.until - 0.3); else if (r.fire) bump(st, 'commonCook');   // 焼成で火を使う
     return { ok: true, name };
   }
   function needText(r) { return Object.keys(r.need).map(k => ITEMS[IDX[k]].name + '×' + r.need[k]).join('・'); }
@@ -6339,7 +6473,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     const batches = Math.min(STEW_MAX, Math.floor(total / STEW_N)); let need = batches * STEW_N;
     for (const k of STEW_IN) { const t = Math.min(need, st.inv[k] || 0); if (t) { drop(st, k, t); need -= t; } if (!need) break; }
     st.inv.stew = (st.inv.stew || 0) + batches; st.total.stew = (st.total.stew || 0) + batches;
-    st.fire.until = Math.max(day, st.fire.until - 0.15);
+    if (ownFireActive(st, bx, by, day)) st.fire.until = Math.max(day, st.fire.until - 0.15); else bump(st, 'commonCook');
     const broke = wearTool(st, 'pot');
     return { ok: true, n: batches, broke };
   }
@@ -6356,6 +6490,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     for (const k in HOME_NEED) if ((st.inv[k] || 0) < HOME_NEED[k]) return { ok: false, why: '家の材料が足りない（' + homeNeedText() + '）' };
     for (const k in HOME_NEED) drop(st, k, HOME_NEED[k]);
     st.home = { bx: Math.floor(bx), by: Math.floor(by), xM: Number.isFinite(xM) ? xM : null, yM: Number.isFinite(yM) ? yM : null, ready: day + HOME_DAYS };
+    bump(st, 'home');
     return { ok: true, ready: st.home.ready };
   }
   // 壊す：貯蔵庫が空のときだけ（中身を失わないため）。材料は戻らない
@@ -6380,12 +6515,124 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
   function storeList(st) { return ITEMS.filter(it => st.store[it.id]).map(it => ({ id: it.id, name: it.name, n: st.store[it.id] })); }
   // 眠る：家で眠ると体調不良が治る。家が無くても、焚き火のそばなら野宿できる（体調は戻らない）。1日進める処理は呼び出し側
   function sleep(st, bx, by, day) {
-    if (homeStatus(st, day) === 'built' && nearHome(st, bx, by)) { st.sickUntil = Math.min(st.sickUntil, day); return { ok: true, home: true }; }
-    if (fireActive(st, bx, by, day)) return { ok: true, home: false };
+    if (homeStatus(st, day) === 'built' && nearHome(st, bx, by)) { st.sickUntil = Math.min(st.sickUntil, day); bump(st, 'sleepHome'); rest(st, 25); return { ok: true, home: true }; }
+    if (fireActive(st, bx, by, day)) { rest(st, 10); return { ok: true, home: false }; }
     return { ok: false, why: '眠れる場所がない（家のそば、または焚き火のそばで）' };
   }
 
-  function save(st) { return JSON.parse(JSON.stringify(st)); }
+  // ---------------------------------------------------------------- 暮らしの目標（入門の手順。画面の目標欄に出す）
+  function bump(st, k) { st.n = st.n || {}; st.n[k] = (st.n[k] || 0) + 1; }
+  const FOOD_RAW = ['nut', 'fruit', 'bud', 'root', 'seed', 'shell', 'fish'];
+  const GOALS = [
+    { id: 'food',   text: '食べ物を集める',            need: 5,  have: st => FOOD_RAW.reduce((a, k) => a + (st.total[k] || 0), 0) },
+    { id: 'drink',  text: '川や湖の水を飲む',           need: 1,  have: st => (st.n || {}).drink || 0 },
+    { id: 'wood',   text: '薪を集める',                need: 10, have: st => st.total.firewood || 0 },
+    { id: 'fire',   text: '火を起こす',                need: 1,  have: st => (st.n || {}).fire || 0 },
+    { id: 'cook',   text: '焼いた物・煮た物を食べる',   need: 1,  have: st => (st.n || {}).cooked || 0 },
+    { id: 'rope',   text: '縄を作る',                  need: 1,  have: st => st.total.rope || 0 },
+    { id: 'clay',   text: '粘土を集める',              need: 4,  have: st => st.total.clay || 0 },
+    { id: 'pot',    text: '土器を作る',                need: 1,  have: st => st.total.pot || 0 },
+    { id: 'acorn',  text: '木の実を水にさらして受け取る', need: 1, have: st => st.total.nutL || 0 },
+    { id: 'stew',   text: '煮物を作る',                need: 1,  have: st => st.total.stew || 0 },
+    { id: 'home',   text: '家を建てる',                need: 1,  have: st => (st.n || {}).home || 0 },
+    { id: 'sleep',  text: '家で眠る',                  need: 1,  have: st => (st.n || {}).sleepHome || 0 },
+    { id: 'talk',   text: '集団の人と話す',            need: 1,  have: st => (st.n || {}).talk || 0 },
+    { id: 'share',  text: '近くの人に食べ物を分ける',   need: 1,  have: st => (st.n || {}).share || 0 },
+    { id: 'hearth', text: '集団のみんなの炉で調理する', need: 1,  have: st => (st.n || {}).commonCook || 0 },
+    { id: 'give',   text: '食べ物や薪を集団に分ける',   need: 1,  have: st => (st.n || {}).give || 0 },
+    { id: 'learn',  text: '集団の人に技を教わる',       need: 1,  have: st => (st.n || {}).learn || 0 },
+  ];
+  // 順番に、最初の未達成の目標を返す。done＝達成した数、all＝全部達成
+  function goals(st) {
+    let done = 0;
+    for (const g of GOALS) { const h = Math.min(g.need, g.have(st)); if (h < g.need) return { all: false, done, total: GOALS.length, id: g.id, text: g.text, have: h, need: g.need }; done++; }
+    return { all: true, done, total: GOALS.length, id: null, text: '暮らしの基本を身につけた', have: 0, need: 0 };
+  }
+
+  // ---------------------------------------------------------------- 集団とのつながり：評判・分け合い・配給・教わる・話す
+  const KCAL_PER_KG = 1800, CAMP_REACH = 2;
+  function gainStanding(st, x) { st.standing = Math.min(100, Math.max(0, (st.standing || 0) + x)); }
+  function standingInfo(st) {
+    const v = st.standing || 0;
+    return v >= 60 ? { v, level: 3, label: '頼られる人' } : v >= 30 ? { v, level: 2, label: '仲間' } : v >= 10 ? { v, level: 1, label: '顔見知り' } : { v, level: 0, label: 'よそ者' };
+  }
+  function nearCamp(camp, bx, by) { return !!camp && Math.abs(camp.bx - Math.floor(bx)) <= CAMP_REACH && Math.abs(camp.by - Math.floor(by)) <= CAMP_REACH; }
+  // 食べ物を集団の蓄えに分ける（野営地の近くで）。生の物は価値が低い
+  function giveToGroup(st, g, camp, id, n, bx, by) {
+    if (!g || !camp) return { ok: false, why: '集団がない' };
+    if (!nearCamp(camp, bx, by)) return { ok: false, why: '集団の野営地（みんなの炉のそば）でしか分けられない' };
+    const it = ITEMS[IDX[id]]; if (!it || it.group !== 'food') return { ok: false, why: '食べ物ではない' };
+    const have = st.inv[id] || 0; if (have <= 0) return { ok: false, why: '持っていない' };
+    const k = Math.min(n == null ? have : n, have); drop(st, id, k);
+    const kcal = k * it.kcal * (it.raw ? 0.6 : 1), kg = kcal / KCAL_PER_KG;
+    g.food = (g.food || 0) + kg; st.given = (st.given || 0) + kcal; gainStanding(st, kg * 3); bump(st, 'give');
+    return { ok: true, n: k, name: it.name, kg };
+  }
+  // 配給：おなかが空いていて、仲間と認められていれば、集団の蓄えから分けてもらえる
+  const RATION_KCAL = 1400, RATION_DAYS = 2;
+  function ration(st, g, camp, day, bx, by) {
+    if (!g || !camp) return { ok: false, why: '集団がない' };
+    if (!nearCamp(camp, bx, by)) return { ok: false, why: '野営地でしかもらえない' };
+    if (day - (st.rationAt == null ? -99 : st.rationAt) < RATION_DAYS) return { ok: false, why: '配給は' + RATION_DAYS + '日に1度' };
+    if (st.kcal > 1200) return { ok: false, why: 'まだおなかは空いていない' };
+    if ((st.standing || 0) < 8) return { ok: false, why: 'まだ仲間とは認められていない（食べ物や薪を分けて、評判を上げよう）' };
+    const kg = RATION_KCAL / KCAL_PER_KG; if ((g.food || 0) < kg) return { ok: false, why: 'いま集団に蓄えがない' };
+    g.food -= kg; st.kcal = Math.min(EAT_FULL, st.kcal + RATION_KCAL); st.rationAt = day; gainStanding(st, -2); bump(st, 'ration');
+    return { ok: true, kcal: RATION_KCAL };
+  }
+  // 近くの人に食べ物を分ける：その人の信頼・好意が上がる（相手から見たあなた）
+  function clampB(x) { return x < 0 ? 0 : x > 255 ? 255 : x; }
+  // 関係の枠が埋まっていても、いちばん薄い関係を押しのけて、あなたとの関係を作る（あなたは特別な存在として、必ず覚えてもらえる）
+  function relSlot(P, i, j) {
+    let sl = P._slot(i, j, true); if (sl >= 0) return sl;
+    const K = Math.round(P.relId.length / P.cap); let w = -1, wd = 1e9;
+    for (let k = 0; k < K; k++) { const v = (i * K + k) * 3, d = Math.abs(P.relV[v] - 128) + Math.abs(P.relV[v + 1] - 128) + Math.abs(P.relV[v + 2] - 128); if (d < wd) { wd = d; w = k; } }
+    if (w < 0) return -1;
+    const b = i * K + w; P.relId[b] = j; P.relV[b * 3] = P.relV[b * 3 + 1] = P.relV[b * 3 + 2] = 128; return b;
+  }
+  function share(P, st, me, npc, id) {
+    if (!P || !(P.alive ? P.alive(npc) : true) || npc === me) return { ok: false, why: '相手がいない' };
+    const it = ITEMS[IDX[id]]; if (!it || it.group !== 'food') return { ok: false, why: '食べ物ではない' };
+    if (!(st.inv[id] > 0)) return { ok: false, why: '持っていない' };
+    const sl = relSlot(P, npc, me); if (sl < 0) return { ok: false, why: 'うまく伝わらなかった' };
+    drop(st, id, 1);
+    const v = sl * 3, R = P.relV, w = it.raw ? 0.6 : 1;
+    R[v] = clampB(R[v] + Math.round(6 * w)); R[v + 1] = clampB(R[v + 1] + Math.round(8 * w));
+    const s2 = relSlot(P, me, npc); if (s2 >= 0) { P.relV[s2 * 3 + 1] = clampB(P.relV[s2 * 3 + 1] + 3); }
+    gainStanding(st, 0.8 * w); bump(st, 'share');
+    return { ok: true, name: it.name, trust: R[v] };
+  }
+  // 技を教わる：相手の信頼が一定以上で、相手がその道に詳しいとき。1人から5日に1度
+  const LESSON_TRUST = 140, LESSON_DAYS = 5;
+  function learn(P, st, me, npc, day, NS, jobs) {
+    if (!P || npc === me || !(P.alive ? P.alive(npc) : true)) return { ok: false, why: '相手がいない' };
+    const j = P.job[npc]; if (!j) return { ok: false, why: 'この人には教わることがない（仕事をしていない）' };
+    const k = j - 1, sn = P.skills[npc * NS + k], sm = P.skills[me * NS + k], name = jobs && jobs[j] ? jobs[j].skill : '技';
+    const b = P.bondOf ? P.bondOf(npc, me) : null, trust = b ? b[0] : 128;
+    if (trust < LESSON_TRUST) return { ok: false, why: 'まだ打ち解けていない（食べ物を分けて、信頼を得よう）' };
+    if (sn < 30 || sn < sm + 10) return { ok: false, why: 'この人からは、もう教わることがない（' + name + '）' };
+    const last = st.lessons[npc]; if (last != null && day - last < LESSON_DAYS) return { ok: false, why: '今日はもう教わった（' + (LESSON_DAYS - Math.floor(day - last)) + '日後にまた）' };
+    P.practice(me, k, 2, 3);
+    const after = P.skills[me * NS + k]; st.lessons[npc] = day; gainStanding(st, 0.5); bump(st, 'learn');
+    const keys = Object.keys(st.lessons); if (keys.length > 60) delete st.lessons[keys[0]];
+    return { ok: true, name, before: sm, after };
+  }
+  // 話す：その人の言葉（仕事・集団の食料の具合・あなたとの関係から決まる。同じ日・同じ人なら同じ言葉）
+  function talk(st, info, day, npc) {
+    const hash = ((npc * 2654435761) ^ (Math.floor(day / 10) * 40503)) >>> 0;
+    const job = info.job || '', fed = info.fed == null ? 1 : info.fed, w = [];
+    if (fed < 0.6) w.push('このところ食べ物が足りなくて、みんな苦しんでいる。', '蓄えが減ってきた。冬を越せるだろうか。');
+    else if (fed > 0.95) w.push('今年は食べ物に困らない。ありがたいことだ。', 'みんなおなかいっぱいで、顔色がいい。');
+    else w.push('食べ物はなんとか足りている。', '蓄えはそこそこだ。油断はできないが。');
+    const J = { 採集者: '私は木の実や草の実を集めている。秋は木の実が実り、冬は新芽が少し出る。', 狩人: '私は狩りをしている。獲物は夜明けと夕暮れによく動く。', 漁師: '私は魚や貝を獲っている。網があれば魚はずっと獲れる。', 道具製作者: '私は道具を作っている。石を割って、縄で結ぶんだ。', 建築従事者: '私は家を建てている。竪穴を掘って、茅で屋根を葺く。', 運搬者: '私は荷を運んでいる。', 治療者: '私は病人の世話をしている。熱が出たら、よく寝ることだ。', 警備者: '私は周りを見張っている。', 農民: '私は畑を見ている。', 牧畜従事者: '私は家畜の世話をしている。', 交易者: '私は遠くの人と物を替えている。' };
+    const lines = [w[hash % w.length]]; if (J[job]) lines.push(J[job]); else if (info.relation) lines.push('あなたは「' + info.relation + '」だね。');
+    const lv = standingInfo(st).level; lines.push(lv >= 2 ? '君はこの集団の仲間だ。頼りにしているよ。' : lv === 1 ? '最近よく見かける顔だ。' : '見かけない顔だな。何か分けてくれると助かる。');
+    const first = st.talkDay[npc] == null || st.talkDay[npc] !== Math.floor(day);
+    if (first) { st.talkDay[npc] = Math.floor(day); bump(st, 'talk'); const ks = Object.keys(st.talkDay); if (ks.length > 80) delete st.talkDay[ks[0]]; }
+    return { ok: true, text: lines.join('') };
+  }
+
+  function save(st) { const o = JSON.parse(JSON.stringify(st)); delete o.commons; delete o.env; return o; }
   function load(o) {
     const st = newState();
     if (o && typeof o === 'object') {
@@ -6396,6 +6643,15 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
       const f = o.fire; if (f && Number.isFinite(f.bx) && Number.isFinite(f.by) && Number.isFinite(f.until)) { st.fire = { bx: f.bx, by: f.by, until: f.until }; if (Number.isFinite(f.xM) && Number.isFinite(f.yM)) { st.fire.xM = f.xM; st.fire.yM = f.yM; } }
       const hm = o.home; if (hm && Number.isFinite(hm.bx) && Number.isFinite(hm.by) && Number.isFinite(hm.ready)) st.home = { bx: hm.bx, by: hm.by, xM: Number.isFinite(hm.xM) ? hm.xM : null, yM: Number.isFinite(hm.yM) ? hm.yM : null, ready: hm.ready };
       for (const id in (o.store || {})) if (IDX[id] != null && o.store[id] > 0) st.store[id] = o.store[id] | 0;
+      for (const k in (o.n || {})) if (Number.isFinite(o.n[k]) && o.n[k] > 0) st.n[k] = o.n[k] | 0;
+      if (Number.isFinite(o.hp)) st.hp = Math.max(1, Math.min(HP_MAX, o.hp));
+      if (Number.isFinite(o.sp)) st.sp = Math.max(0, Math.min(SP_MAX, o.sp));
+      if (Number.isFinite(o.water)) st.water = Math.max(0, Math.min(WATER_MAX, o.water));
+      if (o.exhausted === true) st.exhausted = true;
+      if (Number.isFinite(o.standing)) st.standing = Math.max(0, Math.min(100, o.standing));
+      if (Number.isFinite(o.given)) st.given = Math.max(0, o.given); if (Number.isFinite(o.rationAt)) st.rationAt = o.rationAt;
+      for (const k in (o.lessons || {})) if (Number.isFinite(o.lessons[k])) st.lessons[k] = o.lessons[k];
+      for (const k in (o.talkDay || {})) if (Number.isFinite(o.talkDay[k])) st.talkDay[k] = o.talkDay[k];
       const k = o.soak; if (k && Number.isFinite(k.bx) && Number.isFinite(k.by) && Number.isFinite(k.n) && Number.isFinite(k.ready) && k.n > 0) st.soak = { bx: k.bx, by: k.by, n: k.n | 0, ready: k.ready };
       for (const id in (o.inv || {})) if (IDX[id] != null && o.inv[id] > 0) st.inv[id] = o.inv[id] | 0;
       for (const id in (o.total || {})) if (IDX[id] != null) st.total[id] = o.total[id] | 0;
@@ -6410,7 +6666,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     return function () { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   }
 
-  const api = { slotsOf, HOME_NEED, HOME_DAYS, HOME_REACH, STORE_SLOTS, homeStatus, nearHome, homeNeedText, buildHome, demolishHome, storePut, storeTake, storeList, storeRoom, sleep, SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
+  const api = { setEnv, rest, staminaCap, staminaStep, jumpCost, drink, vitalsInfo, HP_MAX, SP_MAX, WATER_MAX, setCommons, atCommons, ownFireActive, standingInfo, gainStanding, giveToGroup, ration, share, learn, talk, nearCamp, KCAL_PER_KG, goals, GOALS, slotsOf, HOME_NEED, HOME_DAYS, HOME_REACH, STORE_SLOTS, homeStatus, nearHome, homeNeedText, buildHome, demolishHome, storePut, storeTake, storeList, storeRoom, sleep, SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohForage = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
@@ -9316,6 +9572,36 @@ function forageSkill(kind) {
   try { const y = people && WohPeople.peopleYou(people); if (!y || y.over) return 0.3; const P = people.npc, SK = P.skills, N = WohNpc.NSKILL; return Math.min(1, SK[y.id * N + (kind === 'fish' ? 2 : kind === 'craft' ? 3 : 0)] / 255); } catch (e) { return 0.3; }
 }
 function forageSay(t) { const el = document.getElementById('forageMsg'); if (!el) return; el.textContent = t; el.style.display = 'block'; clearTimeout(forageMsgTimer); forageMsgTimer = setTimeout(() => { el.style.display = 'none'; }, 3500); }
+// ---- 近くの人と話す
+let talkNpc = null;
+const TALK_FOODS = ['stew', 'fishC', 'nutC', 'rootC', 'shellC', 'seedC', 'nutL', 'fruit', 'bud', 'seed', 'root', 'shell', 'fish'];
+function talkRender(say) {
+  const el = document.getElementById('talkPanel'); if (!el) return;
+  if (talkNpc === null || !people) { el.classList.remove('show'); return; }
+  const V = globalThis.WohNpcView, P = people.npc, me = people.player ? people.player.id : -1;
+  if (P.death[talkNpc] !== 0x7fffffff) { el.innerHTML = '<div class="th"><b>（この人は亡くなった）</b></div><div class="tact"><button data-tk="close">閉じる</button></div>'; el.classList.add('show'); return; }
+  const d = V.viewDescribe(people, talkNpc), b = P.bondOf(talkNpc, me), tr = b ? b[0] : 128;
+  const bt = tr >= 160 ? '打ち解けている' : tr >= 140 ? '親しくなってきた' : tr >= 131 ? '顔なじみ' : '初対面に近い';
+  const gift = TALK_FOODS.find(k => forageSt.inv[k] > 0), gname = gift ? WohForage.ITEMS[WohForage.IDX[gift]].name : null;
+  el.innerHTML = '<div class="th"><b>' + (globalThis.__wohPersonName ? __wohPersonName(talkNpc) : '') + '</b><span>' + d.job + '・' + d.sex + '・' + d.age + '歳</span></div>' +
+    '<div class="tm">' + (d.relation ? '関係：' + d.relation + '　' : '') + 'あなたへの気持ち：' + bt + '</div>' +
+    '<div class="tsay" id="talkSay">' + (say || '近くにいる人に話しかけた。') + '</div>' +
+    '<div class="tact"><button data-tk="talk">話す</button><button data-tk="share"' + (gift ? '' : ' style="opacity:.45"') + '>' + (gname ? gname + 'を分ける' : '食べ物を分ける') + '</button><button data-tk="learn">技を教わる</button><button data-tk="close">閉じる</button></div>';
+  el.classList.add('show');
+}
+function talkAct(k) {
+  if (k === 'close') { talkNpc = null; talkRender(); return; }
+  const F = WohForage, day = forageNow(); if (!people || talkNpc === null) return;
+  const P = people.npc, me = people.player.id, V = globalThis.WohNpcView, G = forageGroup();
+  let say = '';
+  if (k === 'talk') { const d = V.viewDescribe(people, talkNpc); say = F.talk(forageSt, { job: d.job, fed: G ? G.g.fed : 1, relation: d.relation }, day, talkNpc).text; }
+  else if (k === 'share') { const gift = TALK_FOODS.find(x => forageSt.inv[x] > 0); if (!gift) say = '分けられる食べ物を持っていない。'; else { const r = F.share(P, forageSt, me, talkNpc, gift); say = r.ok ? r.name + 'を分けた。「ありがとう」' : r.why; } }
+  else if (k === 'learn') { const r = F.learn(P, forageSt, me, talkNpc, day, WohNpc.NSKILL, WohNpc.JOBS); say = r.ok ? '「' + r.name + '」を教わった（技能 ' + r.before + ' → ' + r.after + '）' : r.why; }
+  talkRender(say); forageBagRender();
+}
+document.getElementById('talkPanel')?.addEventListener('click', e => { const b = e.target.closest('button'); if (b && b.dataset.tk) talkAct(b.dataset.tk); });
+function talkOpen(npc) { talkNpc = npc; document.getElementById('bagPanel')?.classList.remove('show'); talkRender(); }
+globalThis.__wohTalk = { open: talkOpen, act: talkAct, get npc() { return talkNpc; } };
 // 家と焚き火を、3Dの世界に置く（状態に合わせて出し入れする）
 function forageSyncProps() {
   const P = globalThis.__wohProps; if (!P) return;
@@ -9333,7 +9619,47 @@ setInterval(() => {
     if (sig !== forageSig) { forageSig = sig; forageBagRender(); }
   } catch (e) { }
 }, 1500);
-function forageNow() { WohForage.tick(forageSt, clock.day); return clock.day; }
+// 自分の集団（野営地・蓄え）
+function forageGroup() {
+  try {
+    if (!people || !people.player || people.player.id < 0) return null;
+    const P = people.npc, gid = P.group[people.player.id], g = people.groups[gid - 1]; if (!g || !g.alive) return null;
+    const c = WohPeople.peCampCenter(g); return { g, gid, camp: { bx: Math.floor(c.x), by: Math.floor(c.y) } };
+  } catch (e) { return null; }
+}
+// いまいる場所の気温（実験の天気があればそれ、なければ気候の月平均）
+function forageTemp() {
+  try {
+    const b = window.__wohAvatar && __wohAvatar.block && __wohAvatar.block(); if (!b || !world || !world.climate) return null;
+    if (sim) return sim.T[labCell(Math.round(b.x), Math.round(b.y))];
+    const cc = world.climate.cell, stp = Math.max(1, Math.round(world.stats.width / cc.w)), c = Math.min(cc.h - 1, Math.floor(b.y / stp)) * cc.w + Math.min(cc.w - 1, Math.floor(b.x / stp));
+    return cc.tMean[clockMonth() * cc.n + c] / 10;
+  } catch (e) { return null; }
+}
+function forageNow() {
+  const F = WohForage, G = forageGroup(); F.setCommons(forageSt, G ? G.camp : null);
+  try {
+    const b = window.__wohAvatar && __wohAvatar.block && __wohAvatar.block(), d = clock.day;
+    const sheltered = !!(b && (F.ownFireActive(forageSt, b.x, b.y, d) || F.atCommons(forageSt, b.x, b.y) || (F.homeStatus(forageSt, d) === 'built' && F.nearHome(forageSt, b.x, b.y))));
+    F.setEnv(forageSt, { temp: forageTemp(), sheltered });
+  } catch (e) { }
+  F.tick(forageSt, clock.day);
+  return clock.day;
+}
+// スタミナ：実時間で動く。ダッシュで減り、休むと戻る。尽きるとダッシュできない
+globalThis.__wohOnJump = () => { try { WohForage.jumpCost(forageSt); } catch (e) { } };
+{
+  let last = performance.now();
+  setInterval(() => {
+    const now = performance.now(), dt = Math.min(0.5, (now - last) / 1000); last = now;
+    try {
+      const A = window.__wohAvatar; if (!A || !A.moveState || document.hidden || !document.body.classList.contains('integration-third')) return;
+      const o = WohForage.staminaStep(forageSt, dt, A.moveState);
+      globalThis.__wohNoSprint = o.lockSprint; globalThis.__wohNoJump = o.lockJump;
+      if (o.lockSprint && A.moveState.sprinting) A.setSprint(false);
+    } catch (e) { }
+  }, 100);
+}
 function forageDo(group) {
   const now = Date.now(); if (now - forageBusy < 700) return; forageBusy = now;
   const day = forageNow(), f = forageContext(); if (!f) { forageSay('ここでは探せない'); return; }
@@ -9350,7 +9676,7 @@ function forageAct(act, id) {
   const rng = WohForage.rngFor(forageSt, seedToInt(currentSeed), day), F = WohForage;
   let r, msg = '';
   if (act === 'fire') { r = F.makeFire(forageSt, f.bx, f.by, day, forageSkill('plant'), rng, f.ctx.water && !f.ctx.coast); if (r.ok) { const pt = window.__wohAvatar.point; if (pt && forageSt.fire) { forageSt.fire.xM = pt.xM + 1.4; forageSt.fire.yM = pt.yM; } } msg = r.ok ? '火がついた（約' + r.days.toFixed(1) + '日もつ）' : r.why + (f.ctx.water && !f.ctx.coast ? '' : ''); }
-  else if (act === 'stoke') { r = F.stoke(forageSt, f.bx, f.by, day); msg = r.ok ? '薪をくべた（残り約' + r.days.toFixed(1) + '日）' : r.why; }
+  else if (act === 'stoke') { r = F.stoke(forageSt, f.bx, f.by, day); msg = r.ok ? (r.commons ? 'みんなの炉に薪をくべた（評判が上がった）' : '薪をくべた（残り約' + r.days.toFixed(1) + '日）') : r.why; }
   else if (act === 'roast') { r = F.roast(forageSt, f.bx, f.by, day); msg = r.ok ? r.n + '個を焼いた' : r.why; }
   else if (act === 'soak') { r = F.soakStart(forageSt, f.bx, f.by, day, f.ctx.water && !f.ctx.coast); msg = r.ok ? '木の実' + r.n + '個を水にさらした（2日後に受け取れる）' : r.why; }
   else if (act === 'collect') { r = F.soakCollect(forageSt, f.bx, f.by, day); msg = r.ok ? '水さらしした木の実を' + r.n + '個受け取った' : r.why; }
@@ -9360,6 +9686,9 @@ function forageAct(act, id) {
   else if (act === 'demolish') { r = F.demolishHome(forageSt); msg = r.ok ? '家を壊した' : r.why; }
   else if (act === 'put') { r = F.storePut(forageSt, id, null, f.bx, f.by, day); msg = r.ok ? '貯蔵庫に ' + r.n + '個 預けた' : r.why; }
   else if (act === 'take') { r = F.storeTake(forageSt, id, null, f.bx, f.by, day); msg = r.ok ? '貯蔵庫から ' + r.n + '個 取り出した' : r.why; }
+  else if (act === 'drink') { r = F.drink(forageSt, f.ctx.water && !f.ctx.coast); msg = r.ok ? '水を飲んだ（水分 +' + r.gain + '）' : r.why; }
+  else if (act === 'give') { const G = forageGroup(); r = F.giveToGroup(forageSt, G && G.g, G && G.camp, id, 5, f.bx, f.by); msg = r.ok ? r.name + 'を' + r.n + '個、集団の蓄えに分けた（評判が上がった）' : r.why; }
+  else if (act === 'ration') { const G = forageGroup(); r = F.ration(forageSt, G && G.g, G && G.camp, day, f.bx, f.by); msg = r.ok ? '集団から配給をもらった（+' + r.kcal + 'kcal）' : r.why; }
   else if (act === 'craft') { r = F.craft(forageSt, id, forageSkill('craft'), rng, f.bx, f.by, day); msg = r.ok ? r.name + 'を作った' : r.why; }
   else if (act === 'boil') { r = F.boil(forageSt, f.bx, f.by, day, f.ctx.water && !f.ctx.coast); msg = r.ok ? '煮物を' + r.n + 'つ作った' + (r.broke ? '（' + r.broke + 'が壊れた）' : '') : r.why; }
   else if (act === 'eat') { r = F.eat(forageSt, id, rng, day); msg = r.ok ? r.name + 'を食べた（+' + r.kcal + 'kcal）' + (r.sick ? '。おなかをこわしたようだ' : '') : r.why; }
@@ -9369,18 +9698,21 @@ function forageBagRender() {
   const el = document.getElementById('bagPanel'); if (!el) return;
   try { forageSyncProps(); } catch (e) { }
   const day = forageNow(), F = WohForage, L = F.list(forageSt), used = F.slotsUsed(forageSt), hg = F.hunger(forageSt), pct = Math.round(100 * forageSt.kcal / F.KCAL_MAX);
-  const fl = F.fireLeft(forageSt, day), so = forageSt.soak, hs = F.homeStatus(forageSt, day), blk = (window.__wohAvatar && window.__wohAvatar.block && window.__wohAvatar.block()) || null, near = !!(blk && hs === 'built' && F.nearHome(forageSt, blk.x, blk.y)), y0 = (people && WohPeople.peopleYou(people)) || null, SL = F.storeList(forageSt);
+  const fl = F.fireLeft(forageSt, day), so = forageSt.soak, stl = F.standingInfo(forageSt), vi = F.vitalsInfo(forageSt), GG = forageGroup(), hs = F.homeStatus(forageSt, day), blk = (window.__wohAvatar && window.__wohAvatar.block && window.__wohAvatar.block()) || null, near = !!(blk && hs === 'built' && F.nearHome(forageSt, blk.x, blk.y)), y0 = (people && WohPeople.peopleYou(people)) || null, SL = F.storeList(forageSt), campNear = !!(blk && GG && F.nearCamp(GG.camp, blk.x, blk.y)), campD = (blk && GG) ? ((d => d >= 1000 ? (d / 1000).toFixed(1) + ' km' : d + ' m')(Math.round(Math.hypot(GG.camp.bx - blk.x, GG.camp.by - blk.y) * 33))) : null;
   const edible = id => F.ITEMS[F.IDX[id]].group === 'food';
   el.innerHTML = '<div class="bh"><span>持ち物</span><span>' + used + ' / ' + F.SLOTS + ' 枠</span></div>' +
+    '<div class="bst"><span>体力 ' + Math.round(vi.hp) + '　スタミナ ' + Math.round(vi.sp) + (vi.exhausted ? '（疲れ切り）' : '') + '　水分 ' + Math.round(vi.water) + (vi.thirsty ? '（喉が渇いた）' : '') + '</span></div>' +
     '<div class="bst"><span>おなか：' + hg.name + (F.sick(forageSt, day) ? '・体調不良' : '') + '</span><span class="bar"><b style="width:' + pct + '%" class="' + hg.id + '"></b></span></div>' +
     '<div class="bst"><span>焚き火：' + (fl > 0 ? '燃えている（残り約' + fl.toFixed(1) + '日）' : 'なし') + '</span><span>' + (so ? '水さらし：' + so.n + '個（' + (day >= so.ready ? '受け取れる' : 'あと' + Math.ceil(so.ready - day) + '日') + '）' : '') + '</span></div>' +
+    '<div class="bstand"><span>集団での評判：' + stl.label + '</span><span class="bar"><b style="width:' + Math.round(stl.v) + '%;background:#8ab4f8"></b></span>' + (campNear ? '<button data-act="ration">配給をもらう</button>' : '') + '</div>' +
+    (campNear ? '<div class="bnote">みんなの炉のそば：炉で焼く・煮る・土器が使える／薪をくべる・食べ物を「分ける」と評判が上がる／評判が高いと、空腹のとき配給がもらえる</div>' : '<div class="bnote">集団の野営地の中心（みんなの炉）まで ' + (campD == null ? '-' : campD) + '</div>') +
     '<div class="bst"><span>住まい：' + (hs === 'none' ? 'なし' : hs === 'building' ? '建築中（あと' + Math.ceil(forageSt.home.ready - day) + '日）' : 'あり') + (y0 && y0.camp && blk ? '</span><span>野営地まで約' + (d => d >= 1000 ? (d / 1000).toFixed(1) + ' km' : d + ' m')(Math.round(Math.hypot(y0.camp.x - blk.x, y0.camp.y - blk.y) * 33)) : '') + '</span></div>' +
     '<div class="bact">' + (hs === 'none' ? '<button data-act="home" title="' + F.homeNeedText() + '">家を建てる</button>' : '<button data-act="gohome">家へ戻る</button>') + '<button data-act="sleep">眠る（1日）</button>' + (hs === 'built' ? '<button data-act="demolish">家を壊す</button>' : '') + '</div>' +
     (hs === 'none' ? '<div class="bnote">家＝' + F.homeNeedText() + '（水辺・海辺は不可。完成まで' + F.HOME_DAYS + '日）／家で眠ると体調が戻る。焚き火のそばでも野宿できる</div>' : '') +
-    '<div class="bact"><button data-act="fire">火を起こす</button><button data-act="stoke">薪をくべる</button><button data-act="roast">焼く</button><button data-act="soak">木の実を水にさらす</button><button data-act="collect">受け取る</button></div>' +
+    '<div class="bact"><button data-act="drink">水を飲む</button><button data-act="fire">火を起こす</button><button data-act="stoke">薪をくべる</button><button data-act="roast">焼く</button><button data-act="soak">木の実を水にさらす</button><button data-act="collect">受け取る</button></div>' +
     '<div class="bsec">作る</div><div class="bact">' + Object.keys(F.RECIPES).map(id => '<button data-act="craft" data-id="' + id + '" class="' + (F.canCraft(forageSt, id) ? '' : 'dim') + '" title="' + Object.keys(F.RECIPES[id].need).map(k => F.ITEMS[F.IDX[k]].name + '×' + F.RECIPES[id].need[k]).join('・') + (F.RECIPES[id].fire ? '（火のそばで）' : '') + '">' + F.ITEMS[F.IDX[id]].name + '</button>').join('') + '<button data-act="boil">煮る</button></div>' +
     '<div class="bnote">' + Object.keys(F.RECIPES).map(id => F.ITEMS[F.IDX[id]].name + '＝' + Object.keys(F.RECIPES[id].need).map(k => F.ITEMS[F.IDX[k]].name.replace(/（.*）/, '') + F.RECIPES[id].need[k]).join('+') + (F.RECIPES[id].fire ? '(火)' : '')).join('　') + '　煮る＝土器・火・水辺で食材4つ→煮物</div>' +
-    (L.length ? L.map(it => '<div class="br"><span>' + it.name + (it.raw ? ' <i>（生）</i>' : '') + (F.LIFE[it.id] ? ' <i>（あと' + (F.LIFE[it.id] - ((forageSt.wear || {})[it.id] || 0)) + '回ほど）</i>' : '') + '</span><span>×' + it.n + ' ' + (edible(it.id) ? '<button data-act="eat" data-id="' + it.id + '">食べる</button> ' : '') + (near ? '<button data-act="put" data-id="' + it.id + '">預ける</button> ' : '') + '<button data-drop="' + it.id + '">捨てる</button></span></div>').join('') : '<div class="br"><i>何も持っていない</i></div>') +
+    (L.length ? L.map(it => '<div class="br"><span>' + it.name + (it.raw ? ' <i>（生）</i>' : '') + (F.LIFE[it.id] ? ' <i>（あと' + (F.LIFE[it.id] - ((forageSt.wear || {})[it.id] || 0)) + '回ほど）</i>' : '') + '</span><span>×' + it.n + ' ' + (edible(it.id) ? '<button data-act="eat" data-id="' + it.id + '">食べる</button> ' : '') + (near ? '<button data-act="put" data-id="' + it.id + '">預ける</button> ' : '') + (campNear && edible(it.id) ? '<button data-act="give" data-id="' + it.id + '">分ける</button> ' : '') + '<button data-drop="' + it.id + '">捨てる</button></span></div>').join('') : '<div class="br"><i>何も持っていない</i></div>') +
     (near ? '<div class="bsec">貯蔵庫（' + F.slotsOf(forageSt.store) + ' / ' + F.STORE_SLOTS + ' 枠）</div>' + (SL.length ? SL.map(it => '<div class="br"><span>' + it.name + '</span><span>×' + it.n + ' <button data-act="take" data-id="' + it.id + '">取り出す</button></span></div>').join('') : '<div class="br"><i>空</i></div>') : (hs === 'built' ? '<div class="bnote">貯蔵庫は家のそばで使える</div>' : '')) +
     '<div class="bh" style="margin-top:6px"><span></span><button id="bagClose">閉じる</button></div>';
 }
@@ -9402,6 +9734,134 @@ globalThis.__wohForage = { context: forageContext, get state() { return forageSt
   });
 })();
 
+
+// ================================================================ 画面のHUD（左上：日付・天気・時間／目標／方位／右上：ボタン／左下：ステータス／下：ホットバー／右下：操作）
+(function installMockHud() {
+  if (document.getElementById('hudTL')) return;
+  const P = {
+    map: '<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>',
+    info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.6" r=".7" fill="currentColor"/>',
+    eyeoff: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path d="M4 20L20 4"/>',
+    eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+    bag: '<path d="M7 9h10l2 11H5z"/><path d="M9 9V7a3 3 0 0 1 6 0v2"/><path d="M9 14h6"/>',
+    hammer: '<path d="M13 4l7 7-3 3-7-7z"/><path d="M11 10L4 19l1.5 1.5L14 13"/>',
+    swords: '<path d="M5 5l14 14M7 4l-3 3M19 5l-14 14M17 4l3 3"/>',
+    people: '<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.4"/><path d="M3 20c0-4 3-6 6-6s6 2 6 6M15 14c3 0 6 2 6 6"/>',
+    scroll: '<path d="M7 4h11v13a3 3 0 0 1-3 3H6a3 3 0 0 0 3-3V6a2 2 0 0 0-2-2z"/><path d="M11 9h5M11 13h5"/>',
+    book: '<path d="M3 5c3-1 6-1 9 1 3-2 6-2 9-1v14c-3-1-6-1-9 1-3-2-6-2-9-1z"/><path d="M12 6v14"/>',
+    heart: '<path d="M12 20S4 14.5 4 9a4 4 0 0 1 8-1 4 4 0 0 1 8 1c0 5.500-8 11-8 11z" fill="currentColor"/>',
+    bolt: '<path d="M13 3L5 13h6l-1 8 8-10h-6z" fill="currentColor"/>',
+    bread: '<ellipse cx="12" cy="13" rx="8.500" ry="5" fill="currentColor"/>',
+    drop: '<path d="M12 3s6 6.500 6 11a6 6 0 0 1-12 0c0-4.500 6-11 6-11z" fill="currentColor"/>',
+    hand: '<path d="M8 12V6a1.500 1.500 0 0 1 3 0v5M11 11V4.500a1.500 1.500 0 0 1 3 0V11M14 11V6a1.500 1.500 0 0 1 3 0v7c0 4-2 7-6 7-3 0-4-2-6-5l-1.500-3a1.500 1.500 0 0 1 2.500-1.500L8 14"/>',
+    run: '<circle cx="14.500" cy="4.500" r="2"/><path d="M7 21l3.500-6-3-3 3-4 4.500 2 3 3M10.500 15l4 2 1 4"/>',
+    jump: '<circle cx="12" cy="4.500" r="2"/><path d="M12 7v6M6 6l6 3 6-3M12 13l-4 7M12 13l4 7"/>',
+    crouch: '<circle cx="13" cy="5" r="2"/><path d="M13 8l-2 5 4 2-1 5M11 13l-5 1M13 8l4 3"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
+    cloud: '<path d="M7 18a4 4 0 0 1 0-8 5 5 0 0 1 9.500-1A4.500 4.500 0 0 1 17 18z"/>',
+    rain: '<path d="M7 14a4 4 0 0 1 0-8 5 5 0 0 1 9.500-1A4.500 4.500 0 0 1 17 14z"/><path d="M8 17l-1 3M12 17l-1 3M16 17l-1 3"/>',
+    snow: '<path d="M12 3v18M4 7.500l16 9M20 7.500l-16 9"/>',
+    storm: '<path d="M7 14a4 4 0 0 1 0-8 5 5 0 0 1 9.500-1A4.500 4.500 0 0 1 17 14z"/><path d="M12 14l-3 5h4l-2 4"/>',
+  };
+  const svg = n => '<svg viewBox="0 0 24 24">' + P[n] + '</svg>';
+  const html =
+    '<div id="hudTL" class="hud"><div class="r1" id="hudDate"><span class="season">春</span><span class="date">-</span></div><div class="r2"><div class="wx" id="hudWx">' + svg('sun') + '<span>-</span></div></div></div>' +
+    '<div id="hudGoal" class="hud"><div class="gt"><i></i>暮らしの目標<span id="hudGoalN"></span></div><div class="gl"><b></b><span id="hudGoalT">-</span></div></div>' +
+    '<div id="hudCompass" class="hud"><div class="cb"></div><div class="ca"></div></div>' +
+    '<div id="hudBtns" class="hud"><button class="hb" id="hbMap" aria-label="マップ">' + svg('map') + '<span>マップ</span></button><button class="hb" id="hbInfo" aria-label="情報">' + svg('info') + '<span>情報</span></button><button class="hb ui" id="hbUi" aria-label="UI非表示">' + svg('eyeoff') + '<span>UI非表示</span></button><button class="hb" id="hbMenu" aria-label="メニュー">' + svg('menu') + '<span>メニュー</span></button></div>' +
+    '<div id="miniZoom" class="hud"><button class="mz" id="mzIn" aria-label="拡大">＋</button><button class="mz" id="mzOut" aria-label="縮小">－</button><button class="mz" id="mzView" aria-label="1人称視点">' + svg('eye') + '</button></div>' +
+    '<div id="hudStatus" class="hud">' +
+      '<div class="sr hp" id="hudHp" title="体力">' + svg('heart') + '<div class="tr"><b style="width:100%"></b></div></div>' +
+      '<div class="sr st" id="hudSp" title="スタミナ">' + svg('bolt') + '<div class="tr"><b style="width:100%"></b></div></div>' +
+      '<div class="sr fd" id="hudFood" title="満腹">' + svg('bread') + '<div class="tr"><b style="width:100%"></b></div></div>' +
+      '<div class="sr wt" id="hudWt" title="水分">' + svg('drop') + '<div class="tr"><b style="width:100%"></b></div></div></div>' +
+    '<div id="hudHot" class="hud">' +
+      [['bag', '持ち物', 'bag'], ['hammer', '製作', 'craft'], ['swords', '装備', '装備'], ['people', '仲間', '仲間'], ['scroll', '依頼', '依頼'], ['book', '記録', 'rec']].map(a => '<button class="hb" data-hot="' + a[2] + '">' + svg(a[0]) + '<span>' + a[1] + '</span></button>').join('') + '</div>' +
+    '<div id="hudMode" class="hud"><button id="hmFood" class="on">食料</button><button id="hmMat">素材</button><button id="hmWat">水</button></div>' +
+    '<button id="hudTalk" class="rb hud">' + svg('hand') + '<span>調べる</span></button>';
+  document.body.insertAdjacentHTML('beforeend', html);
+  // 時間のバーを左上の枠へ
+  const tb = document.getElementById('timebar'); if (tb) document.querySelector('#hudTL .r2').appendChild(tb);
+  // 操作ボタンに絵を付ける
+  const addIco = (id, name, label) => { const b = document.getElementById(id); if (!b) return; b.classList.add('rb'); b.innerHTML = svg(name) + '<span>' + label + '</span>'; };
+  addIco('sprint', 'run', 'ダッシュ'); addIco('jump', 'jump', 'ジャンプ'); addIco('crouch', 'crouch', 'しゃがむ');
+  const q = id => document.getElementById(id), click = id => { const e = q(id); if (e) e.click(); };
+  const soon = name => { try { forageSay(name + 'は準備中です'); } catch (e) { } };
+  // 画面の大きさに合わせた倍率
+  const scale = () => { const s = Math.max(.8, Math.min(1.6, Math.min(innerWidth / 874, innerHeight / 380))); document.documentElement.style.setProperty('--hs', s.toFixed(3)); };
+  scale(); addEventListener('resize', scale); addEventListener('orientationchange', () => setTimeout(scale, 200));
+  // ボタン
+  q('hbMap').addEventListener('click', () => click('viewMode'));
+  q('hbInfo').addEventListener('click', () => { click('btnInfo'); q('hbInfo').classList.toggle('on', q('info').classList.contains('show')); });
+  q('hbMenu').addEventListener('click', () => click('btnMenu'));
+  q('hbUi').addEventListener('click', () => { const off = document.body.classList.toggle('hud-off'); q('hbUi').querySelector('span').textContent = off ? 'UI表示' : 'UI非表示'; q('hbUi').innerHTML = svg(off ? 'eye' : 'eyeoff') + '<span>' + (off ? 'UI表示' : 'UI非表示') + '</span>'; });
+  q('mzIn').addEventListener('click', () => { if (globalThis.__wohMapZoomBy) __wohMapZoomBy(+1); });
+  q('mzOut').addEventListener('click', () => { if (globalThis.__wohMapZoomBy) __wohMapZoomBy(-1); });
+  q('mzView').addEventListener('click', () => click('fgView'));
+  q('hudDate').addEventListener('click', () => click('tDate'));
+  let hmode = 'food';
+  const setMode = m => { hmode = m; q('hmFood').classList.toggle('on', m === 'food'); q('hmMat').classList.toggle('on', m === 'mat'); q('hmWat').classList.toggle('on', m === 'wat'); };
+  q('hmFood').addEventListener('click', () => setMode('food')); q('hmMat').addEventListener('click', () => setMode('mat')); q('hmWat').addEventListener('click', () => setMode('wat'));
+  let nearNpc = null;
+  q('hudTalk').addEventListener('click', () => { if (nearNpc !== null && globalThis.__wohTalk) { __wohTalk.open(nearNpc); return; } if (hmode === 'wat') { forageAct('drink'); return; } click(hmode === 'food' ? 'fgFood' : 'fgMat'); });
+  q('hudHot').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return; const k = b.dataset.hot;
+    if (k === 'bag') click('fgBag');
+    else if (k === 'craft') { const pn = q('bagPanel'); if (!pn.classList.contains('show')) click('fgBag'); setTimeout(() => { const s = pn.querySelector('.bsec'); if (s) pn.scrollTop = s.offsetTop - 8; }, 30); }
+    else if (k === 'rec') click('btnMenu');
+    else soon(k);
+  });
+  q('hudStatus').addEventListener('click', e => { const r = e.target.closest('.sr'); if (r && r.dataset.soon) soon(r.dataset.soon); });
+  // 更新
+  const seasons = ['冬', '冬', '春', '春', '春', '夏', '夏', '夏', '秋', '秋', '秋', '冬'];
+  const lastTxt = new Map(); const setT = (el, t) => { if (lastTxt.get(el) !== t) { lastTxt.set(el, t); el.textContent = t; } };
+  const CP = [['N', 0], ['NE', 45], ['E', 90], ['SE', 135], ['S', 180], ['SW', 225], ['W', 270], ['NW', 315]];
+  const comp = q('hudCompass'), cEls = [];
+  for (const [t, a] of CP) { const d = document.createElement('div'); d.className = 'cl' + (t === 'N' ? ' n' : ''); d.textContent = t; comp.appendChild(d); cEls.push([d, a]); }
+  const tEls = []; for (let a = 0; a < 360; a += 15) { const d = document.createElement('div'); d.className = 'ct' + (a % 45 === 0 ? ' m' : ''); comp.appendChild(d); tEls.push([d, a]); }
+  function compassUpdate(hd) {
+    const half = 75;
+    for (const [d, a] of cEls) { const dl = ((a - hd + 540) % 360) - 180; if (Math.abs(dl) < half - 6) { d.style.display = ''; d.style.left = (50 + dl / half * 50) + '%'; } else d.style.display = 'none'; }
+    for (const [d, a] of tEls) { const dl = ((a - hd + 540) % 360) - 180; if (Math.abs(dl) < half - 4 && a % 45 !== 0) { d.style.display = ''; d.style.left = (50 + dl / half * 50) + '%'; } else if (Math.abs(dl) < half - 4) { d.style.display = ''; d.style.left = (50 + dl / half * 50) + '%'; } else d.style.display = 'none'; }
+  }
+  function wxIcon(kind) { return kind === 0 ? 'sun' : kind === 1 ? 'cloud' : kind === 2 ? 'rain' : kind === 3 ? 'snow' : 'storm'; }
+  function refresh() {
+    if (!document.body.classList.contains('integration-third') || document.body.classList.contains('hud-off')) return;
+    const day = clock.day, m = clockMonth(), yr = Math.floor(day / LAB_DAYS_PER_YEAR) + 1, dd = day % LAB_DAYS_PER_MONTH + 1;
+    const sn = q('hudDate').querySelector('.season'), dt = q('hudDate').querySelector('.date');
+    setT(sn, seasons[m]); setT(dt, (m + 1) + '月' + dd + '日（' + yr + '年目）');
+    // 天気：いまいる場所
+    try {
+      const b = window.__wohAvatar && __wohAvatar.block && __wohAvatar.block();
+      if (b && !sim && world && world.climate) { const cc = world.climate.cell, stp = Math.max(1, Math.round(world.stats.width / cc.w)), c = Math.min(cc.h - 1, Math.floor(b.y / stp)) * cc.w + Math.min(cc.w - 1, Math.floor(b.x / stp)), w = q('hudWx'), t = '晴れ ' + Math.round(cc.tMean[m * cc.n + c] / 10) + '℃'; if (lastTxt.get('wx') !== t) { lastTxt.set('wx', t); w.querySelector('span').textContent = t; w.querySelector('svg').outerHTML = svg('sun'); } }
+      else if (sim && b) { const c = labCell(Math.round(b.x), Math.round(b.y)), kind = sim.kind[c], w = q('hudWx'); const t = WX_LABEL[kind] + ' ' + Math.round(sim.T[c]) + '℃'; const sp = w.querySelector('span'); if (lastTxt.get('wx') !== t + kind) { lastTxt.set('wx', t + kind); sp.textContent = t; w.querySelector('svg').outerHTML = svg(wxIcon(kind)); } }
+    } catch (e) { }
+    // 体力・スタミナ・水分
+    try {
+      const vi = WohForage.vitalsInfo(forageSt), setB = (id, v, col) => { const el = q(id), bar = el.querySelector('b'), k = id + Math.round(v); if (lastTxt.get(id) !== k) { lastTxt.set(id, k); bar.style.width = Math.max(0, Math.min(100, v)) + '%'; if (col) el.style.color = col; } };
+      setB('hudHp', vi.hp, vi.hp < 30 ? '#ff6a5e' : '#e5524a'); setB('hudSp', 100 * vi.sp / WohForage.SP_MAX, vi.exhausted ? '#e8963a' : '#7fd35a'); setB('hudWt', vi.water, vi.thirsty ? '#ffb15e' : '#5bb4ea');
+    } catch (e) { }
+    // 満腹度
+    try { const pct = Math.round(100 * forageSt.kcal / WohForage.KCAL_MAX); const bar = q('hudFood').querySelector('b'); const k = 'f' + pct; if (lastTxt.get('food') !== k) { lastTxt.set('food', k); bar.style.width = pct + '%'; q('hudFood').style.color = pct < 8 ? '#e5524a' : pct < 30 ? '#e8963a' : '#f1c24a'; } } catch (e) { }
+    // 目標
+    try { const g = WohForage.goals(forageSt); const g1 = q('hudGoalT'), gn = q('hudGoalN'); const txt = g.all ? g.text : g.text + '（' + g.have + '/' + g.need + '）'; setT(g1, txt); setT(gn, g.all ? '完了' : (g.done + 1) + '/' + g.total); q('hudGoal').classList.toggle('all', g.all); } catch (e) { }
+    // 方位・視点
+    try { const cam = globalThis.__chunkPreview && __chunkPreview.camera; if (cam) { const v = new THREE.Vector3(); cam.getWorldDirection(v); compassUpdate((Math.atan2(v.x, -v.z) * 180 / Math.PI + 360) % 360); } } catch (e) { }
+    q('mzView').classList.toggle('on', !!(window.__wohAvatar && __wohAvatar.firstPerson));
+    // 近くに人がいれば「話す」
+    try {
+      const me = people && people.player ? people.player.id : -1, nv = globalThis.__wohNpcView && __wohNpcView.nearest ? __wohNpcView.nearest(4.5, me) : null; nearNpc = nv ? nv.i : null;
+      const tk = q('hudTalk'), lab = tk.querySelector('span'), want = nearNpc !== null ? '話す' : '調べる';
+      if (lab.textContent !== want) { lab.textContent = want; q('hudMode').style.display = nearNpc !== null ? 'none' : ''; }
+      if (talkNpc !== null && (!nv || nv.i !== talkNpc) && q('talkPanel').classList.contains('show') && !__wohNpcView.nearest(9, me)) { talkNpc = null; talkRender(); }
+    } catch (e) { }
+  }
+  setInterval(refresh, 150);
+  refresh();
+})();
+
+document.getElementById('menuDevBar')?.addEventListener('click', () => { document.body.classList.toggle('dev-toolbar'); });
 // ---- 人々（民族・集団・住民：WohPeople / WohNpc）
 let people = null;
 const peoplePlant = (c, m, out) => FA.faunaPlantFood(world.fauna.env, world.climate.cell, c, m, out, 0, 0);
@@ -11901,12 +12361,12 @@ function measuredSpeed(previous,current,elapsedMs,maxSpeed){
 
 function installGameHUD(){
  const bridge=globalThis.__wohNative,style=document.createElement('style');
- style.textContent=`#hudStats{position:fixed;z-index:110;left:calc(8px + env(safe-area-inset-left));top:calc(8px + env(safe-area-inset-top));width:230px;height:40px;padding:8px;background:#132a40e8;color:white;border-radius:8px;font:13px system-ui;pointer-events:none}#uiToggle{left:calc(250px + env(safe-area-inset-left))!important;right:auto!important;top:calc(8px + env(safe-area-inset-top))!important;width:98px;min-height:44px!important}#miniMap{position:fixed;z-index:25;left:auto;right:calc(8px + env(safe-area-inset-right));top:calc(8px + env(safe-area-inset-top));width:132px;height:154px;background:#12263bee;border:1px solid #7799ae;border-radius:8px;touch-action:manipulation;color:white;font:11px system-ui;text-align:center;padding:0}#miniMap canvas{width:132px;height:132px;display:block;touch-action:manipulation}#leftMenu{display:none;position:fixed;z-index:100;left:calc(8px + env(safe-area-inset-left));top:calc(54px + env(safe-area-inset-top));width:230px;max-height:calc(100dvh - 194px - env(safe-area-inset-top) - env(safe-area-inset-bottom));overflow:auto;background:#12263bf5;border:1px solid #7799ae;border-radius:8px;padding:6px}.integration-ui-hidden #leftMenu{display:none!important}body:not(.integration-third) #hudStats,body:not(.integration-third) #uiToggle,body:not(.integration-third) #miniMap,body:not(.integration-third) #joystick,body:not(.integration-third) #actions,body:not(.integration-third) #movementNotice{display:none!important}#toolbar{padding-right:8px!important}body.integration-third #toolbar{padding-right:8px!important;top:calc(60px + env(safe-area-inset-top))!important}body.integration-third #legend,body.integration-third:not(.integration-ui-hidden) #miniMap{display:none!important}#timebar{top:calc(var(--tb-h,64px) + 6px)!important}#legend{max-height:calc(100vh - var(--tb-h,64px) - 52px - env(safe-area-inset-bottom))!important;overflow-y:auto!important;pointer-events:auto!important;touch-action:pan-y!important;-webkit-overflow-scrolling:touch}#info{top:calc(var(--tb-h,64px) + 6px)!important;max-height:min(62vh,calc(100vh - var(--tb-h,64px) - var(--lab-h,0px) - 18px))!important}#toasts{top:calc(var(--tb-h,64px) + 36px)!important}.sheet{top:calc(var(--tb-h,60px) + 6px)!important}#modeTabs{display:flex;gap:4px;margin-bottom:6px}#leftMenu button,#leftMenu input,#leftMenu select{font:14px system-ui;min-height:44px;touch-action:manipulation}#modeTabs button{flex:1;border:1px solid #7799ae;border-radius:6px;background:#294e70;color:white}#modeTabs button.active{background:#84601e}#developerPanel{position:static!important;inset:auto!important;max-width:100%!important;max-height:none!important;padding:0!important;background:none!important;border:0!important;overflow:visible!important}#developerPanel button{max-width:100%}#developerPanel p{font-size:12px}#devSpeeds{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:4px 0}#devSpeeds button{margin:0!important;width:100%;min-height:44px}#devRestore{width:100%;margin:4px 0!important}#developerPane[hidden],#standardPane[hidden]{display:none!important}#joystick{left:calc(8px + env(safe-area-inset-left))!important;bottom:calc(16px + env(safe-area-inset-bottom))!important}#actions{right:calc(16px + env(safe-area-inset-right))!important;left:auto!important;bottom:calc(16px + env(safe-area-inset-bottom))!important;grid-template-columns:repeat(3,64px)!important;gap:8px!important}#actions #sprint{grid-column:1!important;grid-row:1!important}#actions #jump{grid-column:2!important;grid-row:1!important}#actions #crouch{grid-column:3!important;grid-row:1!important}#devBadge{left:calc(140px + env(safe-area-inset-left))!important;bottom:calc(86px + env(safe-area-inset-bottom))!important;font-size:11px}#movementNotice{left:8px!important;right:auto!important;max-width:340px;bottom:140px!important}#leftMenu::-webkit-scrollbar{width:4px}`;
+ style.textContent=`#leftMenu{display:none;position:fixed;z-index:100;left:calc(8px + env(safe-area-inset-left));top:calc(54px + env(safe-area-inset-top));width:230px;max-height:calc(100dvh - 194px - env(safe-area-inset-top) - env(safe-area-inset-bottom));overflow:auto;background:#12263bf5;border:1px solid #7799ae;border-radius:8px;padding:6px}.integration-ui-hidden #leftMenu{display:none!important}body:not(.integration-third) #hudStats,body:not(.integration-third) #uiToggle,body:not(.integration-third) #miniMap,body:not(.integration-third) #joystick,body:not(.integration-third) #actions,body:not(.integration-third) #movementNotice{display:none!important}#toolbar{padding-right:8px!important}body.integration-third #legend{display:none!important}#timebar{top:calc(var(--tb-h,64px) + 6px)!important}#legend{max-height:calc(100vh - var(--tb-h,64px) - 52px - env(safe-area-inset-bottom))!important;overflow-y:auto!important;pointer-events:auto!important;touch-action:pan-y!important;-webkit-overflow-scrolling:touch}#info{top:calc(var(--tb-h,64px) + 6px)!important;max-height:min(62vh,calc(100vh - var(--tb-h,64px) - var(--lab-h,0px) - 18px))!important}#toasts{top:calc(var(--tb-h,64px) + 36px)!important}.sheet{top:calc(var(--tb-h,60px) + 6px)!important}#modeTabs{display:flex;gap:4px;margin-bottom:6px}#leftMenu button,#leftMenu input,#leftMenu select{font:14px system-ui;min-height:44px;touch-action:manipulation}#modeTabs button{flex:1;border:1px solid #7799ae;border-radius:6px;background:#294e70;color:white}#modeTabs button.active{background:#84601e}#developerPanel{position:static!important;inset:auto!important;max-width:100%!important;max-height:none!important;padding:0!important;background:none!important;border:0!important;overflow:visible!important}#developerPanel button{max-width:100%}#developerPanel p{font-size:12px}#devSpeeds{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:4px 0}#devSpeeds button{margin:0!important;width:100%;min-height:44px}#devRestore{width:100%;margin:4px 0!important}#developerPane[hidden],#standardPane[hidden]{display:none!important}#joystick{left:calc(8px + env(safe-area-inset-left))!important;bottom:calc(16px + env(safe-area-inset-bottom))!important}#actions{right:calc(16px + env(safe-area-inset-right))!important;left:auto!important;bottom:calc(16px + env(safe-area-inset-bottom))!important;grid-template-columns:repeat(3,64px)!important;gap:8px!important}#actions #sprint{grid-column:1!important;grid-row:1!important}#actions #jump{grid-column:2!important;grid-row:1!important}#actions #crouch{grid-column:3!important;grid-row:1!important}#devBadge{left:calc(140px + env(safe-area-inset-left))!important;bottom:calc(86px + env(safe-area-inset-bottom))!important;font-size:11px}#movementNotice{left:8px!important;right:auto!important;max-width:340px;bottom:140px!important}#leftMenu::-webkit-scrollbar{width:4px}#miniMap{position:fixed;z-index:25;left:auto;right:calc(8px + env(safe-area-inset-right));top:calc(8px + env(safe-area-inset-top));width:calc(var(--hs,1) * 124px);height:calc(var(--hs,1) * 124px);background:#0e1a10;border:3px solid #cdbf93;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px #000a,inset 0 0 0 2px #000a;touch-action:manipulation;color:white;font:11px system-ui;text-align:center;padding:0}#miniMap canvas{width:100%;height:100%;display:block;border-radius:50%;touch-action:manipulation}#miniMap #mapRange{display:none}#miniMap #hudStats{position:absolute;left:50%;bottom:calc(var(--hs,1) * 7px);transform:translateX(-50%);width:auto;height:auto;padding:1px 7px;background:#000000a6;color:#d6e2ec;border-radius:9px;font:calc(var(--hs,1) * 9px)/1.35 system-ui;pointer-events:none;white-space:nowrap;font-variant-numeric:tabular-nums}#uiToggle{display:none!important}body.integration-third #toolbar{display:none!important}body.integration-third.dev-toolbar #toolbar{display:flex!important;top:calc(60px + env(safe-area-inset-top))!important;left:calc(8px + env(safe-area-inset-left))!important;right:calc(8px + env(safe-area-inset-right))!important;padding:6px 8px!important;z-index:60;border:1px solid rgba(255,255,255,.18);border-radius:10px;background:rgba(10,18,30,.94)!important;max-height:calc(100vh - 140px)!important;overflow:auto}body.integration-third #info{left:auto!important;right:calc(8px + env(safe-area-inset-right))!important;top:calc(60px + env(safe-area-inset-top))!important;width:250px;max-height:calc(100vh - 72px - env(safe-area-inset-top))!important;z-index:45}body.integration-third .sheet{top:calc(60px + env(safe-area-inset-top))!important;z-index:61}body.integration-third #toasts{top:calc(52px + env(safe-area-inset-top))!important}body.integration-third #joystick{left:calc(14px + env(safe-area-inset-left))!important;bottom:calc(var(--hs,1) * 92px + env(safe-area-inset-bottom))!important}body.integration-third #actions{pointer-events:none!important;display:block!important;right:0!important;bottom:0!important;width:0!important;height:0!important;padding:0!important;gap:0!important}body.integration-third #actions button{pointer-events:auto}body.integration-third #movementNotice{left:50%!important;right:auto!important;transform:translateX(-50%);max-width:340px;bottom:calc(var(--hs,1) * 100px + env(safe-area-inset-bottom))!important}body.integration-third #devBadge{left:calc(var(--hs,1) * 200px + env(safe-area-inset-left))!important;bottom:calc(var(--hs,1) * 70px + env(safe-area-inset-bottom))!important}`;
  document.head.appendChild(style);
  const stats=document.createElement('div');stats.id='hudStats';stats.textContent='FPS —　0.0 km/h';
  const mini=document.createElement('button');mini.id='miniMap';mini.setAttribute('aria-label','北が上のミニマップ。タップで範囲切替');mini.innerHTML='<canvas width="264" height="264"></canvas><span id="mapRange">北固定・地域</span>';
  const menu=document.createElement('section');menu.id='leftMenu';menu.className='scrollable';menu.style.touchAction='pan-y';menu.innerHTML='<nav id="modeTabs"><button id="standardMode" class="active">閉じる</button></nav><div id="standardPane"></div><div id="developerPane" hidden></div>';
- document.body.append(stats,mini,menu);
+ mini.append(stats);document.body.append(mini,menu);
  const standard=menu.querySelector('#standardPane'),devPane=menu.querySelector('#developerPane');
  let tab='standard';
  function select(value){if(value==='standard'&&globalThis.__wohDev?.multiplier>1)globalThis.__wohDev.normal();tab=value;menu.style.display=value==='developer'?'block':'none';if(value==='developer'){const tb=document.getElementById('toolbar');menu.style.top=(tb.getBoundingClientRect().bottom+6)+'px';}standard.hidden=value!=='standard';devPane.hidden=value!=='developer';document.getElementById('standardMode').classList.toggle('active',value==='standard');document.getElementById('devMenu')?.classList.toggle('active',value==='developer');const panel=document.getElementById('developerPanel');if(panel)panel.hidden=value!=='developer';}
@@ -11926,17 +12386,22 @@ function installGameHUD(){
  function buildMap(world){const palette=bridge.cartography,image=mapContext.createImageData(512,512),W=world.stats?.width||3000,H=world.stats?.height||3000;
   for(let y=0;y<512;y++)for(let x=0;x<512;x++){const i=Math.round(y/511*(H-1))*W+Math.round(x/511*(W-1)),o=(y*512+x)*4,k=palette.index(world.elev[i])*3;let c=palette.biomes[world.biome[i]];if(world.type[i]===0)c=null;if(world.water[i])c=world.water[i]===2?palette.lake:palette.river;for(let n=0;n<3;n++)image.data[o+n]=c?c[n]:palette.lut[k+n];image.data[o+3]=255;}mapContext.putImageData(image,0,0);
  }
- function drawMini(view){const p=view.markerPoint,t=view.state.terrain,n=mapPoint(p.xM,p.yM,t.widthM,t.heightM),size=512/zoom,sx=zoom===1?0:Math.max(0,Math.min(512-size,n.x*512-size/2)),sy=zoom===1?0:Math.max(0,Math.min(512-size,n.y*512-size/2));
-  context.setTransform(2,0,0,2,0,0);context.clearRect(0,0,132,132);context.drawImage(cache,sx,sy,size,size,18,18,96,96);
-  {const pe=window.__geo?.people;if(pe){context.save();context.beginPath();context.rect(18,18,96,96);context.clip();const me=pe.player&&pe.player.id>=0?pe.npc.group[pe.player.id]:0;for(const g of pe.groups){if(!g.alive)continue;const gx=18+(g.x/t.width*512-sx)/size*96,gy=18+(g.y/t.height*512-sy)/size*96;if(gx<16||gy<16||gx>116||gy>116)continue;const e=pe.ethnicities[g.ethId-1],c=e&&e.color?e.color:[255,255,255],r=g.settle===2?2.8:g.settle===1?2.2:1.7;context.fillStyle=`rgb(${c[0]},${c[1]},${c[2]})`;context.strokeStyle=g.id===me?'#ffffff':'#0b1018';context.lineWidth=g.id===me?1.5:.7;context.beginPath();if(g.settle===2)context.rect(gx-r,gy-r,2*r,2*r);else context.arc(gx,gy,r,0,6.283);context.fill();context.stroke();}context.restore();}}
-  const x=18+(n.x*512-sx)/size*96,y=18+(n.y*512-sy)/size*96;view.camera.getWorldDirection(direction);const len=Math.hypot(direction.x,direction.z)||1,heading=compassDegrees(direction.x,direction.z),angle=Math.atan2(direction.x/len,-direction.z/len);
-  context.save();context.beginPath();context.rect(18,18,96,96);context.clip();context.translate(x,y);context.rotate(angle);context.fillStyle='#70e4ff77';context.beginPath();context.moveTo(0,0);context.arc(0,0,28,-Math.PI/2-.4,-Math.PI/2+.4);context.closePath();context.fill();context.restore();
+ function drawMini(view){const p=view.markerPoint,t=view.state.terrain,n=mapPoint(p.xM,p.yM,t.widthM,t.heightM),size=512/zoom,sx=zoom===1?0:Math.max(0,Math.min(512-size,n.x*512-size/2)),sy=zoom===1?0:Math.max(0,Math.min(512-size,n.y*512-size/2)),S=132,C=S/2;
+  context.setTransform(2,0,0,2,0,0);context.clearRect(0,0,S,S);
+  context.save();context.beginPath();context.arc(C,C,C,0,6.2832);context.clip();context.drawImage(cache,sx,sy,size,size,0,0,S,S);
+  {const pe=window.__geo?.people;if(pe){const me=pe.player&&pe.player.id>=0?pe.npc.group[pe.player.id]:0;for(const g of pe.groups){if(!g.alive)continue;const gx=(g.x/t.width*512-sx)/size*S,gy=(g.y/t.height*512-sy)/size*S;if(Math.hypot(gx-C,gy-C)>C-2)continue;const e=pe.ethnicities[g.ethId-1],c=e&&e.color?e.color:[255,255,255],r=g.settle===2?3:g.settle===1?2.4:1.9;context.fillStyle=`rgb(${c[0]},${c[1]},${c[2]})`;context.strokeStyle=g.id===me?'#ffffff':'#0b1018';context.lineWidth=g.id===me?1.6:.7;context.beginPath();if(g.settle===2)context.rect(gx-r,gy-r,2*r,2*r);else context.arc(gx,gy,r,0,6.283);context.fill();context.stroke();}}}
+  const x=(n.x*512-sx)/size*S,y=(n.y*512-sy)/size*S;view.camera.getWorldDirection(direction);const len=Math.hypot(direction.x,direction.z)||1,heading=compassDegrees(direction.x,direction.z),angle=Math.atan2(direction.x/len,-direction.z/len);
+  context.save();context.translate(x,y);context.rotate(angle);context.fillStyle='#ffd34e66';context.strokeStyle='#ffd34ecc';context.lineWidth=1;context.beginPath();context.moveTo(0,0);context.arc(0,0,44,-Math.PI/2-.55,-Math.PI/2+.55);context.closePath();context.fill();context.stroke();context.restore();
   context.save();context.translate(x,y);context.rotate(Math.PI-view.character.rotation.y);context.fillStyle='#ffe054';context.strokeStyle='#182128';context.lineWidth=1.3;context.beginPath();context.moveTo(0,-8);context.lineTo(5,6);context.lineTo(0,3);context.lineTo(-5,6);context.closePath();context.fill();context.stroke();context.restore();
-  context.fillStyle='white';context.font='bold 11px system-ui';context.textAlign='center';context.fillText('北 N',66,12);context.fillText('南 S',66,128);context.font='10px system-ui';context.fillText('西',8,70);context.fillText('東',124,70);
+  context.restore();
+  context.fillStyle='#e8dcb4';context.font='bold 12px system-ui';context.textAlign='center';context.strokeStyle='#000c';context.lineWidth=3;context.strokeText('N',C,14);context.fillText('N',C,14);
+  context.strokeStyle='#e8dcb4aa';context.lineWidth=1.2;for(const [ax,ay,bx,by] of [[0,C,5,C],[S-5,C,S,C]]){context.beginPath();context.moveTo(ax,ay);context.lineTo(bx,by);context.stroke();}
   document.getElementById('mapRange').textContent=(zoom===1?'世界':zoom===16?'地域':'周辺')+'・視線'+['北','北東','東','南東','南','南西','西','北西'][Math.round(heading/45)%8]+Math.round(heading)+'°';
+  globalThis.__wohMapZoom={level:zoom===1?0:zoom===16?1:2,heading};
   return heading;
  }
  mini.onclick=()=>{zoom=zoom===1?16:zoom===16?128:1;lastUI=0;};
+ globalThis.__wohMapZoomBy=d=>{const L=[1,16,128],k=Math.max(0,Math.min(2,L.indexOf(zoom)+d));zoom=L[k];lastUI=0;};
  const diagnostic={fps:0,kph:0,heading:0,northUp:true};globalThis.__wohHUD=diagnostic;
  function tick(now){requestAnimationFrame(tick);const view=globalThis.__chunkPreview;if(document.hidden||!view?.state||!view.markerPoint){lastTime=now;lastPosition=null;return;}
   if(wasRendered)frames.push(now);wasRendered=false;while(frames.length&&frames[0]<now-1000)frames.shift();
@@ -12284,6 +12749,7 @@ for(const event of ['pointerup','pointercancel','lostpointercapture'])joystick.a
   if(e.pointerId!==stickId)return;stickId=null;stickInput.x=stickInput.y=0;stick.style.transform='';
 });
 function setSprint(value){
+  if(value&&globalThis.__wohNoSprint)value=false;
   if(value&&crouched){crouched=false;crouchButton.classList.remove('active');crouchButton.setAttribute('aria-pressed','false');}
   sprintOn=!overview&&value;sprint.classList.toggle('active',sprintOn);sprint.setAttribute('aria-pressed',String(sprintOn));
 }
@@ -12295,7 +12761,7 @@ pressAction(sprint,()=>setSprint(!sprintOn));
 const jumpButton=document.getElementById('jump'),crouchButton=document.getElementById('crouch');
 function toggleCrouch(){if(overview||jumpHeight>0||jumpVelocity!==0)return;crouched=!crouched;state.settle=.6;setSprint(false);crouchButton.classList.toggle('active',crouched);crouchButton.setAttribute('aria-pressed',String(crouched));}
 pressAction(crouchButton,toggleCrouch);
-function startJump(){if(!overview&&state&&!crouched&&jumpHeight===0&&jumpVelocity===0)jumpVelocity=5;}
+function startJump(){if(globalThis.__wohNoJump)return;if(!overview&&state&&!crouched&&jumpHeight===0&&jumpVelocity===0){jumpVelocity=5;try{globalThis.__wohOnJump?.();}catch(e){}}}
 pressAction(jumpButton,startJump);
 function toggleUiNow(){
   const hidden=document.body.classList.toggle('integration-ui-hidden');resetInput();
@@ -12613,10 +13079,10 @@ function npcTapAt(cx,cy){
  renderer.domElement.addEventListener('pointerdown',e=>{tap={x:e.clientX,y:e.clientY,t:performance.now(),id:e.pointerId};},true);
  renderer.domElement.addEventListener('pointerup',e=>{const s=tap;tap=null;if(!s||s.id!==e.pointerId||overview)return;if(Math.hypot(e.clientX-s.x,e.clientY-s.y)>10||performance.now()-s.t>400)return;npcTapAt(e.clientX,e.clientY);});}
 globalThis.__wohSettle={get stats(){return {...dwStats,counts:{...dwN}};},get layouts(){return npcCamps.size;}};
-globalThis.__wohNpcView={get count(){return npcList.length;},get selected(){return npcSel;},screens:npcScreens,tapAt:npcTapAt};
-globalThis.__wohAvatar={setFirstPerson,get firstPerson(){return firstPerson;},setView(y,p,d){yaw=y;pitch=p;globalThis.__wohCamDist=d||4;updateCamera();},toBlock(bx,by,dx,dz){if(!state)return false;const q=state.terrain.gridToMeters(bx,by);placeMarker(q.xM+(dx||0),q.yM+(dz||0));return true;},toPlayer(){const pe=window.__geo?.people,y=pe&&globalThis.WohPeople?.peopleYou(pe);if(!y?.camp||!state)return false;const q=state.terrain.gridToMeters(y.camp.x,y.camp.y);placeMarker(q.xM,q.yM);return true;},get point(){return markerPoint;},block(){if(!state||!markerPoint)return null;const q=state.terrain.metersToGrid(markerPoint.xM,markerPoint.yM);return {x:q.x,y:q.y};}};
+globalThis.__wohNpcView={get count(){return npcList.length;},get selected(){return npcSel;},screens:npcScreens,tapAt:npcTapAt,positions(){return npcList.map(e=>({i:e.i,xM:e.x+state.origin.xM,yM:e.z+state.origin.yM}));},nearest(maxM,skip){let b=null;for(const e of npcList){if(e.i===skip)continue;const d=Math.hypot(e.x-marker.position.x,e.z-marker.position.z);if(d<=maxM&&(!b||d<b.d))b={i:e.i,d};}return b;}};
+globalThis.__wohAvatar={get moveState(){return {sprinting:sprintOn,moving:wasMoving,crouched,air:jumpHeight>0||jumpVelocity!==0};},setSprint,setFirstPerson,get firstPerson(){return firstPerson;},setView(y,p,d){yaw=y;pitch=p;globalThis.__wohCamDist=d||4;updateCamera();},toBlock(bx,by,dx,dz){if(!state)return false;const q=state.terrain.gridToMeters(bx,by);placeMarker(q.xM+(dx||0),q.yM+(dz||0));return true;},toPlayer(){const pe=window.__geo?.people,y=pe&&globalThis.WohPeople?.peopleYou(pe);if(!y?.camp||!state)return false;const q=state.terrain.gridToMeters(y.camp.x,y.camp.y);placeMarker(q.xM,q.yM);return true;},get point(){return markerPoint;},block(){if(!state||!markerPoint)return null;const q=state.terrain.metersToGrid(markerPoint.xM,markerPoint.yM);return {x:q.x,y:q.y};}};
 window.__wohPlayerSave=()=>playerToSource(globalThis.__wohDev?.savedPlayer()??(markerPoint?{xM:markerPoint.xM,yM:markerPoint.yM,yaw}:null));
-document.body.classList.add('integration-ui-hidden','integration-third');
+document.body.classList.add('integration-third');
 animatePlayer(0);resize();if(bridge.world)adoptNativeWorld();
 
 installGameHUD();
@@ -15751,14 +16217,29 @@ html.shipUiHidden #shipEye{left:calc(8px + env(safe-area-inset-left));opacity:.4
     ui.panel.append(ui.spawn, ui.list);
     document.body.append(css, ui.btn, ui.eye, ui.panel, ui.bar, ui.ladders, ui.toast);
     try { setUiHidden(localStorage.getItem('woh-ship-ui-hidden') === '1'); } catch (_) { /* storage unavailable */ }
+    layoutShipUi(); setInterval(layoutShipUi, 400); addEventListener('resize', layoutShipUi);
     let down = null; const cv = nat.renderer.domElement;
     cv.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; }, true);
     cv.addEventListener('pointerup', (e) => { if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 8 && performance.now() - down.t < 500) onMapTap(e); down = null; }, true);
     ['pointerdown', 'pointermove', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'wheel'].forEach((ev) => { for (const el of [ui.panel, ui.btn, ui.eye, ui.bar, ui.ladders]) el.addEventListener(ev, (e) => e.stopPropagation(), { passive: true}); });
   }
+  /** Keep the ship UI clear of the game's own HUD (v31 layout): measured from the game's elements, so it follows any screen size. */
+  function layoutShipUi() {
+    const R = (id) => { const e = document.getElementById(id); if (!e) return null; const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden') return null; const b = e.getBoundingClientRect(); return b.width ? b : null; };
+    const hud = ['hudGoal', 'hudTL'].map(R).filter(Boolean), compass = R('hudCompass'), hot = R('hudHot'), joy = R('joystick'), ch = ['sprint', 'jump', 'crouch', 'hudTalk'].map(R).filter(Boolean);
+    const left0 = Math.max(8, ...hud.map((b) => b.left)), below = Math.max(0, ...hud.map((b) => b.bottom)) + 6;
+    const top = below > 6 ? below : 56, bw = ui.btn.offsetWidth || 52;
+    Object.assign(ui.btn.style, { top: top + 'px', left: '8px' }); Object.assign(ui.eye.style, { top: top + 'px', left: uiHidden ? '8px' : (8 + bw + 8) + 'px' });
+    const barBottom = hot ? innerHeight - hot.top + 6 : 8, stat = R('hudStatus'), barLeft = Math.max(joy ? joy.right + 8 : 128, stat ? stat.right + 8 : 0), barRight = ch.length ? innerWidth - Math.min(...ch.map((b) => b.left)) + 6 : 226;
+    Object.assign(ui.bar.style, { bottom: barBottom + 'px', left: barLeft + 'px', right: barRight + 'px' });
+    const barTop = ui.bar.style.display === 'none' ? innerHeight - barBottom : innerHeight - barBottom - (ui.bar.offsetHeight || 0);
+    const pTop = (compass ? compass.bottom : 48) + 6, pLeft = Math.max(...hud.map((b) => b.right), 8) + 8;
+    Object.assign(ui.panel.style, { top: pTop + 'px', left: pLeft + 'px', maxHeight: Math.max(80, barTop - pTop - 8) + 'px' });
+    Object.assign(ui.ladders.style, { left: barLeft + 'px', bottom: (barBottom + (ui.bar.offsetHeight || 60) + 6) + 'px' });
+    ui.toast.style.top = ((compass ? compass.bottom : 48) + 6) + 'px';
+  }
   function refreshList() {
     if (!ui.list) return;
-    ui.panel.style.maxHeight = 'calc(100vh - 240px)'; // always stops above the game's joystick
     ui.list.replaceChildren($('h4', { textContent: '船' }), ...(fleet?.list() ?? []).map((r) => $('div', { className: 'row' }, [
       $('span', { textContent: `${r.id}（${Ship.sampleDesigns[r.designId]?.label ?? r.designId}）`, style: 'flex:1' }),
       $('button', { textContent: boarded === r.id ? '降りる' : '乗る', className: boarded === r.id ? 'on' : '', onclick: () => (boarded === r.id ? disembark() : board(r.id)) }),

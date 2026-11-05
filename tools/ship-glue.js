@@ -327,14 +327,29 @@ html.shipUiHidden #shipEye{left:calc(8px + env(safe-area-inset-left));opacity:.4
     ui.panel.append(ui.spawn, ui.list);
     document.body.append(css, ui.btn, ui.eye, ui.panel, ui.bar, ui.ladders, ui.toast);
     try { setUiHidden(localStorage.getItem('woh-ship-ui-hidden') === '1'); } catch (_) { /* storage unavailable */ }
+    layoutShipUi(); setInterval(layoutShipUi, 400); addEventListener('resize', layoutShipUi);
     let down = null; const cv = nat.renderer.domElement;
     cv.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; }, true);
     cv.addEventListener('pointerup', (e) => { if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 8 && performance.now() - down.t < 500) onMapTap(e); down = null; }, true);
     ['pointerdown', 'pointermove', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'wheel'].forEach((ev) => { for (const el of [ui.panel, ui.btn, ui.eye, ui.bar, ui.ladders]) el.addEventListener(ev, (e) => e.stopPropagation(), { passive: true}); });
   }
+  /** Keep the ship UI clear of the game's own HUD (v31 layout): measured from the game's elements, so it follows any screen size. */
+  function layoutShipUi() {
+    const R = (id) => { const e = document.getElementById(id); if (!e) return null; const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden') return null; const b = e.getBoundingClientRect(); return b.width ? b : null; };
+    const hud = ['hudGoal', 'hudTL'].map(R).filter(Boolean), compass = R('hudCompass'), hot = R('hudHot'), joy = R('joystick'), ch = ['sprint', 'jump', 'crouch', 'hudTalk'].map(R).filter(Boolean);
+    const left0 = Math.max(8, ...hud.map((b) => b.left)), below = Math.max(0, ...hud.map((b) => b.bottom)) + 6;
+    const top = below > 6 ? below : 56, bw = ui.btn.offsetWidth || 52;
+    Object.assign(ui.btn.style, { top: top + 'px', left: '8px' }); Object.assign(ui.eye.style, { top: top + 'px', left: uiHidden ? '8px' : (8 + bw + 8) + 'px' });
+    const barBottom = hot ? innerHeight - hot.top + 6 : 8, stat = R('hudStatus'), barLeft = Math.max(joy ? joy.right + 8 : 128, stat ? stat.right + 8 : 0), barRight = ch.length ? innerWidth - Math.min(...ch.map((b) => b.left)) + 6 : 226;
+    Object.assign(ui.bar.style, { bottom: barBottom + 'px', left: barLeft + 'px', right: barRight + 'px' });
+    const barTop = ui.bar.style.display === 'none' ? innerHeight - barBottom : innerHeight - barBottom - (ui.bar.offsetHeight || 0);
+    const pTop = (compass ? compass.bottom : 48) + 6, pLeft = Math.max(...hud.map((b) => b.right), 8) + 8;
+    Object.assign(ui.panel.style, { top: pTop + 'px', left: pLeft + 'px', maxHeight: Math.max(80, barTop - pTop - 8) + 'px' });
+    Object.assign(ui.ladders.style, { left: barLeft + 'px', bottom: (barBottom + (ui.bar.offsetHeight || 60) + 6) + 'px' });
+    ui.toast.style.top = ((compass ? compass.bottom : 48) + 6) + 'px';
+  }
   function refreshList() {
     if (!ui.list) return;
-    ui.panel.style.maxHeight = 'calc(100vh - 240px)'; // always stops above the game's joystick
     ui.list.replaceChildren($('h4', { textContent: '船' }), ...(fleet?.list() ?? []).map((r) => $('div', { className: 'row' }, [
       $('span', { textContent: `${r.id}（${Ship.sampleDesigns[r.designId]?.label ?? r.designId}）`, style: 'flex:1' }),
       $('button', { textContent: boarded === r.id ? '降りる' : '乗る', className: boarded === r.id ? 'on' : '', onclick: () => (boarded === r.id ? disembark() : board(r.id)) }),
