@@ -171,7 +171,7 @@ for (const id of ['pinta-1492', 'pinta-1492-lateen', 'galleon', 'galley']) $('sp
 function board(id) { boarded = id; const o = objs.get(id); if (o) { o.player.visible = true; } for (const [k, x] of objs) if (k !== id) { x.player.visible = false; Ship.setViewDeck(x, x.weatherDeck); } refresh(); toast(`${id} に乗った`); }
 function disembark() { if (!boarded) return; const o = objs.get(boarded); if (o) { o.player.visible = false; Ship.setViewDeck(o, o.weatherDeck); } boarded = null; refresh(); }
 function refresh() {
-  const L = $('list'); L.replaceChildren(...fleet.list().map((r) => el('div', { className: 'row' }, [el('span', { textContent: `${r.id}（${Ship.sampleDesigns[r.designId].label}）`, style: 'flex:1' }),
+  const L = $('list'); L.replaceChildren(...fleet.list().map((r) => el('div', { className: 'row' }, [el('span', { textContent: `${r.id}（${Ship.sampleDesigns[r.designId]?.label ?? r.designId}）`, style: 'flex:1' }),
     el('button', { textContent: boarded === r.id ? '降りる' : '乗る', className: boarded === r.id ? 'on' : '', onclick: () => (boarded === r.id ? disembark() : board(r.id)) }),
     el('button', { textContent: '消す', onclick: () => { const o = objs.get(r.id); if (o) { scene.remove(o.group); o.dispose(); objs.delete(r.id); } fleet.removeShip(r.id); delete ctl[r.id]; if (boarded === r.id) boarded = null; refresh(); save(); } })])));
   const C = $('ctrl'); C.replaceChildren(); $('bar').style.display = boarded && fleet.has(boarded) ? 'block' : 'none'; $('stick').style.display = boarded ? 'block' : 'none';
@@ -244,7 +244,7 @@ function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ fleet: f
 function load() {
   try {
     const d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); if (!d?.fleet) return;
-    fleet.restore(d.fleet); ctl = d.ctl ?? {}; Object.assign(wind, d.wind ?? {}); $('ws').value = wind.speed; $('wd').value = wind.from;
+    const r = fleet.restore(d.fleet, { current: Ship.sampleDesigns }); ctl = d.ctl ?? {}; if (r.skipped.length) setTimeout(() => toast(`古い船 ${r.skipped.length} 隻は読み込めず外した`), 500); Object.assign(wind, d.wind ?? {}); $('ws').value = wind.speed; $('wd').value = wind.from;
   } catch (_) { newFleet(); }
 }
 

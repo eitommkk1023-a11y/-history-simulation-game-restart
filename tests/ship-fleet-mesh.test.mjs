@@ -90,3 +90,17 @@ test('hull mesh: outward normals (positive enclosed volume) for several hulls', 
   }
   assert.throws(() => buildHullMesh(createHull(boxBarge()), { stations: 1 }), /integers/);
 });
+
+test('fleet restore: stale or unknown designs are skipped, and the current design data wins over the saved copy', () => {
+  const f = newFleet(); const a = f.addShip({ designId: 'galley' }), b = f.addShip({ designId: 'galleon' });
+  const saved = JSON.parse(JSON.stringify(f.serialize()));
+  saved.ships[0].designId = 'removed-design'; saved.designs['removed-design'] = saved.designs.galley;          // a ship of a design that no longer exists
+  saved.designs.galleon = { ...saved.designs.galleon, label: 'OLD COPY' };                                       // an out-of-date saved copy of a design that still exists
+  const g = createFleet(); const r = g.restore(saved, { current: sampleDesigns });
+  assert.equal(r.restored, 1); assert.deepEqual(r.skipped.map((s) => [s.id, s.designId]), [[a, 'removed-design']]);
+  assert.equal(g.has(b), true); assert.equal(g.has(a), false);
+  assert.ok(g.designIds().includes('pinta-1492'), 'every current design is available after a restore');
+  assert.equal(g.addShip({ designId: 'galley' }).startsWith('ship-'), true);
+  // without `current` the old behaviour (use the saved designs) is kept
+  const h = createFleet(); assert.equal(h.restore(JSON.parse(JSON.stringify(f.serialize()))).restored, 2);
+});

@@ -114,22 +114,32 @@ export function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0
     }));
   }
 
-  function restore(data) {
+  /**
+   * Restore a saved fleet. With `current` (id -> design) the CURRENT design data wins over the copy stored in the save, so a
+   * ship made with an older version follows today's design; ships whose design no longer exists, or that cannot be rebuilt,
+   * are skipped (and listed) instead of breaking everything. Returns { restored, skipped: [{ id, designId, reason }] }.
+   */
+  function restore(data, { current = null } = {}) {
     if (!data || data.format !== FORMAT) throw new RangeError('unsupported fleet save format');
     designs.clear(); analyses.clear(); ships.clear(); events.length = 0;
-    for (const [id, d] of Object.entries(data.designs)) registerDesign(id, d);
+    for (const [id, d] of Object.entries(data.designs)) registerDesign(id, current?.[id] ?? d);
+    for (const [id, d] of Object.entries(current ?? {})) if (!designs.has(id)) registerDesign(id, d);
     nextId = data.nextId; time = data.time;
+    const skipped = [];
     for (const r of data.ships) {
-      const vessel = build(r.designId, r.massItems ?? null);
-      Object.assign(vessel.state, r.state);
-      if (r.state.anchor) vessel.state.anchor = { ...r.state.anchor, breakingN: r.state.anchor.breakingN ?? Infinity };
-      for (const x of r.sails) { const sl = vessel.sails.find((s) => s.id === x.id); if (sl) { sl.trimDeg = x.trimDeg; sl.deployed = x.deployed; } }
-      for (const x of r.oars) { const o = vessel.oars.find((q) => q.id === x.id); if (o) { o.effort = x.effort; o.stamina = x.stamina; } }
-      let captain = null;
-      if (r.captain) { captain = createCaptain(vessel); captain.restore(r.captain); }
-      let crew = null; if (r.crew) { crew = makeCrew(r.designId); crew.restore(r.crew); }
-      ships.set(r.id, { id: r.id, designId: r.designId, vessel, captain, crew, crewNeeds: r.crewNeeds ?? {}, massItems: r.massItems ?? null, lod: LOD.near, lifecycle: r.lifecycle, dormantSeconds: r.dormantSeconds, refs: r.refs, history: r.history });
+      if (current && !current[r.designId]) { skipped.push({ id: r.id, designId: r.designId, reason: 'design no longer exists' }); continue; }
+      try {
+        const vessel = build(r.designId, r.massItems ?? null);
+        Object.assign(vessel.state, r.state);
+        if (r.state.anchor) vessel.state.anchor = { ...r.state.anchor, breakingN: r.state.anchor.breakingN ?? Infinity };
+        for (const x of r.sails) { const sl = vessel.sails.find((q) => q.id === x.id); if (sl) { sl.trimDeg = x.trimDeg; sl.deployed = x.deployed; } }
+        for (const x of r.oars) { const o = vessel.oars.find((q) => q.id === x.id); if (o) { o.effort = x.effort; o.stamina = x.stamina; } }
+        let captain = null; if (r.captain) { captain = createCaptain(vessel); captain.restore(r.captain); }
+        let crew = null; if (r.crew) { crew = makeCrew(r.designId); crew.restore(r.crew); }
+        ships.set(r.id, { id: r.id, designId: r.designId, vessel, captain, crew, crewNeeds: r.crewNeeds ?? {}, massItems: r.massItems ?? null, lod: LOD.near, lifecycle: r.lifecycle, dormantSeconds: r.dormantSeconds, refs: r.refs, history: r.history });
+      } catch (e) { skipped.push({ id: r.id, designId: r.designId, reason: String(e?.message ?? e) }); }
     }
+    return { restored: ships.size, skipped };
   }
 
   return {
