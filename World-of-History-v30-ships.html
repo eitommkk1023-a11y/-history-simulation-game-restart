@@ -11754,11 +11754,11 @@ const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_p
     const id = fleet.addShip({ designId, X: spot.xM - ref.xM, Y: ref.yM - spot.yM, headingDeg: heading, crew: !!Ship.sampleDesigns[designId].evidence });
     fleet.get(id).vessel.state.u = 1.5; // already under way, so the rudder bites
     ctl[id] = { heading, held: 0, auto: true, oar: 0.8 };
-    { const dx = spot.xM - mp.xM, dy = spot.yM - mp.yM, km = Math.hypot(dx, dy) / 1000, dir = ['東', '南東', '南', '南西', '西', '北西', '北', '北東'][Math.round(Math.atan2(dy, dx) / (Math.PI / 4) + 8) % 8]; toast(`${id}（${Ship.sampleDesigns[designId].label}）を海に出した：${dir}へ約${km.toFixed(1)}km。「乗る」で移動します`); } refreshList(); save();
+    { const dx = spot.xM - mp.xM, dy = spot.yM - mp.yM, km = Math.hypot(dx, dy) / 1000, dir = ['東', '南東', '南', '南西', '西', '北西', '北', '北東'][Math.round(Math.atan2(dy, dx) / (Math.PI / 4) + 8) % 8]; toast(`${id}（${Ship.sampleDesigns[designId].label}）を海に出した：${dir}へ約${km.toFixed(1)}km`); } refreshList(); save();
   }
   function board(id) {
     const rec = fleet.get(id), m = meshes.get(id); if (!m) return;
-    boarded = id; if (m.interior) m.pos = m.interior.startPosition(); refreshList(); toast(`${id} に乗った。移動で甲板を歩けます（階段は近づくとボタンが出ます）`);
+    boarded = id; if (m.interior) m.pos = m.interior.startPosition(); ui.panel.style.display = 'none'; refreshList(); toast(`${id} に乗った（移動で甲板を歩けます）`);
   }
   function clearLadders() { ladderSig = ''; ui.ladders?.replaceChildren(); }
   function disembark() {
@@ -11868,16 +11868,17 @@ const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_p
     const css = $('style', { textContent: `
 #shipBtn,#shipPanel{position:fixed;z-index:120;left:calc(8px + env(safe-area-inset-left));font:12px/1.35 -apple-system,"Hiragino Sans",sans-serif;color:#e6edf3}
 #shipBtn{top:calc(56px + env(safe-area-inset-top));padding:6px 10px;background:#132a40e8;border:1px solid #2e5576;border-radius:8px}
-#shipPanel{top:calc(96px + env(safe-area-inset-top));width:min(300px,calc(100vw - 24px));max-height:calc(100vh - 170px);min-height:0;overflow:auto;background:#10202ff2;border:1px solid #2e5576;border-radius:10px;padding:8px;display:none;-webkit-user-select:none;user-select:none}
+#shipPanel{top:calc(96px + env(safe-area-inset-top));width:min(250px,calc(100vw - 24px));max-height:calc(100vh - 170px);min-height:0;overflow:auto;background:#10202ff2;border:1px solid #2e5576;border-radius:10px;padding:8px;display:none;-webkit-user-select:none;user-select:none}
 #shipBar{position:fixed;z-index:120;bottom:calc(8px + env(safe-area-inset-bottom));left:calc(150px + env(safe-area-inset-left));right:calc(240px + env(safe-area-inset-right));display:none;font:12px/1.3 -apple-system,"Hiragino Sans",sans-serif;color:#e6edf3;background:#10202ff2;border:1px solid #2e5576;border-radius:10px;padding:6px;-webkit-user-select:none;user-select:none}
 #shipBar .info{font-size:11px;color:#9fc4de;margin-bottom:2px}#shipBar .btns{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
-@media (max-width:720px){#shipBar{left:calc(8px + env(safe-area-inset-left));right:calc(8px + env(safe-area-inset-right));bottom:calc(150px + env(safe-area-inset-bottom))}}
+@media (max-width:720px){#shipPanel:not([style*="display: none"]) ~ #shipBar{display:none!important}#shipBar{left:calc(8px + env(safe-area-inset-left));right:calc(8px + env(safe-area-inset-right));bottom:calc(150px + env(safe-area-inset-bottom))}}
 #shipPanel{touch-action:pan-y;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+#shipBar button{padding:3px 7px!important;font-size:11px!important;min-height:27px!important;margin:1px!important}#shipBar .info{font-size:10.5px!important}
 #shipPanel button,#shipBar button{background:#25415a;color:#e6edf3;border:1px solid #3b6288;border-radius:7px;padding:6px 9px;font-size:12px;min-height:30px;margin:2px 2px 2px 0}
 #shipPanel button.on,#shipBar button.on{background:#4cc2ff;color:#04202e}#shipPanel h4{margin:6px 0 2px;font-size:12px;color:#7fc8f0}
 #shipPanel .row{display:flex;align-items:center;gap:6px}#shipPanel input[type=range]{flex:1;min-width:0}
 #shipLadders{position:fixed;z-index:121;left:calc(150px + env(safe-area-inset-left));bottom:calc(96px + env(safe-area-inset-bottom))}#shipLadders button{background:#4cc2ff;color:#04202e;border:1px solid #3b6288;border-radius:7px;padding:6px 14px;font-size:13px;min-height:34px}
-#shipToast{position:fixed;z-index:130;left:50%;bottom:calc(158px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#000c;color:#fff;padding:6px 12px;border-radius:8px;font:13px sans-serif;opacity:0;transition:opacity .3s;pointer-events:none}` });
+#shipToast{position:fixed;z-index:130;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));max-width:min(420px,58vw);text-align:center;transform:translateX(-50%);background:#000c;color:#fff;padding:6px 12px;border-radius:8px;font:13px sans-serif;opacity:0;transition:opacity .3s;pointer-events:none}` });
     ui.btn = $('button', { id: 'shipBtn', textContent: '⛵ 船' });
     ui.panel = $('div', { id: 'shipPanel', className: 'scrollable' });
     ui.toast = $('div', { id: 'shipToast' });
@@ -11895,6 +11896,7 @@ const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_p
   }
   function refreshList() {
     if (!ui.list) return;
+    ui.panel.style.maxHeight = 'calc(100vh - 240px)'; // always stops above the game's joystick
     ui.list.replaceChildren($('h4', { textContent: '船' }), ...(fleet?.list() ?? []).map((r) => $('div', { className: 'row' }, [
       $('span', { textContent: `${r.id}（${Ship.sampleDesigns[r.designId]?.label ?? r.designId}）`, style: 'flex:1' }),
       $('button', { textContent: boarded === r.id ? '降りる' : '乗る', className: boarded === r.id ? 'on' : '', onclick: () => (boarded === r.id ? disembark() : board(r.id)) }),
@@ -11904,15 +11906,15 @@ const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_p
     if (!boarded || !fleet?.has(boarded)) return;
     const rec = fleet.get(boarded), c = ctl[boarded], v = rec.vessel;
     const hold = (label, dir) => { const b = $('button', { textContent: label }); const on = (e) => { e.preventDefault(); c.held = dir; }, off = () => { if (c.held === dir) c.held = 0; }; b.addEventListener('pointerdown', on); ['pointerup', 'pointerleave', 'pointercancel'].forEach((t) => b.addEventListener(t, off)); return b; };
-    ui.ctrl.append(hold('◀ 左へ', -1), hold('右へ ▶', 1),
-      $('button', { textContent: v.state.anchor ? '錨を上げる' : '錨を下ろす', onclick: () => { if (v.state.anchor) v.raiseAnchor(); else { const r = v.dropAnchor(env, { anchorKg: 400, rodeM: 60 }); if (r.status !== 'ok') toast('投錨できない：' + r.status); } refreshList(); } }));
-    if (v.sails.length) ui.ctrl.append($('button', { textContent: c.auto ? '帆：自動' : '帆：固定', className: c.auto ? 'on' : '', onclick: () => { c.auto = !c.auto; refreshList(); } }));
+    ui.ctrl.append(hold('◀左', -1), hold('右▶', 1),
+      $('button', { textContent: v.state.anchor ? '錨↑' : '錨↓', onclick: () => { if (v.state.anchor) v.raiseAnchor(); else { const r = v.dropAnchor(env, { anchorKg: 400, rodeM: 60 }); if (r.status !== 'ok') toast('投錨できない：' + r.status); } refreshList(); } }));
+    if (v.sails.length) ui.ctrl.append($('button', { textContent: c.auto ? '帆自動' : '帆固定', className: c.auto ? 'on' : '', onclick: () => { c.auto = !c.auto; refreshList(); } }));
     if (v.oars.length) { const r = $('input', { type: 'range', min: -100, max: 100, step: 5, value: Math.round(c.oar * 100) }); r.oninput = () => { c.oar = r.value / 100; }; ui.ctrl.append($('span', { textContent: '櫂' }), r); r.style.cssText = 'width:90px'; }
     const active = captainActive(rec);
-    ui.ctrl.append($('button', { textContent: pickMode ? '地図をタップ…' : '目的地（俯瞰で指定）', className: pickMode ? 'on' : '', onclick: () => { pickMode = !pickMode; toast(pickMode ? '「UIを表示」→「世界を俯瞰」で地図を開き、行き先をタップ' : '指定をやめた'); refreshList(); } }),
+    ui.ctrl.append($('button', { textContent: pickMode ? '地図タップ' : '目的地', className: pickMode ? 'on' : '', onclick: () => { pickMode = !pickMode; toast(pickMode ? '「UIを表示」→「世界を俯瞰」で地図を開き、行き先をタップ' : '指定をやめた'); refreshList(); } }),
       $('button', { textContent: '前方3km', onclick: () => { const st = v.state, h = st.psi; setDest(boarded, st.X + Math.sin(h) * 3000, st.Y + Math.cos(h) * 3000); } }));
-    if (active) ui.ctrl.append($('button', { textContent: '航海をやめる', onclick: () => { fleet.cancelDestination(boarded); updateRoute(null); v.setHeadingTarget(null); ctl[boarded].heading = v.snapshot().headingDeg; refreshList(); } }));
-    ui.ctrl.append($('button', { textContent: '降りる', onclick: () => disembark() }), $('button', { textContent: `倍速 ×${speedX}`, onclick: (e) => { speedX = speedX === 1 ? 4 : speedX === 4 ? 10 : 1; e.target.textContent = `倍速 ×${speedX}`; } }));
+    if (active) ui.ctrl.append($('button', { textContent: '中止', onclick: () => { fleet.cancelDestination(boarded); updateRoute(null); v.setHeadingTarget(null); ctl[boarded].heading = v.snapshot().headingDeg; refreshList(); } }));
+    ui.ctrl.append($('button', { textContent: '降りる', onclick: () => disembark() }), $('button', { textContent: `×${speedX}`, onclick: (e) => { speedX = speedX === 1 ? 4 : speedX === 4 ? 10 : 1; e.target.textContent = `×${speedX}`; } }));
   }
   function updateHud() {
     if (!ui.info) return;

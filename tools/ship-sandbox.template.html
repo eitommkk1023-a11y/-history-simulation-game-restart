@@ -11,7 +11,7 @@ canvas#c{position:fixed;inset:0;width:100%;height:100%;display:block}
 #top{top:calc(8px + env(safe-area-inset-top));left:calc(8px + env(safe-area-inset-left));width:min(250px,60vw);max-height:46vh;overflow:auto;touch-action:pan-y}
 #bar{bottom:calc(8px + env(safe-area-inset-bottom));left:calc(150px + env(safe-area-inset-left));right:calc(8px + env(safe-area-inset-right));display:none}
 @media (max-width:700px){#bar{left:calc(8px + env(safe-area-inset-left));bottom:calc(150px + env(safe-area-inset-bottom))}}
-button{background:#25415a;color:var(--tx);border:1px solid #3b6288;border-radius:7px;padding:5px 9px;font-size:12px;min-height:30px;margin:2px 2px 2px 0}
+button{background:#25415a;color:var(--tx);border:1px solid #3b6288;border-radius:7px;padding:3px 8px;font-size:11px;min-height:27px;margin:1px 2px 1px 0}
 button.on{background:var(--ac);color:#04202e}
 .row{display:flex;align-items:center;gap:6px}.row label{flex:0 0 5.5em;color:var(--mu)}.row input{flex:1;min-width:0}.row output{flex:0 0 3.6em;text-align:right}
 h4{margin:4px 0 2px;font-size:12px;color:#7fc8f0}
@@ -178,11 +178,11 @@ function refresh() {
   if (!boarded || !fleet.has(boarded)) return;
   const rec = fleet.get(boarded), v = rec.vessel, c = ctl[boarded];
   const hold = (label, dir) => { const b = el('button', { textContent: label }); b.addEventListener('pointerdown', (e) => { e.preventDefault(); c.held = dir; }); for (const t of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(t, () => { if (c.held === dir) c.held = 0; }); return b; };
-  C.append(hold('◀ 左へ', -1), hold('右へ ▶', 1), el('button', { textContent: '前方3km', onclick: () => { const s = v.state; setDest(boarded, s.X + Math.sin(s.psi) * 3000, s.Y + Math.cos(s.psi) * 3000); } }));
-  if (active(rec)) C.append(el('button', { textContent: '航海をやめる', onclick: () => { fleet.cancelDestination(boarded); v.setHeadingTarget(null); c.heading = v.snapshot().headingDeg; drawRoute(); refresh(); } }));
-  C.append(el('button', { textContent: v.state.anchor ? '錨を上げる' : '錨を下ろす', onclick: () => { if (v.state.anchor) v.raiseAnchor(); else { const r = v.dropAnchor(env, { anchorKg: 400, rodeM: 60 }); if (r.status !== 'ok') toast('投錨できない：' + r.status); } refresh(); } }));
-  if (rec.crew) C.append(el('button', { textContent: '樽±10', onclick: () => { toggleCargo(); refresh(); } }), el('button', { textContent: '8月の舵故障', onclick: startScenario }));
-  if (v.sails.length) C.append(el('button', { textContent: c.auto ? '帆：自動' : '帆：固定', className: c.auto ? 'on' : '', onclick: () => { c.auto = !c.auto; refresh(); } }));
+  C.append(hold('◀左', -1), hold('右▶', 1), el('button', { textContent: '前方3km', onclick: () => { const s = v.state; setDest(boarded, s.X + Math.sin(s.psi) * 3000, s.Y + Math.cos(s.psi) * 3000); } }));
+  if (active(rec)) C.append(el('button', { textContent: '中止', onclick: () => { fleet.cancelDestination(boarded); v.setHeadingTarget(null); c.heading = v.snapshot().headingDeg; drawRoute(); refresh(); } }));
+  C.append(el('button', { textContent: v.state.anchor ? '錨↑' : '錨↓', onclick: () => { if (v.state.anchor) v.raiseAnchor(); else { const r = v.dropAnchor(env, { anchorKg: 400, rodeM: 60 }); if (r.status !== 'ok') toast('投錨できない：' + r.status); } refresh(); } }));
+  if (rec.crew) C.append(el('button', { textContent: '樽±10', onclick: () => { toggleCargo(); refresh(); } }), el('button', { textContent: '8月の舵', onclick: startScenario }));
+  if (v.sails.length) C.append(el('button', { textContent: c.auto ? '帆自動' : '帆固定', className: c.auto ? 'on' : '', onclick: () => { c.auto = !c.auto; refresh(); } }));
   if (v.oars.length) { const r = el('input', { type: 'range', min: -100, max: 100, step: 5, value: Math.round(c.oar * 100), style: 'width:90px' }); r.oninput = () => { c.oar = r.value / 100; }; C.append(el('span', { textContent: '櫂 ' }), r); }
 }
 let ladderSig = '';
