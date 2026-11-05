@@ -6,6 +6,7 @@
 // 数値の扱い：［研究］は研究データ、［仕様］は決めた値、［仮］はゲーム用の仮の値（調整用）
 (function (root) {
 const Npc = typeof require !== 'undefined' ? require('./npc-core.js') : root.WohNpc;
+const Arch = typeof require !== 'undefined' ? require('./arch-gen.js') : root.WohArch, Settle = typeof require !== 'undefined' ? require('./settle-layout.js') : root.WohSettle;
 const { Population, NJOB, NSKILL, SI, mix, SOC_K } = Npc, NONE = 0xffffffff, ALIVE = 0x7fffffff;
 
 // ---------------------------------------------------------------- 設定値
@@ -636,6 +637,36 @@ function peNeighbors(people) {
 }
 function peTie(people, a, b) { const k = Math.min(a, b) + '-' + Math.max(a, b); return people.ties[k] || (people.ties[k] = { ct: 0, x: 0 }); }
 function peEnsureGroups(people) { people.npc.ensureGroups(people.groups.length + 1); return peHazards(people); }
+// ---------------------------------------------------------------- 集落の建築・配置との接続（arch-gen.js / settle-layout.js）
+// 表示用の中心：定住した集団（半定住・村）は拠点の位置、野営地は今の位置
+function peCampCenter(g) { return (g.settle || 0) >= 1 ? { x: g.homeX, y: g.homeY } : { x: g.x, y: g.y }; }
+function peSettleHistInit(people, g, sd, fresh) {
+  if (!Settle) return; const eth = people.ethnicities[g.ethId - 1], nb = people.nbr && people.nbr[g.id] ? people.nbr[g.id].some(i => { const o = people.groups[i - 1]; return o && o.ethId !== g.ethId; }) : false;
+  const cult = g.cult || [], techBias = ((cult[2] || 0.5) - 0.5) * 0.12 + ((cult[3] || 0.5) - 0.5) * 0.06;
+  g.hist = Settle.settleHistory(sd, g.id, g.settle || 0, g.pop || 0, g.siteQ === undefined ? 0.5 : g.siteQ, { neighbors: nb, cultureTech: techBias });
+  if (fresh) { g.hist.age = 0; g.hist.foundedYear = Math.floor((people.npc ? people.npc.day : 0) / 360); g.hist.status = 'young'; g.hist.events = []; g.hist.defense = 0; }
+  g.layout = null;
+}
+// 世帯の一覧：世帯IDは夫のID。親族（kin）は、夫の母の世帯（いなければ自分の世帯）
+function peopleHouseholds(people, gid) {
+  const P = people.npc, m = new Map();
+  for (const i of P.members[gid] || []) { if (P.death[i] !== ALIVE || P.group[i] !== gid) continue; const hh = P.house[i] !== NONE ? P.house[i] : i; m.set(hh, (m.get(hh) || 0) + 1); }
+  const out = []; for (const [hh, n] of m) { let kin = hh; if (hh < P.n) { const mo = P.mother[hh]; if (mo !== NONE && P.house[mo] !== NONE) kin = P.house[mo]; } out.push({ house: hh, members: n, kin }); }
+  return out;
+}
+// 暮らしの割合（採集・狩り・漁・道具づくり）：集落に何が必要かを決める。農耕・牧畜・交易は、条件のある集団のときだけ（まだ実装されていない生業の接続口）
+function peopleEconomy(people, gid) {
+  const P = people.npc, pop = Math.max(1, (people.groups[gid - 1] || {}).pop || 1), c = (j) => P.gcount[gid * NJOB + j] / pop, fl = P.gflags[gid];
+  return { gather: c(1), hunt: c(2), fish: c(3), tool: c(4), farm: !!(fl & 1) && c(9) > 0, herd: !!(fl & 2) && c(10) > 0, trade: !!(fl & 4) && c(11) > 0 };
+}
+// 建築伝統の元になる民族：分裂した民族は親の、融合した民族は主な親の系統を受け継ぐ
+function peRootEth(people, id) { let e = people.ethnicities[id - 1], n = 0; while (e && e.parents && e.parents.length && n++ < 50) e = people.ethnicities[e.parents[0] - 1]; return e ? e.id : id; }
+function peopleTradition(people, world, gid) {
+  const g = people.groups[gid - 1], eth = people.ethnicities[g.ethId - 1], c = peCampCenter(g), sd = people.npc.seed, env = Arch.envAt(world, c.x, c.y);
+  return Arch.tradition(sd, Arch.genome(sd, peRootEth(people, eth.id), eth.id), env, g.hist ? g.hist.tech : 0.4, eth.color);
+}
+// 集団の落ち着き方が変わったとき（村になった・拠点を移した）：集落の歴史と配置を作り直す
+function peSettleChanged(people, g, fresh) { peSettleHistInit(people, g, people.npc.seed, fresh); }
 // 集団の民族を住民の側の表に写す（12歳で民族が決まるときに使う）
 function peSyncEth(people) { const P = people.npc; for (const g of people.groups) P.groupEth[g.id] = g.ethId; }
 
@@ -747,9 +778,10 @@ function peopleGenerate(seed, W) {
   { // 初期の定住：豊かな場所の集団は、すでに村（縄文のように、はじめから暮らしのある社会）
     const vals = people.groups.map(g => ({ g, v: peSiteValue(S, world, peCellOf(S, g.x, g.y)) })).sort((a, b) => b.v - a.v);
     const hi = vals[Math.floor(vals.length * (1 - PE.SETTLE_SITE_PCT))] ? vals[Math.floor(vals.length * (1 - PE.SETTLE_SITE_PCT))].v : 0; people.siteHi = hi; const mid = vals[Math.floor(vals.length * 0.6)] ? vals[Math.floor(vals.length * 0.6)].v : 0; people.siteMid = mid;   // 暮らしやすさが上位60%に入らない場所は、移動して暮らす（野営地のまま）
-    vals.forEach(({ g, v }, k) => { const r = k / vals.length; if (r < 0.35 && g.pop >= 40) { g.settle = 2; g.stay = PE.SETTLE2_MONTHS; } else if (r < 0.6) { g.settle = 1; g.stay = PE.SETTLE1_MONTHS; } });
+    vals.forEach(({ g, v }, k) => { const r = k / vals.length; g.siteQ = 1 - r; if (r < 0.35 && g.pop >= 40) { g.settle = 2; g.stay = PE.SETTLE2_MONTHS; } else if (r < 0.6) { g.settle = 1; g.stay = PE.SETTLE1_MONTHS; } });
   }
   peNeighbors(people);
+  for (const g of people.groups) peSettleHistInit(people, g, sd);   // 集落の歴史（成立年代・衰退・防衛・建築技術）。開始前の歴史は一日ずつ計算せず、成立年代から決める
   peopleCreatePlayer(people, sd);
   return people;
 }
@@ -969,7 +1001,7 @@ function peTravel(people, g, S, world, ev, rel) {
     // 着いた所の近くの川沿いに野営する（プレイヤーが川から離れた所を指定した場合）
     const k = peNearestRiver(S, t.x, t.y, PE.RIVER_SNAP);
     if (k >= 0) { const r = peDryNear(S, world, world.riverPts[k * 3], world.riverPts[k * 3 + 1]); if (!peSeaBetween(S, world, t.x, t.y, r.x, r.y)) { t.x = r.x; t.y = r.y; } }
-    g.x = t.x; g.y = t.y; g.homeX = t.x; g.homeY = t.y; g.moveTo = null; g.hunger = 0; g.settle = 0; g.stay = 0;
+    g.x = t.x; g.y = t.y; g.homeX = t.x; g.homeY = t.y; g.moveTo = null; g.hunger = 0; g.settle = 0; g.stay = 0; if (people.npc) peSettleChanged(people, g, true);
     ev.push({ type: 'arrive', imp: 0, relevant: rel(g.ethId), group: g.id, eth: g.ethId, x: g.x, y: g.y, by: t.by || 'ai' });
     return;
   }
@@ -1068,7 +1100,7 @@ function peSettleStep(people, g, S, world, ev, rel, home, speed) {
   const need1 = PE.SETTLE1_MONTHS / speed, need2 = PE.SETTLE2_MONTHS / speed, P = people.npc;
   if (g.settle === 0 && g.stay >= need1 && g.pop >= 30 && peSiteValue(S, world, home) >= (people.siteMid || 0)) g.settle = 1;
   if (g.settle === 1 && g.stay >= need2 && g.pop >= PE.SETTLE2_POP && g.fed >= PE.SETTLE2_FED && peSiteValue(S, world, home) >= (people.siteHi || 0) && P.random() < Math.min(0.5, PE.SETTLE2_P * speed)) {
-    g.settle = 2; const mine = people.player && people.player.id >= 0 && P.group[people.player.id] === g.id;
+    g.settle = 2; peSettleChanged(people, g, true); const mine = people.player && people.player.id >= 0 && P.group[people.player.id] === g.id;
     ev.push({ type: 'settle', imp: mine ? 2 : 1, relevant: mine || rel(g.ethId), group: g.id, eth: g.ethId, x: g.x, y: g.y });
   }
 }
@@ -1150,6 +1182,6 @@ function peopleEthCounts(people) {
   const P = people.npc, o = {}; for (let i = 0; i < P.n; i++) { if (P.death[i] !== ALIVE) continue; const e = P.eth[i] || P.groupEth[P.group[i]]; o[e] = (o[e] || 0) + 1; } return o;
 }
 
-if (typeof module !== 'undefined' && module.exports) module.exports = { peopleForceEthSplit, ETHNO, CULT_NAMES, peCultureRules, PROPOSALS, peopleProposal, LEADERSHIP, peLeaders, ACTIVITIES, peopleSetActivity, peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
-else root.WohPeople = { peopleForceEthSplit, ETHNO, CULT_NAMES, PROPOSALS, peopleProposal, LEADERSHIP, ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+if (typeof module !== 'undefined' && module.exports) module.exports = { peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, peCultureRules, PROPOSALS, peopleProposal, LEADERSHIP, peLeaders, ACTIVITIES, peopleSetActivity, peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+else root.WohPeople = { peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, PROPOSALS, peopleProposal, LEADERSHIP, ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

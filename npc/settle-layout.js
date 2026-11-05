@@ -103,6 +103,12 @@ function addBuilding(layout, spec, role, house, members, anchor, opts, builtAge)
   const { seed, trad, gid } = spec, seq = layout.nextSeq++, key = gid * 100003 + seq;
   const b = Arch.designBuilding(seed, trad, role, key, members, builtAge || 0);
   b.id = key; b.house = house; b.seq = seq; b.state = 'ok'; b.builtYear = -(builtAge || 0); b.vacantSince = null;
+  if (spec.level === 0 && (role === 'dwelling' || role === 'storehouse')) {   // 野営地：持ち運べる軽い住まい（低い壁と急な屋根のテント・小屋掛け）
+    b.shelter = 'tent'; b.plan.w *= 0.85; if (b.plan.d) b.plan.d *= 0.85; b.wallH = role === 'dwelling' ? 0.45 : 0.8; b.wall.mat = b.wall.mat === 'timber' && b.role === 'dwelling' && spec.trad.roofMat === 'shingle' ? 'timber' : 'reed';
+    if (b.plan.kind === 'rect') { b.roof.kind = 'gable'; b.plan.d = Math.max(b.plan.d, b.plan.w * 1.3); } else b.roof.kind = 'cone';
+    b.roof.mat = b.roof.mat === 'mud' || b.roof.mat === 'slab' ? 'thatch' : b.roof.mat; b.roof.pitch = 58; b.roof.h = Math.tan(58 * Math.PI / 180) * (b.roof.kind === 'gable' ? b.plan.w : Math.min(b.plan.w, b.plan.d || b.plan.w)) / 2; b.roof.overhang = 0.15;
+    b.windows = 0; b.ornament = 0; b.trim = false; b.stilts = role === 'storehouse' ? 1 : 0; b.sunken = 0;
+  }
   if (!place(layout, spec, b, Object.assign({ anchor }, opts || {}))) return null;
   layout.items.push(b); if (role === 'dwelling') layout.byHouse[house] = b.id; return b;
 }
