@@ -49,7 +49,7 @@
 
   // 体と暮らしの状態：kcal＝おなかの蓄え、t＝最後に時間を反映した日、sickUntil＝体調不良が続く日、fire＝焚き火、soak＝水にさらした木の実
   const KCAL_MAX = 3000, KCAL_DAY = 2000, KCAL_START = 2200;
-  function newState() { return { inv: {}, depl: {}, total: {}, wear: {}, home: null, store: {}, n: {}, hp: 100, sp: 100, water: 80, exhausted: false, standing: 0, given: 0, rationAt: -99, lessons: {}, talkDay: {}, seq: 0, kcal: KCAL_START, t: 0, sickUntil: 0, fire: null, soak: null }; }
+  function newState() { return { inv: {}, depl: {}, total: {}, wear: {}, home: null, store: {}, n: {}, hp: 100, sp: 100, water: 80, exhausted: false, mortal: true, dyingDays: 0, dead: null, lastCause: null, standing: 0, given: 0, rationAt: -99, lessons: {}, talkDay: {}, seq: 0, kcal: KCAL_START, t: 0, sickUntil: 0, fire: null, soak: null }; }
   function count(st, id) { return st.inv[id] || 0; }
 
   // 場所の状況から、拾えるものの「豊かさ」を求める（0〜）
@@ -136,7 +136,7 @@
   }
 
   // ---------------------------------------------------------------- 体力・スタミナ・水分
-  function rest(st, hp) { st.hp = Math.min(HP_MAX, (st.hp == null ? 100 : st.hp) + hp); st.sp = staminaCap(st); st.exhausted = false; }
+  function rest(st, hp) { st.hp = Math.min(HP_MAX, (st.hp == null ? 100 : st.hp) + hp); if (st.hp >= RECOVER_HP) st.dyingDays = 0; st.sp = staminaCap(st); st.exhausted = false; }
   // スタミナの上限：体力が低い・喉が渇いている・飢えていると下がる
   function staminaCap(st) {
     const hp = st.hp == null ? 100 : st.hp, wt = st.water == null ? 80 : st.water;
@@ -159,7 +159,7 @@
   function drink(st, freshWater) {
     if (!freshWater) return { ok: false, why: '飲める水がない（川や湖のそばで。海の水は飲めない）' };
     const w = st.water == null ? 80 : st.water; if (w >= 98) return { ok: false, why: 'いまは喉が渇いていない' };
-    st.water = Math.min(WATER_MAX, w + 45); bump(st, 'drink'); return { ok: true, gain: Math.round(st.water - w) };
+    firstAid(st, w < 30 ? 6 : 0); st.water = Math.min(WATER_MAX, w + 45); bump(st, 'drink'); return { ok: true, gain: Math.round(st.water - w) };
   }
   function vitalsInfo(st) {
     const hp = st.hp == null ? 100 : st.hp, sp = st.sp == null ? 100 : st.sp, wt = st.water == null ? 80 : st.water;
@@ -173,16 +173,44 @@
   // 時間：day は日数（ゲームの時計）。時計が進んだ分だけおなかが減る
   function tick(st, day) {
     if (day < st.t) { st.t = day; return; }           // 時計が戻った（別の記録を読み込んだ等）
-    const d = day - st.t;
-    if (d > 0) {
-      st.kcal = Math.max(0, st.kcal - d * KCAL_DAY); st.standing = Math.max(0, (st.standing || 0) - d * 0.04); st.t = day;
-      st.water = Math.max(0, (st.water == null ? 80 : st.water) - d * WATER_DAY);
-      // 体力：飢え・渇き・病気・寒さで減り、満たされていれば少しずつ戻る
-      const env = st.env || {}, cold = env.temp != null && env.temp < 0 && !env.sheltered ? Math.min(8, -env.temp * 0.4) : 0;
-      const loss = (st.water <= 0 ? 12 : 0) + (st.kcal <= 0 ? 8 : 0) + (day < st.sickUntil ? 3 : 0) + cold;
+    let rem = day - st.t; if (rem <= 0) return;
+    const t0 = st.t; let cur = t0;
+    st.standing = Math.max(0, (st.standing || 0) - rem * 0.04); st.t = day;
+    // 1日ずつ進める（長く時間を飛ばしても、飢え・渇きが順に効いて、猶予の日数も正しく数える）
+    let guard = 0;
+    while (rem > 1e-9 && guard++ < 400) {
+      const step = Math.min(1, rem); rem -= step; cur += step;
+      st.kcal = Math.max(0, st.kcal - step * KCAL_DAY);
+      st.water = Math.max(0, (st.water == null ? 80 : st.water) - step * WATER_DAY);
+      const env = st.env || {}, cold = env.temp != null && env.temp < 0 && !env.sheltered ? Math.min(10, -env.temp * 0.4) : 0;
+      const thirst = st.water <= 0, hungry = st.kcal <= 0, ill = cur < st.sickUntil;
+      const loss = (thirst ? 12 : 0) + (hungry ? 8 : 0) + (ill ? 3 : 0) + cold;
       const regen = loss === 0 && st.kcal > 900 && st.water > 30 ? 5 : 0;
-      st.hp = Math.max(1, Math.min(HP_MAX, (st.hp == null ? 100 : st.hp) + (regen - loss) * Math.min(d, 30)));
+      const mortal = st.mortal !== false;
+      st.hp = Math.min(HP_MAX, (st.hp == null ? 100 : st.hp) + (regen - loss) * step);
+      if (!mortal) { if (st.hp < 1) st.hp = 1; st.dyingDays = 0; continue; }
+      if (st.hp <= 0) {
+        st.hp = 0; st.dyingDays = (st.dyingDays || 0) + step;
+        const parts = [[thirst ? 12 : 0, 'thirst'], [hungry ? 8 : 0, 'hunger'], [cold, 'cold'], [ill ? 3 : 0, 'illness']].sort((a, b) => b[0] - a[0]);   // いちばん効いた原因
+        st.lastCause = parts[0][0] > 0 ? parts[0][1] : 'exhaustion';
+        if (st.dyingDays >= DYING_DAYS - 1e-9) { st.dead = st.lastCause; st.dyingDays = DYING_DAYS; break; }
+      } else if (st.hp >= RECOVER_HP) st.dyingDays = 0;
     }
+  }
+  // 瀕死：体力が0になってから、この日数のうちに RECOVER_HP まで戻せなければ亡くなる
+  const DYING_DAYS = 3, RECOVER_HP = 15;
+  function dyingLeft(st) { return st.mortal !== false && st.hp <= 0 ? Math.max(0, DYING_DAYS - (st.dyingDays || 0)) : null; }
+  // 亡くなった原因を一度だけ返す（受け取ったら消える）
+  function takeDeath(st) { const c = st.dead || null; st.dead = null; return c; }
+  // 応急：弱っているとき、飲む・食べる・配給で体力が少し戻る
+  function firstAid(st, hp) { if ((st.hp == null ? 100 : st.hp) < RECOVER_HP + 10) st.hp = Math.min(HP_MAX, (st.hp == null ? 100 : st.hp) + hp); if (st.hp >= RECOVER_HP) st.dyingDays = 0; }
+  // 後継者へ：家・貯蔵庫・目標の進みは家系に残り、持ち物・火・水さらし・体調は引き継がない。評判は半分、教わった記録は消える
+  // newLine＝一族が絶えて、別の一族の人物として続けるとき：家・貯蔵庫・評判も引き継がない
+  function inherit(st, newLine) {
+    const keep = { n: st.n, total: st.total, mortal: st.mortal, t: st.t, given: st.given, seq: st.seq, depl: st.depl };
+    if (!newLine) { keep.home = st.home; keep.store = st.store; keep.standing = (st.standing || 0) * 0.5; }
+    const fresh = newState(); Object.assign(fresh, keep);
+    for (const k of Object.keys(st)) delete st[k]; Object.assign(st, fresh); st.inv = {}; return st;
   }
   function hunger(st) {
     const k = st.kcal;
@@ -205,6 +233,7 @@
     if (it.raw) { const r = RAW[id]; if (!r) return { ok: false, why: it.name + 'は渋くてそのままでは食べられない（水にさらして焼く）' }; f = r.f; bad = r.bad; }
     const gain = it.kcal * f;
     st.kcal = Math.min(EAT_FULL, st.kcal + gain);
+    if (st.kcal < 600) firstAid(st, 6);
     drop(st, id, 1); if (WATER_GAIN[id]) st.water = Math.min(WATER_MAX, (st.water == null ? 80 : st.water) + WATER_GAIN[id]);
     if (!it.raw && id !== 'fruit' && id !== 'bud' && id !== 'seed') bump(st, 'cooked');
     let ill = false;
@@ -422,7 +451,7 @@
     if (st.kcal > 1200) return { ok: false, why: 'まだおなかは空いていない' };
     if ((st.standing || 0) < 8) return { ok: false, why: 'まだ仲間とは認められていない（食べ物や薪を分けて、評判を上げよう）' };
     const kg = RATION_KCAL / KCAL_PER_KG; if ((g.food || 0) < kg) return { ok: false, why: 'いま集団に蓄えがない' };
-    g.food -= kg; st.kcal = Math.min(EAT_FULL, st.kcal + RATION_KCAL); st.rationAt = day; gainStanding(st, -2); bump(st, 'ration');
+    g.food -= kg; firstAid(st, 6); st.kcal = Math.min(EAT_FULL, st.kcal + RATION_KCAL); st.rationAt = day; gainStanding(st, -2); bump(st, 'ration');
     return { ok: true, kcal: RATION_KCAL };
   }
   // 近くの人に食べ物を分ける：その人の信頼・好意が上がる（相手から見たあなた）
@@ -489,7 +518,8 @@
       const hm = o.home; if (hm && Number.isFinite(hm.bx) && Number.isFinite(hm.by) && Number.isFinite(hm.ready)) st.home = { bx: hm.bx, by: hm.by, xM: Number.isFinite(hm.xM) ? hm.xM : null, yM: Number.isFinite(hm.yM) ? hm.yM : null, ready: hm.ready };
       for (const id in (o.store || {})) if (IDX[id] != null && o.store[id] > 0) st.store[id] = o.store[id] | 0;
       for (const k in (o.n || {})) if (Number.isFinite(o.n[k]) && o.n[k] > 0) st.n[k] = o.n[k] | 0;
-      if (Number.isFinite(o.hp)) st.hp = Math.max(1, Math.min(HP_MAX, o.hp));
+      if (Number.isFinite(o.hp)) st.hp = Math.max(0, Math.min(HP_MAX, o.hp));
+      if (o.mortal === false) st.mortal = false; if (Number.isFinite(o.dyingDays)) st.dyingDays = Math.max(0, Math.min(DYING_DAYS, o.dyingDays));
       if (Number.isFinite(o.sp)) st.sp = Math.max(0, Math.min(SP_MAX, o.sp));
       if (Number.isFinite(o.water)) st.water = Math.max(0, Math.min(WATER_MAX, o.water));
       if (o.exhausted === true) st.exhausted = true;
@@ -511,6 +541,6 @@
     return function () { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   }
 
-  const api = { setEnv, rest, staminaCap, staminaStep, jumpCost, drink, vitalsInfo, HP_MAX, SP_MAX, WATER_MAX, setCommons, atCommons, ownFireActive, standingInfo, gainStanding, giveToGroup, ration, share, learn, talk, nearCamp, KCAL_PER_KG, goals, GOALS, slotsOf, HOME_NEED, HOME_DAYS, HOME_REACH, STORE_SLOTS, homeStatus, nearHome, homeNeedText, buildHome, demolishHome, storePut, storeTake, storeList, storeRoom, sleep, SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
+  const api = { dyingLeft, takeDeath, firstAid, inherit, DYING_DAYS, RECOVER_HP, setEnv, rest, staminaCap, staminaStep, jumpCost, drink, vitalsInfo, HP_MAX, SP_MAX, WATER_MAX, setCommons, atCommons, ownFireActive, standingInfo, gainStanding, giveToGroup, ration, share, learn, talk, nearCamp, KCAL_PER_KG, goals, GOALS, slotsOf, HOME_NEED, HOME_DAYS, HOME_REACH, STORE_SLOTS, homeStatus, nearHome, homeNeedText, buildHome, demolishHome, storePut, storeTake, storeList, storeRoom, sleep, SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohForage = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

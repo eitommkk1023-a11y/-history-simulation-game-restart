@@ -364,7 +364,7 @@ t('不毛地は全部ほぼ0', Object.values(F.availability(desert)).every(v => 
   const H2 = F.newState(); H2.kcal = 0; H2.water = 100; F.tick(H2, 0.5); H2.t = 0; H2.kcal = 0; H2.water = 100; H2.hp = 100; F.tick(H2, 1); t('飢えると体力が減る', H2.hp < 100, H2.hp);
   const H3 = F.newState(); H3.hp = 50; H3.kcal = 3000; H3.water = 100; F.tick(H3, 1); t('満たされていれば体力が戻る', H3.hp > 50, H3.hp);
   const H4 = F.newState(); H4.hp = 50; H4.kcal = 100; H4.water = 100; F.tick(H4, 1); t('飢えていると戻らない', H4.hp <= 50);
-  const H5 = F.newState(); H5.hp = 5; H5.kcal = 0; H5.water = 0; F.tick(H5, 20); t('体力は1未満にならない（死なない）', H5.hp === 1, H5.hp);
+  const H5 = F.newState(); H5.mortal = false; H5.hp = 5; H5.kcal = 0; H5.water = 0; F.tick(H5, 20); t('「死なない」設定では体力は1で止まる', H5.hp === 1 && !H5.dead && H5.dyingDays === 0, JSON.stringify([H5.hp, H5.dead]));
   const H6 = F.newState(); H6.kcal = 3000; H6.water = 100; F.setEnv(H6, { temp: -10, sheltered: false }); F.tick(H6, 1); t('寒い外では体力が減る', H6.hp < 100, H6.hp);
   const H7 = F.newState(); H7.kcal = 3000; H7.water = 100; H7.hp = 80; F.setEnv(H7, { temp: -10, sheltered: true }); F.tick(H7, 1); t('屋根や火のそばなら寒さを防げる', H7.hp > 80, H7.hp);
   const H8 = F.newState(); H8.kcal = 3000; H8.water = 100; H8.hp = 80; F.setEnv(H8, { temp: 20, sheltered: false }); F.tick(H8, 1); t('暖かい日は影響なし', H8.hp > 80);
@@ -396,6 +396,47 @@ t('不毛地は全部ほぼ0', Object.values(F.availability(desert)).every(v => 
   const V = F.newState(); V.hp = 33; V.sp = 12; V.water = 7; V.exhausted = true; const L = F.load(JSON.parse(JSON.stringify(F.save(V)))); t('体力・スタミナ・水分・疲れ切りを保存', L.hp === 33 && L.sp === 12 && L.water === 7 && L.exhausted === true);
   const B = F.load({ hp: 'x', sp: -5, water: 'y' }); t('壊れた保存でも既定値', B.hp === 100 && B.sp === 0 && B.water === 80);
   const O = F.load({ inv: {} }); t('古い保存（体力なし）', O.hp === 100 && O.sp === 100 && O.water === 80 && !O.exhausted);
+}
+
+// ---------------------------------------------------------------- 死と猶予
+{
+  const fixed = (v) => () => v;
+  const mk = (o) => Object.assign(F.newState(), o);
+  // 体力0 → 瀕死 → 3日で死亡
+  const A = mk({ hp: 10, kcal: 3000, water: 0 }); F.tick(A, 1); t('渇きで体力0になる（死ぬ前）', A.hp === 0 && A.dyingDays === 1 && !A.dead && F.dyingLeft(A) === 2, JSON.stringify([A.hp, A.dyingDays]));
+  F.tick(A, 2); t('2日目：まだ生きている', !A.dead && F.dyingLeft(A) === 1);
+  F.tick(A, 3); t('3日目で亡くなる（渇き）', A.dead === 'thirst' && A.hp === 0, JSON.stringify([A.dead, A.dyingDays]));
+  t('死因を一度だけ受け取れる', F.takeDeath(A) === 'thirst' && F.takeDeath(A) === null);
+  // 長く時間を飛ばしても、猶予の日数が効く
+  const B = mk({ hp: 100, kcal: 3000, water: 0 }); F.tick(B, 30); t('長く飛ばすと死ぬ（水なし）', B.dead === 'thirst', JSON.stringify([B.hp, B.dead]));
+  const B2 = mk({ hp: 100, kcal: 3000, water: 80 }); F.tick(B2, 3); t('3日くらいでは死なない', !B2.dead && B2.hp > 0, B2.hp);
+  // 原因：飢え・寒さ・病気
+  const C = mk({ hp: 5, kcal: 0, water: 100 }); F.tick(C, 5); t('飢えで亡くなる', C.dead === 'hunger', JSON.stringify([C.dead, C.hp]));
+  const C2 = mk({ hp: 5, kcal: 3000, water: 100 }); F.setEnv(C2, { temp: -25, sheltered: false }); F.tick(C2, 6); t('寒さで亡くなる', C2.dead === 'cold', JSON.stringify([C2.dead, C2.hp]));
+  const C3 = mk({ hp: 2, kcal: 3000, water: 100, sickUntil: 99 }); F.tick(C3, 3); t('病気は-3/日。体力2なら1日で0、そのあとも病気のまま', C3.hp === 0 || C3.dyingDays >= 0, JSON.stringify([C3.hp, C3.dyingDays]));
+  // 助かる：飲む・食べる・眠る・配給
+  const D = mk({ hp: 0, kcal: 3000, water: 0 }); D.dyingDays = 2; let r = F.drink(D, true); t('瀕死の人が水を飲むと体力が少し戻る', r.ok && D.hp === 6, D.hp);
+  F.drink(D, true); F.drink(D, true); t('飲み続けても水が満ちれば止まる', D.water > 0); D.water = 10; F.drink(D, true); D.water = 10; F.drink(D, true); t('体力15以上で猶予がリセット', D.hp >= 15 && D.dyingDays === 0, JSON.stringify([D.hp, D.dyingDays]));
+  const D2 = mk({ hp: 0, kcal: 100, water: 100 }); D2.dyingDays = 2; D2.inv = { stew: 3 }; F.eat(D2, 'stew', fixed(0.9), 0); t('食べると体力が戻る（空腹時）', D2.hp === 6, D2.hp);
+  const D3 = mk({ hp: 0, kcal: 3000, water: 100 }); D3.dyingDays = 2; D3.home = { bx: 0, by: 0, xM: 0, yM: 0, ready: 0 }; F.sleep(D3, 0, 0, 5); t('家で眠ると助かる（+25）', D3.hp === 25 && D3.dyingDays === 0);
+  const D4 = mk({ hp: 0, kcal: 300, water: 100, standing: 20 }); D4.dyingDays = 1; r = F.ration(D4, { food: 9 }, { bx: 0, by: 0 }, 5, 0, 0); t('配給で体力も戻る', r.ok && D4.hp === 6);
+  // 健康なら応急は効かない
+  const D5 = mk({ hp: 80, kcal: 100, water: 20 }); D5.inv = { stew: 1 }; F.eat(D5, 'stew', fixed(0.9), 0); t('元気なら応急の上乗せなし', D5.hp === 80);
+  // 助かったあとの再発
+  const E = mk({ hp: 0, kcal: 3000, water: 0 }); E.dyingDays = 2; F.firstAid(E, 6); t('応急だけでは15に届かず猶予は残る', E.hp === 6 && E.dyingDays === 2);
+  F.tick(E, 1); t('渇いたままだと次の日にまた0（猶予が尽きる）', E.dead === 'thirst' || E.dyingDays >= 3 || E.hp === 0, JSON.stringify([E.hp, E.dead]));
+  // 設定：死なない
+  const G = mk({ hp: 3, kcal: 0, water: 0, mortal: false }); F.tick(G, 10); t('死なない設定：体力1・死亡なし', G.hp === 1 && !G.dead && F.dyingLeft(G) === null);
+  // 継承
+  const I = mk({ hp: 0, kcal: 10, water: 0, standing: 40, given: 900 }); I.home = { bx: 4, by: 5, xM: 1, yM: 2, ready: 0 }; I.store = { stew: 3 }; I.inv = { fish: 5, rope: 2 }; I.fire = { bx: 0, by: 0, until: 9 }; I.soak = { bx: 0, by: 0, n: 3, ready: 5 }; I.n = { fire: 2, talk: 3 }; I.total = { nut: 20 }; I.lessons = { 4: 1 }; I.t = 12; I.dead = 'thirst'; I.sickUntil = 99;
+  F.inherit(I); t('継承：家・貯蔵庫・目標の進みは残る', I.home.bx === 4 && I.store.stew === 3 && I.n.fire === 2 && I.total.nut === 20 && I.t === 12, JSON.stringify(I));
+  t('継承：持ち物・火・水さらし・体調・教わった記録は消える', Object.keys(I.inv).length === 0 && I.fire === null && I.soak === null && I.hp === 100 && I.water === 80 && I.kcal > 2000 && I.sickUntil === 0 && Object.keys(I.lessons).length === 0 && !I.dead && I.dyingDays === 0);
+  t('継承：評判は半分', I.standing === 20 && I.given === 900);
+  const J = mk({ standing: 40 }); J.home = { bx: 1, by: 1, xM: 0, yM: 0, ready: 0 }; J.store = { stew: 1 }; J.n = { fire: 1 }; F.inherit(J, true);
+  t('別の一族として続けるときは、家・貯蔵庫・評判を引き継がない（目標の進みは残る）', J.home === null && Object.keys(J.store).length === 0 && J.standing === 0 && J.n.fire === 1, JSON.stringify(J));
+  // 保存
+  const V = mk({ hp: 0, mortal: false, dyingDays: 2 }); const L = F.load(JSON.parse(JSON.stringify(F.save(V)))); t('設定と猶予の日数を保存', L.mortal === false && L.dyingDays === 2 && L.hp === 0);
+  t('古い保存は「死ぬ」設定で読み込む', F.load({ inv: {} }).mortal === true);
 }
 console.log(ng ? 'FAIL ' + ng + ' / ' + (ok + ng) : 'OK ' + ok + ' 件通過');
 process.exit(ng ? 1 : 0);
