@@ -89,28 +89,11 @@
 
   // ---------- ship meshes ----------
   const gameScene = () => cp.character?.parent ?? nat.scene; // the native view has its own scene (the one the player marker lives in)
-  function disposeMesh(m) { m.group.parent?.remove(m.group); m.group.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); }); }
+  function disposeMesh(m) { m.group.parent?.remove(m.group); m.dispose(); }
   function makeMesh(rec) {
-    const d = Ship.sampleDesigns[rec.designId] ?? null, hull = Ship.createHull(d.hull), mesh = Ship.buildHullMesh(hull);
-    const g = new THREE_.BufferGeometry();
-    g.setAttribute('position', new THREE_.BufferAttribute(mesh.positions, 3)); g.setAttribute('normal', new THREE_.BufferAttribute(mesh.normals, 3)); g.setIndex(new THREE_.BufferAttribute(mesh.indices, 1));
-    const hullMesh = new THREE_.Mesh(g, new THREE_.MeshStandardMaterial({ color: 0x8a6a3f, roughness: 0.9, metalness: 0 }));
-    const inner = new THREE_.Group(); inner.add(hullMesh);
-    const L = hull.xMax - hull.xMin, p = rec.vessel.params, top = hull.sectionAt((hull.xMin + hull.xMax) / 2).slice(-1)[0].z;
-    inner.position.set(0, -p.draftM, p.cgX - hull.xMin);
-    const sails = [];
-    for (const s of rec.vessel.sails) {
-      const mastH = Math.max(8, s.zCe * 1.5), zMast = -(s.x - hull.xMin);
-      const mast = new THREE_.Mesh(new THREE_.CylinderGeometry(0.25, 0.35, mastH, 6), new THREE_.MeshStandardMaterial({ color: 0x5a432a }));
-      mast.position.set(0, top + mastH / 2, zMast); inner.add(mast);
-      const side = Math.sqrt(s.areaM2), pivot = new THREE_.Group(); pivot.position.set(0, top + mastH * 0.35, zMast);
-      const sailGeo = new THREE_.PlaneGeometry(side * 1.0, side * 0.9); sailGeo.rotateY(Math.PI / 2); sailGeo.translate(0, 0, side * 0.5);
-      const sail = new THREE_.Mesh(sailGeo, new THREE_.MeshStandardMaterial({ color: 0xf1ead8, side: THREE_.DoubleSide, roughness: 1 }));
-      pivot.add(sail); inner.add(pivot); sails.push({ sail: s, pivot });
-    }
-    const group = new THREE_.Group(); group.rotation.order = 'YXZ'; group.add(inner); group.frustumCulled = false;
-    gameScene().add(group);
-    return { group, sails, deckY: top - p.draftM + 0.1, L };
+    const o = Ship.buildShipObject(THREE_, { hull: Ship.sampleDesigns[rec.designId].hull, vessel: rec.vessel });
+    gameScene().add(o.group);
+    return o;
   }
   function syncMeshes() {
     const T = S.terrain;
@@ -120,7 +103,7 @@
       const st = rec.vessel.state, xM = ref.xM + st.X, yM = ref.yM - st.Y;
       try { const q = T.toLocal(xM, yM, 0, S.origin); m.group.position.set(q.x, q.y, q.z); m.group.visible = true; } catch (_) { m.group.visible = false; continue; }
       m.group.rotation.set(0, -st.psi, -st.heelDeg * DEG);
-      for (const { sail, pivot } of m.sails) { pivot.rotation.y = sail.trimDeg * DEG; pivot.scale.set(1, Math.max(0.05, sail.deployed), 1); }
+      Ship.updateShipObject(m);
     }
     for (const id of [...meshes.keys()]) if (!fleet.has(id)) { disposeMesh(meshes.get(id)); meshes.delete(id); }
   }
