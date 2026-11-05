@@ -16,6 +16,8 @@ button.on{background:var(--ac);color:#04202e}
 .row{display:flex;align-items:center;gap:6px}.row label{flex:0 0 5.5em;color:var(--mu)}.row input{flex:1;min-width:0}.row output{flex:0 0 3.6em;text-align:right}
 h4{margin:4px 0 2px;font-size:12px;color:#7fc8f0}
 #info{font-size:11px;color:#9fc4de;margin-bottom:2px}
+html.uiHidden #top,html.uiHidden #bar,html.uiHidden #evid,html.uiHidden #stick,html.uiHidden #toast,html.uiHidden #ladders,html.uiHidden #bMenu{display:none!important}
+#eye{position:fixed;z-index:9;left:calc(8px + env(safe-area-inset-left));bottom:calc(8px + env(safe-area-inset-bottom));padding:5px 9px;opacity:.5}
 #toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(10px + env(safe-area-inset-top));background:#000c;color:#fff;padding:6px 12px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:9}
 #stick{position:fixed;left:calc(16px + env(safe-area-inset-left));bottom:calc(16px + env(safe-area-inset-bottom));width:110px;height:110px;border-radius:50%;border:2px solid #ffffff55;background:#ffffff12;display:none;touch-action:none}
 #knob{position:absolute;left:35px;top:35px;width:40px;height:40px;border-radius:50%;background:#ffffffaa}
@@ -34,6 +36,7 @@ h4{margin:4px 0 2px;font-size:12px;color:#7fc8f0}
 <div id="bar" class="pn"><div id="info"></div><div id="ctrl"></div><div id="ladders" style="position:fixed;left:calc(150px + env(safe-area-inset-left));bottom:calc(86px + env(safe-area-inset-bottom));z-index:6"></div></div>
 <div id="evid" class="pn" style="display:none;left:50%;transform:translateX(-50%);top:calc(8px + env(safe-area-inset-top));width:min(620px,94vw);max-height:84vh;overflow:auto;touch-action:pan-y;z-index:8"></div>
 <div id="stick"><div id="knob"></div></div>
+<button id="eye" title="UIの表示／非表示">👁</button>
 <div id="toast"></div>
 <script>/**
  * @license
@@ -1507,7 +1510,7 @@ function createInterior(layout, { hull = null } = {}) {
   function laddersNear(pos, reach = 1.4) {
     const out = [];
     for (const l of ladders) for (const [here, there] of [[l.a, l.b], [l.b, l.a]]) {
-      if (here.deck === pos.deck && Math.hypot(here.x - pos.x, here.y - pos.y) <= reach) out.push({ id: l.id, name: l.name ?? l.id, to: there.deck, direction: decks.get(there.deck).z > decks.get(pos.deck).z ? 'up' : 'down' });
+      if (here.deck === pos.deck && Math.hypot(here.x - pos.x, here.y - pos.y) <= reach) out.push({ id: l.id, name: l.name ?? l.id, dist: Math.hypot(here.x - pos.x, here.y - pos.y), to: there.deck, direction: decks.get(there.deck).z > decks.get(pos.deck).z ? 'up' : 'down' });
     }
     return out;
   }
@@ -2507,6 +2510,13 @@ function addPintaStructure(T, obj, design, vessel) {
     const lo = [], hi = []; for (const side of [1]) for (const x of xq) { const b = halfAt(hull, x, DECK_Z) - 0.03; lo.push(P3(T, x, b, qz)); hi.push(P3(T, x, b, qz + 0.55)); }
     structure.add(ribbon(T, lo, hi, 0x6a5232)); const lo2 = lo.map((p) => new T.Vector3(-p.x, p.y, p.z)), hi2 = hi.map((p) => new T.Vector3(-p.x, p.y, p.z)); structure.add(ribbon(T, lo2, hi2, 0x6a5232));
     const fL = [], fH = []; for (const side of [1, -1]) { fL.length = 0; fH.length = 0; for (const x of xq) { const b = halfAt(hull, x, DECK_Z) - 0.03; fL.push(P3(T, x, side * b, DECK_Z)); fH.push(P3(T, x, side * b, qz)); } structure.add(ribbon(T, [...fL], [...fH], 0x7a5e38)); }
+    // Closing walls so the quarterdeck reads as part of the hull: the transom above the main deck at the stern, and a fore bulkhead
+    // with a gap for the ladder. Level D shapes; no gallery or carved detail.
+    { const bT = halfAt(hull, 0.03, DECK_Z) - 0.02; structure.add(ribbon(T, [P3(T, 0.03, -bT, DECK_Z), P3(T, 0.03, -bT, qz + 0.55)], [P3(T, 0.03, bT, DECK_Z), P3(T, 0.03, bT, qz + 0.55)], 0x6a5232)); }
+    { const bF = halfAt(hull, qLen, DECK_Z) - 0.03, gap = [1.0, 1.9]; // gap around the ladder at y = 1.4
+      for (const [a, b] of [[-bF, gap[0] - 0.05], [gap[1] + 0.05, bF]]) structure.add(ribbon(T, [P3(T, qLen, a, DECK_Z), P3(T, qLen, a, qz)], [P3(T, qLen, b, DECK_Z), P3(T, qLen, b, qz)], 0x7a5e38));
+      for (const y of [gap[0] + 0.1, gap[1] - 0.1]) { const rail = tube(T, [P3(T, qLen + 0.55, y, DECK_Z), P3(T, qLen - 0.15, y, qz + 0.05)], 0.035, 0x5a432a); structure.add(rail); }
+      for (let k = 1; k <= 4; k++) { const t = k / 5, rung = new T.Mesh(new T.BoxGeometry(gap[1] - gap[0] - 0.2, 0.04, 0.05), mat(T, 0x5a432a)); rung.position.copy(P3(T, qLen + 0.55 - 0.7 * t, 1.45, DECK_Z + (qz - DECK_Z) * t)); structure.add(rung); } }
     for (const [x, y] of [[0.6, 1.1], [0.6, -1.1], [qLen - 0.25, 1.4], [qLen - 0.25, -1.4]]) { const post = new T.Mesh(new T.CylinderGeometry(0.06, 0.06, qz - DECK_Z, 6), mat(T, 0x5a432a)); post.position.copy(P3(T, x, y, (DECK_Z + qz) / 2)); structure.add(post); }
   }
   // Hatch to the hold: low coaming and a dark opening (the ladder is part of the interior layout).
@@ -2870,6 +2880,12 @@ function startScenario() {
   scenarios.set(boarded, Ship.createAugust1492({ fleet, shipId: boarded, daySeconds: 900 })); toast('1492年8月の舵故障を再現開始（1日=15分）');
 }
 
+// UI visibility: everything hides together; stairs then work by standing at their foot for a second.
+let uiHidden = false, dwell = 0;
+function setUiHidden(h) { uiHidden = !!h; document.documentElement.classList.toggle('uiHidden', uiHidden); try { localStorage.setItem('woh-ship-sandbox-ui-hidden', uiHidden ? '1' : '0'); } catch (_) { /* ignore */ } }
+$('eye').onclick = () => setUiHidden(!uiHidden); $('eye').addEventListener('pointerdown', (e) => e.stopPropagation()); $('eye').addEventListener('pointerup', (e) => e.stopPropagation());
+try { setUiHidden(localStorage.getItem('woh-ship-sandbox-ui-hidden') === '1'); } catch (_) { /* ignore */ }
+
 // ---------- save / load ----------
 function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ fleet: fleet.serialize(), ctl, wind })); } catch (_) { /* storage unavailable */ } }
 function load() {
@@ -2900,7 +2916,9 @@ function frame(t) {
     Ship.updateCrewFigures(o, boarded === rec.id ? o.pos.deck : null);
     Ship.placePlayer(o, o.pos); if (boarded === rec.id) Ship.setViewDeck(o, o.pos.deck, o.interior.roomOf(o.pos.deck, o.pos.x, o.pos.y)?.id ?? null);
   }
-  walk(dt); updateCamera(); placeSea(); if (boarded) drawRoute();
+  walk(dt);
+  if (boarded && objs.has(boarded)) { const o = objs.get(boarded), foot = o.interior.laddersNear(o.pos).find((l) => l.dist < 0.7); dwell = uiHidden && foot ? dwell + dt : 0; if (dwell > 1) { o.pos = o.interior.climb(o.pos, foot.id); dwell = 0; ladderSig = ''; } }
+  updateCamera(); placeSea(); if (boarded) drawRoute();
   renderer.render(scene, camera);
   infoT += dt; if (infoT > 0.25) { infoT = 0; info(); }
   saveT += dt; if (saveT > 6) { saveT = 0; save(); }

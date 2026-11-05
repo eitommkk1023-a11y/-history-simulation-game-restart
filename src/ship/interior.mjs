@@ -70,7 +70,7 @@ export function createInterior(layout, { hull = null } = {}) {
   function laddersNear(pos, reach = 1.4) {
     const out = [];
     for (const l of ladders) for (const [here, there] of [[l.a, l.b], [l.b, l.a]]) {
-      if (here.deck === pos.deck && Math.hypot(here.x - pos.x, here.y - pos.y) <= reach) out.push({ id: l.id, name: l.name ?? l.id, to: there.deck, direction: decks.get(there.deck).z > decks.get(pos.deck).z ? 'up' : 'down' });
+      if (here.deck === pos.deck && Math.hypot(here.x - pos.x, here.y - pos.y) <= reach) out.push({ id: l.id, name: l.name ?? l.id, dist: Math.hypot(here.x - pos.x, here.y - pos.y), to: there.deck, direction: decks.get(there.deck).z > decks.get(pos.deck).z ? 'up' : 'down' });
     }
     return out;
   }

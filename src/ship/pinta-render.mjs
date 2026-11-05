@@ -70,6 +70,13 @@ export function addPintaStructure(T, obj, design, vessel) {
     const lo = [], hi = []; for (const side of [1]) for (const x of xq) { const b = halfAt(hull, x, DECK_Z) - 0.03; lo.push(P3(T, x, b, qz)); hi.push(P3(T, x, b, qz + 0.55)); }
     structure.add(ribbon(T, lo, hi, 0x6a5232)); const lo2 = lo.map((p) => new T.Vector3(-p.x, p.y, p.z)), hi2 = hi.map((p) => new T.Vector3(-p.x, p.y, p.z)); structure.add(ribbon(T, lo2, hi2, 0x6a5232));
     const fL = [], fH = []; for (const side of [1, -1]) { fL.length = 0; fH.length = 0; for (const x of xq) { const b = halfAt(hull, x, DECK_Z) - 0.03; fL.push(P3(T, x, side * b, DECK_Z)); fH.push(P3(T, x, side * b, qz)); } structure.add(ribbon(T, [...fL], [...fH], 0x7a5e38)); }
+    // Closing walls so the quarterdeck reads as part of the hull: the transom above the main deck at the stern, and a fore bulkhead
+    // with a gap for the ladder. Level D shapes; no gallery or carved detail.
+    { const bT = halfAt(hull, 0.03, DECK_Z) - 0.02; structure.add(ribbon(T, [P3(T, 0.03, -bT, DECK_Z), P3(T, 0.03, -bT, qz + 0.55)], [P3(T, 0.03, bT, DECK_Z), P3(T, 0.03, bT, qz + 0.55)], 0x6a5232)); }
+    { const bF = halfAt(hull, qLen, DECK_Z) - 0.03, gap = [1.0, 1.9]; // gap around the ladder at y = 1.4
+      for (const [a, b] of [[-bF, gap[0] - 0.05], [gap[1] + 0.05, bF]]) structure.add(ribbon(T, [P3(T, qLen, a, DECK_Z), P3(T, qLen, a, qz)], [P3(T, qLen, b, DECK_Z), P3(T, qLen, b, qz)], 0x7a5e38));
+      for (const y of [gap[0] + 0.1, gap[1] - 0.1]) { const rail = tube(T, [P3(T, qLen + 0.55, y, DECK_Z), P3(T, qLen - 0.15, y, qz + 0.05)], 0.035, 0x5a432a); structure.add(rail); }
+      for (let k = 1; k <= 4; k++) { const t = k / 5, rung = new T.Mesh(new T.BoxGeometry(gap[1] - gap[0] - 0.2, 0.04, 0.05), mat(T, 0x5a432a)); rung.position.copy(P3(T, qLen + 0.55 - 0.7 * t, 1.45, DECK_Z + (qz - DECK_Z) * t)); structure.add(rung); } }
     for (const [x, y] of [[0.6, 1.1], [0.6, -1.1], [qLen - 0.25, 1.4], [qLen - 0.25, -1.4]]) { const post = new T.Mesh(new T.CylinderGeometry(0.06, 0.06, qz - DECK_Z, 6), mat(T, 0x5a432a)); post.position.copy(P3(T, x, y, (DECK_Z + qz) / 2)); structure.add(post); }
   }
   // Hatch to the hold: low coaming and a dark opening (the ladder is part of the interior layout).

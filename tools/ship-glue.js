@@ -5,7 +5,7 @@
   'use strict';
   const DEG = Math.PI / 180, KEY_PREFIX = 'woh-ships-';
   const EVT = { captain_route_planned: '航路を決めた', captain_no_route: '', captain_tack: '帆の向きを替えた', captain_reef: '帆を絞った', captain_arriving: '目的地に近づいた', captain_arrived: '到着した', captain_replan: '浅瀬を避けて航路を引き直した', captain_cancelled: '航海をやめた', grounded: '座礁した', refloated: '離礁した', anchor_dropped: '錨を下ろした', anchor_raised: '錨を上げた', anchor_dragging: '錨が走っている', anchor_parted: '錨索が切れた' };
-  const dbg = {}; let renderError = null, ladderSig = '', pickMode = false, destMarker = null, routeLine = null, cp, nat, THREE_, S = null, fleet = null, env = null, ref = null, ctl = {}, meshes = new Map(), boarded = null, speedX = 1, lastT = null, saveAcc = 0, trimAcc = 0, lastSeed = null;
+  const dbg = {}; let uiHidden = false, dwell = 0, renderError = null, ladderSig = '', pickMode = false, destMarker = null, routeLine = null, cp, nat, THREE_, S = null, fleet = null, env = null, ref = null, ctl = {}, meshes = new Map(), boarded = null, speedX = 1, lastT = null, saveAcc = 0, trimAcc = 0, lastSeed = null;
   const REASON = { destination_too_shallow: 'そこは浅くて行けない', blocked: '回り込む道がない', search_limit: '遠すぎて航路を決められない' };
   const ui = {};
   const $ = (tag, props = {}, kids = []) => { const e = Object.assign(document.createElement(tag), props); for (const k of kids) e.append(k); return e; };
@@ -29,6 +29,8 @@
     cam.position.set(target.x + r * Math.cos(v.pitch) * Math.sin(v.yaw), target.y + r * Math.sin(v.pitch), target.z + r * Math.cos(v.pitch) * Math.cos(v.yaw)); cam.lookAt(target);
   }
 
+  /** Every ship UI element hides together; only the small eye button stays. While hidden, stairs are used by standing at their foot. */
+  function setUiHidden(h) { uiHidden = !!h; document.documentElement.classList.toggle('shipUiHidden', uiHidden); try { localStorage.setItem('woh-ship-ui-hidden', uiHidden ? '1' : '0'); } catch (_) { /* ignore */ } }
   function toast(text) { ui.toast.textContent = text; ui.toast.style.opacity = 1; clearTimeout(toast.t); toast.t = setTimeout(() => { ui.toast.style.opacity = 0; }, 3500); }
 
   // ---------- world / environment ----------
@@ -215,7 +217,7 @@
     for (const e of fleet.takeEvents()) { if (e.type === 'captain_no_route') toast('船長：' + (REASON[e.reason] ?? '行けない')); else if (EVT[e.type]) toast(`${e.shipId}：${EVT[e.type]}`); }
     syncMeshes();
     if (boarded && fleet.has(boarded) && cp.view.overview) { const st = fleet.get(boarded).vessel.state; cp.placeMarker(ref.xM + st.X, ref.yM - st.Y, false); }
-    if (boarded && fleet.has(boarded) && !cp.view.overview && meshes.has(boarded)) walkOnBoard();
+    if (boarded && fleet.has(boarded) && !cp.view.overview && meshes.has(boarded)) walkOnBoard(dt);
     saveAcc += dt; if (saveAcc > 8) { saveAcc = 0; save(); }
     updateHud();
   }
@@ -246,7 +248,7 @@
     dev.step = (p, input, dt, terrain) => (boarded && fleet?.has(boarded) && meshes.has(boarded) && !cp.view.overview ? boardedStep(input, dt) : orig ? orig(p, input, dt, terrain) : null);
   }
   /** Per frame while aboard: keep the game's chunks and mini-map on the ship, update the cutaway view, crew and stair buttons. */
-  function walkOnBoard() {
+  function walkOnBoard(dt = 0) {
     const m = meshes.get(boarded), w = deckPoint(m);
     cp.placeMarker(w.x + S.origin.xM, w.z + S.origin.yM, false);
     if (cp.markerPoint) cp.markerPoint.elevationM = w.y + S.origin.elevationM; // the game keeps the marker at this height while the player stands still
@@ -254,6 +256,7 @@
     setWater(!m.cutaway); // below deck the hold floor is under the sea surface: hide the sea (cutaway view) so the hold can be seen
     if (m.crewFigs?.length) Ship.updateCrewFigures(m, m.pos.deck);
     const near = m.interior.laddersNear(m.pos), sig = near.map((l) => l.id).join(',');
+    const foot = near.find((l) => l.dist < 0.7); dwell = uiHidden && foot ? dwell + dt : 0; if (dwell > 1) { m.pos = m.interior.climb(m.pos, foot.id); dwell = 0; ladderSig = ''; return; }
     if (sig !== ladderSig) { ladderSig = sig; ui.ladders.replaceChildren(...near.map((l) => $('button', { textContent: l.direction === 'up' ? '上る' : '下りる', className: 'on', onclick: () => { m.pos = m.interior.climb(m.pos, l.id); ladderSig = ''; } }))); }
   }
   const captainActive = (rec) => !!rec.captain && ['sailing', 'arriving'].includes(rec.captain.mode);
@@ -273,9 +276,13 @@
 #shipPanel button,#shipBar button{background:#25415a;color:#e6edf3;border:1px solid #3b6288;border-radius:7px;padding:6px 9px;font-size:12px;min-height:30px;margin:2px 2px 2px 0}
 #shipPanel button.on,#shipBar button.on{background:#4cc2ff;color:#04202e}#shipPanel h4{margin:6px 0 2px;font-size:12px;color:#7fc8f0}
 #shipPanel .row{display:flex;align-items:center;gap:6px}#shipPanel input[type=range]{flex:1;min-width:0}
+html.shipUiHidden #shipBtn,html.shipUiHidden #shipPanel,html.shipUiHidden #shipBar,html.shipUiHidden #shipLadders,html.shipUiHidden #shipToast{display:none!important}
+#shipEye{position:fixed;z-index:122;top:calc(56px + env(safe-area-inset-top));left:calc(88px + env(safe-area-inset-left));padding:6px 9px;background:#132a40b0;color:#e6edf3;border:1px solid #2e5576;border-radius:8px;font-size:13px;opacity:.85}
+html.shipUiHidden #shipEye{left:calc(8px + env(safe-area-inset-left));opacity:.45}
 #shipLadders{position:fixed;z-index:121;left:calc(150px + env(safe-area-inset-left));bottom:calc(96px + env(safe-area-inset-bottom))}#shipLadders button{background:#4cc2ff;color:#04202e;border:1px solid #3b6288;border-radius:7px;padding:6px 14px;font-size:13px;min-height:34px}
 #shipToast{position:fixed;z-index:130;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));max-width:min(420px,58vw);text-align:center;transform:translateX(-50%);background:#000c;color:#fff;padding:6px 12px;border-radius:8px;font:13px sans-serif;opacity:0;transition:opacity .3s;pointer-events:none}` });
     ui.btn = $('button', { id: 'shipBtn', textContent: '⛵ 船' });
+    ui.eye = $('button', { id: 'shipEye', textContent: '👁', title: '船のUIの表示／非表示', onclick: () => setUiHidden(!uiHidden) });
     ui.panel = $('div', { id: 'shipPanel', className: 'scrollable' });
     ui.toast = $('div', { id: 'shipToast' });
     ui.btn.onclick = () => { ui.panel.style.display = ui.panel.style.display === 'block' ? 'none' : 'block'; };
@@ -284,11 +291,12 @@
     ui.list = $('div'); ui.ctrl = $('div', { className: 'btns' }); ui.info = $('div', { className: 'info' });
     ui.ladders = $('div', { id: 'shipLadders' }); ui.bar = $('div', { id: 'shipBar' }, [ui.info, ui.ctrl]);
     ui.panel.append(ui.spawn, ui.list);
-    document.body.append(css, ui.btn, ui.panel, ui.bar, ui.ladders, ui.toast);
+    document.body.append(css, ui.btn, ui.eye, ui.panel, ui.bar, ui.ladders, ui.toast);
+    try { setUiHidden(localStorage.getItem('woh-ship-ui-hidden') === '1'); } catch (_) { /* storage unavailable */ }
     let down = null; const cv = nat.renderer.domElement;
     cv.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; }, true);
     cv.addEventListener('pointerup', (e) => { if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 8 && performance.now() - down.t < 500) onMapTap(e); down = null; }, true);
-    ['pointerdown', 'pointermove', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'wheel'].forEach((ev) => { for (const el of [ui.panel, ui.btn, ui.bar, ui.ladders]) el.addEventListener(ev, (e) => e.stopPropagation(), { passive: true}); });
+    ['pointerdown', 'pointermove', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'wheel'].forEach((ev) => { for (const el of [ui.panel, ui.btn, ui.eye, ui.bar, ui.ladders]) el.addEventListener(ev, (e) => e.stopPropagation(), { passive: true}); });
   }
   function refreshList() {
     if (!ui.list) return;
