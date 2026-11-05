@@ -254,5 +254,32 @@ t('不毛地は全部ほぼ0', Object.values(F.availability(desert)).every(v => 
   const bad = F.load({ home: { bx: 'a' }, store: { zzz: 4, nut: -2, fish: 3 } }); t('壊れた保存でも既定値', bad.home === null && bad.store.fish === 3 && !bad.store.zzz && !bad.store.nut);
   t('古い保存（家なし）', F.load({ inv: {} }).home === null);
 }
+
+// ---------------------------------------------------------------- 暮らしの目標
+{
+  const fixed = (v) => () => v;
+  const G = F.newState();
+  let g = F.goals(G); t('最初の目標は食べ物集め', !g.all && g.id === 'food' && g.have === 0 && g.need === 5 && g.done === 0 && g.total === 11, JSON.stringify(g));
+  G.total = { nut: 3, fish: 1 }; g = F.goals(G); t('進み具合が数えられる', g.id === 'food' && g.have === 4);
+  G.total = { nut: 3, fish: 2, firewood: 4 }; g = F.goals(G); t('食べ物が済むと次は薪', g.id === 'wood' && g.have === 4 && g.done === 1);
+  G.total = { nut: 9, firewood: 12 }; g = F.goals(G); t('薪が済むと火', g.id === 'fire' && g.done === 2);
+  // 火を起こすと数える
+  const S = F.newState(); S.inv = { firewood: 2, fiber: 1 }; F.makeFire(S, 0, 0, 0, 1, fixed(0), false); t('火を起こすと数える', S.n.fire === 1);
+  const S2 = F.newState(); S2.inv = { firewood: 2, fiber: 1 }; F.makeFire(S2, 0, 0, 0, 1, fixed(0.99), false); t('失敗は数えない', !S2.n.fire);
+  // 焼いた物を食べる＝数える／果実は数えない／生魚は数えない
+  const E = F.newState(); E.kcal = 100; E.inv = { fruit: 1, fish: 1, fishC: 1, stew: 1 };
+  F.eat(E, 'fruit', fixed(0.9), 0); F.eat(E, 'fish', fixed(0.9), 0); t('果実と生魚は料理に数えない', !E.n.cooked);
+  F.eat(E, 'fishC', fixed(0.9), 0); t('焼き魚で数える', E.n.cooked === 1); F.eat(E, 'stew', fixed(0.9), 0); t('煮物も数える', E.n.cooked === 2);
+  // 家と眠る
+  const H = F.newState(); H.inv = { firewood: 10, fiber: 12, rope: 2, clay: 4 }; F.buildHome(H, 0, 0, 0, 1, 1, true); t('家を建てると数える', H.n.home === 1);
+  F.sleep(H, 0, 0, 1); t('建築中は家で眠った数に入らない', !H.n.sleepHome); F.sleep(H, 0, 0, 5); t('家で眠ると数える', H.n.sleepHome === 1);
+  // 全部達成
+  const A = F.newState(); A.total = { nut: 5, firewood: 10, rope: 1, clay: 4, pot: 1, nutL: 1, stew: 1 }; A.n = { fire: 1, cooked: 1, home: 1, sleepHome: 1 };
+  g = F.goals(A); t('全部達成', g.all && g.done === 11 && /身につけた/.test(g.text), JSON.stringify(g));
+  // 保存
+  const L = F.load(JSON.parse(JSON.stringify(F.save(A)))); t('カウンターも保存', JSON.stringify(L.n) === JSON.stringify(A.n) && F.goals(L).all);
+  t('古い保存でも目標は動く', F.goals(F.load({ inv: {} })).id === 'food');
+  t('壊れた n でも落ちない', Object.keys(F.load({ n: { fire: 'x', cooked: -1 } }).n).length === 0);
+}
 console.log(ng ? 'FAIL ' + ng + ' / ' + (ok + ng) : 'OK ' + ok + ' 件通過');
 process.exit(ng ? 1 : 0);

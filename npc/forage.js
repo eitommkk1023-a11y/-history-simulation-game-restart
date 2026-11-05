@@ -49,7 +49,7 @@
 
   // 体と暮らしの状態：kcal＝おなかの蓄え、t＝最後に時間を反映した日、sickUntil＝体調不良が続く日、fire＝焚き火、soak＝水にさらした木の実
   const KCAL_MAX = 3000, KCAL_DAY = 2000, KCAL_START = 2200;
-  function newState() { return { inv: {}, depl: {}, total: {}, wear: {}, home: null, store: {}, seq: 0, kcal: KCAL_START, t: 0, sickUntil: 0, fire: null, soak: null }; }
+  function newState() { return { inv: {}, depl: {}, total: {}, wear: {}, home: null, store: {}, n: {}, seq: 0, kcal: KCAL_START, t: 0, sickUntil: 0, fire: null, soak: null }; }
   function count(st, id) { return st.inv[id] || 0; }
 
   // 場所の状況から、拾えるものの「豊かさ」を求める（0〜）
@@ -162,6 +162,7 @@
     const gain = it.kcal * f;
     st.kcal = Math.min(EAT_FULL, st.kcal + gain);
     drop(st, id, 1);
+    if (!it.raw && id !== 'fruit' && id !== 'bud' && id !== 'seed') bump(st, 'cooked');
     let ill = false;
     if (bad && rng() < bad) { st.sickUntil = Math.max(st.sickUntil, day + 2); ill = true; }
     return { ok: true, name: it.name, kcal: Math.round(gain), sick: ill };
@@ -180,6 +181,7 @@
     if (rng() > p) return { ok: false, why: '火がつかなかった（繊維を1つ失った）' + (wet ? '。水辺は湿っている。少し離れてみよう' : '') };
     drop(st, 'firewood', FIRE_WOOD);
     st.fire = { bx: Math.floor(bx), by: Math.floor(by), until: day + FIRE_WOOD * WOOD_DAYS };
+    bump(st, 'fire');
     return { ok: true, days: FIRE_WOOD * WOOD_DAYS };
   }
   function stoke(st, bx, by, day) {
@@ -283,6 +285,7 @@
     for (const k in HOME_NEED) if ((st.inv[k] || 0) < HOME_NEED[k]) return { ok: false, why: '家の材料が足りない（' + homeNeedText() + '）' };
     for (const k in HOME_NEED) drop(st, k, HOME_NEED[k]);
     st.home = { bx: Math.floor(bx), by: Math.floor(by), xM: Number.isFinite(xM) ? xM : null, yM: Number.isFinite(yM) ? yM : null, ready: day + HOME_DAYS };
+    bump(st, 'home');
     return { ok: true, ready: st.home.ready };
   }
   // 壊す：貯蔵庫が空のときだけ（中身を失わないため）。材料は戻らない
@@ -307,9 +310,32 @@
   function storeList(st) { return ITEMS.filter(it => st.store[it.id]).map(it => ({ id: it.id, name: it.name, n: st.store[it.id] })); }
   // 眠る：家で眠ると体調不良が治る。家が無くても、焚き火のそばなら野宿できる（体調は戻らない）。1日進める処理は呼び出し側
   function sleep(st, bx, by, day) {
-    if (homeStatus(st, day) === 'built' && nearHome(st, bx, by)) { st.sickUntil = Math.min(st.sickUntil, day); return { ok: true, home: true }; }
+    if (homeStatus(st, day) === 'built' && nearHome(st, bx, by)) { st.sickUntil = Math.min(st.sickUntil, day); bump(st, 'sleepHome'); return { ok: true, home: true }; }
     if (fireActive(st, bx, by, day)) return { ok: true, home: false };
     return { ok: false, why: '眠れる場所がない（家のそば、または焚き火のそばで）' };
+  }
+
+  // ---------------------------------------------------------------- 暮らしの目標（入門の手順。画面の目標欄に出す）
+  function bump(st, k) { st.n = st.n || {}; st.n[k] = (st.n[k] || 0) + 1; }
+  const FOOD_RAW = ['nut', 'fruit', 'bud', 'root', 'seed', 'shell', 'fish'];
+  const GOALS = [
+    { id: 'food',   text: '食べ物を集める',            need: 5,  have: st => FOOD_RAW.reduce((a, k) => a + (st.total[k] || 0), 0) },
+    { id: 'wood',   text: '薪を集める',                need: 10, have: st => st.total.firewood || 0 },
+    { id: 'fire',   text: '火を起こす',                need: 1,  have: st => (st.n || {}).fire || 0 },
+    { id: 'cook',   text: '焼いた物・煮た物を食べる',   need: 1,  have: st => (st.n || {}).cooked || 0 },
+    { id: 'rope',   text: '縄を作る',                  need: 1,  have: st => st.total.rope || 0 },
+    { id: 'clay',   text: '粘土を集める',              need: 4,  have: st => st.total.clay || 0 },
+    { id: 'pot',    text: '土器を作る',                need: 1,  have: st => st.total.pot || 0 },
+    { id: 'acorn',  text: '木の実を水にさらして受け取る', need: 1, have: st => st.total.nutL || 0 },
+    { id: 'stew',   text: '煮物を作る',                need: 1,  have: st => st.total.stew || 0 },
+    { id: 'home',   text: '家を建てる',                need: 1,  have: st => (st.n || {}).home || 0 },
+    { id: 'sleep',  text: '家で眠る',                  need: 1,  have: st => (st.n || {}).sleepHome || 0 },
+  ];
+  // 順番に、最初の未達成の目標を返す。done＝達成した数、all＝全部達成
+  function goals(st) {
+    let done = 0;
+    for (const g of GOALS) { const h = Math.min(g.need, g.have(st)); if (h < g.need) return { all: false, done, total: GOALS.length, id: g.id, text: g.text, have: h, need: g.need }; done++; }
+    return { all: true, done, total: GOALS.length, id: null, text: '暮らしの基本を身につけた', have: 0, need: 0 };
   }
 
   function save(st) { return JSON.parse(JSON.stringify(st)); }
@@ -323,6 +349,7 @@
       const f = o.fire; if (f && Number.isFinite(f.bx) && Number.isFinite(f.by) && Number.isFinite(f.until)) { st.fire = { bx: f.bx, by: f.by, until: f.until }; if (Number.isFinite(f.xM) && Number.isFinite(f.yM)) { st.fire.xM = f.xM; st.fire.yM = f.yM; } }
       const hm = o.home; if (hm && Number.isFinite(hm.bx) && Number.isFinite(hm.by) && Number.isFinite(hm.ready)) st.home = { bx: hm.bx, by: hm.by, xM: Number.isFinite(hm.xM) ? hm.xM : null, yM: Number.isFinite(hm.yM) ? hm.yM : null, ready: hm.ready };
       for (const id in (o.store || {})) if (IDX[id] != null && o.store[id] > 0) st.store[id] = o.store[id] | 0;
+      for (const k in (o.n || {})) if (Number.isFinite(o.n[k]) && o.n[k] > 0) st.n[k] = o.n[k] | 0;
       const k = o.soak; if (k && Number.isFinite(k.bx) && Number.isFinite(k.by) && Number.isFinite(k.n) && Number.isFinite(k.ready) && k.n > 0) st.soak = { bx: k.bx, by: k.by, n: k.n | 0, ready: k.ready };
       for (const id in (o.inv || {})) if (IDX[id] != null && o.inv[id] > 0) st.inv[id] = o.inv[id] | 0;
       for (const id in (o.total || {})) if (IDX[id] != null) st.total[id] = o.total[id] | 0;
@@ -337,6 +364,6 @@
     return function () { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   }
 
-  const api = { slotsOf, HOME_NEED, HOME_DAYS, HOME_REACH, STORE_SLOTS, homeStatus, nearHome, homeNeedText, buildHome, demolishHome, storePut, storeTake, storeList, storeRoom, sleep, SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
+  const api = { goals, GOALS, slotsOf, HOME_NEED, HOME_DAYS, HOME_REACH, STORE_SLOTS, homeStatus, nearHome, homeNeedText, buildHome, demolishHome, storePut, storeTake, storeList, storeRoom, sleep, SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohForage = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
