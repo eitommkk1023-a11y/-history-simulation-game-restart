@@ -25,7 +25,7 @@ t('不毛地は全部ほぼ0', Object.values(F.availability(desert)).every(v => 
   t('森で何か採れる', got > 5, got);
   t('貝は出ない', !st.inv.shell);
   t('木の実か薪が入る', (st.inv.nut || 0) + (st.inv.firewood || 0) > 0);
-  t('重さは上限以内', F.weight(st) <= F.CARRY_KG + 1e-9, F.weight(st));
+  t('枠は上限以内', F.slotsUsed(st) <= F.SLOTS, F.slotsUsed(st));
   t('同じ場所は枯れる（成功は上限付近）', got <= F.SPOT_CAP + 1, got);
   const r2 = F.gather(st, forest, 5, 5, 0, rngSeed(3)); t('枯れた場所のメッセージ', !r2.ok);
   // 月が変わると回復
@@ -45,7 +45,7 @@ t('不毛地は全部ほぼ0', Object.values(F.availability(desert)).every(v => 
 // want が無い所
 { const st = F.newState(); const r = F.gather(st, forest, 0, 0, 0, rngSeed(2), { want: 'shell' }); t('指定した物が無い', !r.ok && /貝/.test(r.why)); }
 // 持ちきれない
-{ const st = F.newState(); st.inv.stone = 25; const r = F.gather(st, { ...desert, rock: 1 }, 0, 0, 0, rngSeed(9), { want: 'stone' }); t('満杯なら失敗', !r.ok && /持ちきれない/.test(r.why), JSON.stringify(r)); }
+{ const st = F.newState(); st.inv.stone = F.SLOTS * F.stackOf(F.ITEMS[F.IDX.stone]); const r = F.gather(st, { ...desert, rock: 1 }, 0, 0, 0, rngSeed(9), { want: 'stone' }); t('満杯なら失敗', !r.ok && /いっぱい/.test(r.why), JSON.stringify(r)); }
 // 決定性
 {
   const run = () => { const st = F.newState(), rng = rngSeed(42); for (let i = 0; i < 20; i++) F.gather(st, forest, 3, 3, 0, rng); return JSON.stringify(st); };
@@ -56,8 +56,8 @@ t('不毛地は全部ほぼ0', Object.values(F.availability(desert)).every(v => 
   const st = F.newState(), rng = rngSeed(8); for (let i = 0; i < 10; i++) F.gather(st, forest, 3, 3, 4, rng);
   const s2 = F.load(JSON.parse(JSON.stringify(F.save(st))));
   t('保存→読み込みで同じ', JSON.stringify(s2) === JSON.stringify(st));
-  t('壊れた保存でも落ちない', F.weight(F.load({ inv: { x: 5, nut: -1 }, depl: { a: 3 } })) === 0);
-  t('null でも落ちない', F.weight(F.load(null)) === 0);
+  t('壊れた保存でも落ちない', F.slotsUsed(F.load({ inv: { x: 5, nut: -1 }, depl: { a: 3 } })) === 0);
+  t('null でも落ちない', F.slotsUsed(F.load(null)) === 0);
   const before = F.count(st, 'nut') + F.count(st, 'firewood'); const id = st.inv.nut ? 'nut' : 'firewood';
   const d = F.drop(st, id, 1); t('捨てる', d === 1 && F.count(st, id) === (id === 'nut' ? F.count(F.load(F.save(st)), 'nut') : F.count(st, id)));
   F.prune(st, 9); t('古い記録を捨てる', Object.keys(st.depl).length === 0);
@@ -120,8 +120,8 @@ t('不毛地は全部ほぼ0', Object.values(F.availability(desert)).every(v => 
   t('早すぎる', !F.soakCollect(w, 2, 2, 1).ok && /あと/.test(F.soakCollect(w, 2, 2, 1).why));
   t('別の場所では受け取れない', !F.soakCollect(w, 20, 2, 3).ok);
   r = F.soakCollect(w, 3, 2, 3); t('受け取る', r.ok && r.n === 10 && w.inv.nutL === 10 && w.soak === null, JSON.stringify(w));
-  const w2 = F.newState(); w2.inv = { nut: 5, stone: 24 }; F.soakStart(w2, 0, 0, 0, true); w2.inv.stone = 25;
-  r = F.soakCollect(w2, 0, 0, 3); t('満杯なら受け取れず残る', !r.ok && /持ちきれない/.test(r.why) && w2.soak.n === 5, JSON.stringify(r));
+  const w2 = F.newState(); w2.inv = { nut: 5, stone: 24 }; F.soakStart(w2, 0, 0, 0, true); w2.inv.stone = 200;
+  r = F.soakCollect(w2, 0, 0, 3); t('満杯なら受け取れず残る', !r.ok && /いっぱい/.test(r.why) && w2.soak.n === 5, JSON.stringify(r));
 
   // 保存・読み込み
   const sv = F.newState(); sv.kcal = 1234; sv.t = 7; sv.sickUntil = 9; sv.fire = { bx: 1, by: 2, until: 8 }; sv.soak = { bx: 3, by: 4, n: 6, ready: 9 }; sv.inv = { nutC: 2 };
@@ -149,8 +149,7 @@ t('不毛地は全部ほぼ0', Object.values(F.availability(desert)).every(v => 
   r = F.craft(a, 'knife', 0.5, fixed(0), 0, 0, 0); t('ナイフができる', r.ok && a.inv.knife === 1 && !a.inv.stone);
   a.inv = { rope: 3 }; t('網ができる', F.craft(a, 'net', 0.5, fixed(0), 0, 0, 0).ok && a.inv.net === 1);
   t('腕前が高いと成功しやすい', (() => { const n = (sk) => { let c = 0; for (let i = 1; i <= 300; i++) { const s = F.newState(); s.inv = { stone: 1 }; if (F.craft(s, 'knife', sk, rngSeed(i), 0, 0, 0).ok) c++; } return c; }; return n(1) > n(0); })());
-  const heavy = F.newState(); heavy.inv = { stone: 25 }; r = F.craft(heavy, 'knife', 0.5, fixed(0), 0, 0, 0); t('持ちきれないなら作らない', r.ok === true || !r.ok);   // 石1個→ナイフで軽くなるので作れる
-  const full = F.newState(); full.inv = { clay: 4, firewood: 2, stone: 24 }; full.fire = { bx: 0, by: 0, until: 5 }; r = F.craft(full, 'pot', 0.5, fixed(0), 0, 0, 0); t('土器は重さに余裕がないと作らない', !r.ok && /持ちきれない/.test(r.why), JSON.stringify(r));
+    const full = F.newState(); full.inv = { clay: 4, firewood: 2, stone: 200 }; full.fire = { bx: 0, by: 0, until: 5 }; r = F.craft(full, 'pot', 0.5, fixed(0), 0, 0, 0); t('土器は枠に余裕がないと作らない', !r.ok && /いっぱい/.test(r.why), JSON.stringify(r));
 
   // 土器：火が必要
   const pt = F.newState(); pt.inv = { clay: 5, firewood: 3 };
@@ -186,6 +185,25 @@ t('不毛地は全部ほぼ0', Object.values(F.availability(desert)).every(v => 
   const ld = F.load(JSON.parse(JSON.stringify(F.save(sv)))); t('摩耗も保存できる', ld.wear.axe === 7 && ld.wear.pot === 3);
   t('壊れた摩耗の保存でも落ちない', F.load({ wear: { axe: 'x', zzz: 5 } }).wear.axe === undefined);
   t('古い保存（摩耗なし）', F.load({ inv: {} }).wear && Object.keys(F.load({ inv: {} }).wear).length === 0);
+}
+
+// ---------------------------------------------------------------- 持ち物の枠（重さは使わない）
+{
+  const S = F.newState();
+  t('空は0枠', F.slotsUsed(S) === 0);
+  S.inv = { nut: 40 }; t('軽い物は1枠に40個', F.slotsUsed(S) === 1 && F.stackOf(F.ITEMS[F.IDX.nut]) === 40);
+  S.inv = { nut: 41 }; t('41個で2枠', F.slotsUsed(S) === 2);
+  S.inv = { firewood: 10 }; t('薪は1枠10個', F.slotsUsed(S) === 1); S.inv = { firewood: 11 }; t('11本で2枠', F.slotsUsed(S) === 2);
+  S.inv = { axe: 3 }; t('道具は1枠3個', F.slotsUsed(S) === 1); S.inv = { axe: 4 }; t('4個で2枠', F.slotsUsed(S) === 2);
+  S.inv = { nut: 30 }; t('同じ物は枠の残りまで入る', F.roomFor(S, 'nut') === F.SLOTS * 40 - 30);
+  S.inv = { stone: 10 * 19, nut: 1 }; t('20枠が埋まると新しい物は入らない', F.slotsUsed(S) === 20 && F.roomFor(S, 'fish') === 0);
+  t('既にある物は枠の余りに入る', F.roomFor(S, 'nut') === 39);
+  // 満杯でも、枠の余りがあれば採れて、積み上がる
+  const G = F.newState(), rng = rngSeed(21); let tot = 0;
+  for (let i = 0; i < 300; i++) { const q = F.gather(G, forest, i, 0, 0, rng, { want: 'firewood', skill: 1 }); if (q.ok) tot += q.n; }
+  t('薪を集めても枠の上限まで', F.slotsUsed(G) <= F.SLOTS && (G.inv.firewood || 0) <= 200 && tot > 0, JSON.stringify(G.inv));
+  const H = F.newState(); H.inv = { stone: 200 }; t('満杯のメッセージに枠数', /20\/20枠/.test(F.gather(H, { ...desert, rock: 1 }, 0, 0, 0, rngSeed(3), { want: 'stone' }).why));
+  t('一覧に重さを出さない', !('kg' in (F.list({ inv: { nut: 2 } })[0] || {})) && !('weight' in F));
 }
 console.log(ng ? 'FAIL ' + ng + ' / ' + (ok + ng) : 'OK ' + ok + ' 件通過');
 process.exit(ng ? 1 : 0);

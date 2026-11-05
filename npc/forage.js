@@ -5,42 +5,50 @@
  */
 (function (root) {
   'use strict';
-  // kg：1個の重さ、kcal：1個の熱量（のちの調理・食事で使う）、raw：そのままでは食べられない（あく抜き・加熱が必要）
+  // bulk：かさ（採れる数・1枠に積める数の目安。重さは使わない）、kcal：1個の熱量（のちの調理・食事で使う）、raw：そのままでは食べられない（あく抜き・加熱が必要）
   const ITEMS = [
-    { id: 'nut',      name: '木の実（ドングリ・クリ）', kg: 0.05, kcal: 60,  raw: true,  group: 'food' },
-    { id: 'fruit',    name: '果実',                   kg: 0.08, kcal: 40,  group: 'food' },
-    { id: 'bud',      name: '山菜・新芽',              kg: 0.05, kcal: 20,  group: 'food' },
-    { id: 'root',     name: '根・球根',                kg: 0.15, kcal: 90,  raw: true,  group: 'food' },
-    { id: 'seed',     name: '草の実',                  kg: 0.03, kcal: 35,  group: 'food' },
-    { id: 'shell',    name: '貝',                     kg: 0.06, kcal: 25,  raw: true,  group: 'food' },
-    { id: 'fish',     name: '魚',                     kg: 0.3,  kcal: 250, raw: true,  group: 'food' },
-    { id: 'firewood', name: '薪',                     kg: 1.5,  kcal: 0,   group: 'material' },
-    { id: 'stone',    name: '石',                     kg: 1.0,  kcal: 0,   group: 'material' },
-    { id: 'fiber',    name: '繊維（草・つる）',         kg: 0.08, kcal: 0,   group: 'material' },
-    { id: 'clay',     name: '粘土',                   kg: 0.5,  kcal: 0,   group: 'material' },
-    { id: 'rope',     name: '縄',                     kg: 0.1,  kcal: 0,   group: 'material' },
+    { id: 'nut',      name: '木の実（ドングリ・クリ）', bulk: 0.05, kcal: 60,  raw: true,  group: 'food' },
+    { id: 'fruit',    name: '果実',                   bulk: 0.08, kcal: 40,  group: 'food' },
+    { id: 'bud',      name: '山菜・新芽',              bulk: 0.05, kcal: 20,  group: 'food' },
+    { id: 'root',     name: '根・球根',                bulk: 0.15, kcal: 90,  raw: true,  group: 'food' },
+    { id: 'seed',     name: '草の実',                  bulk: 0.03, kcal: 35,  group: 'food' },
+    { id: 'shell',    name: '貝',                     bulk: 0.06, kcal: 25,  raw: true,  group: 'food' },
+    { id: 'fish',     name: '魚',                     bulk: 0.3,  kcal: 250, raw: true,  group: 'food' },
+    { id: 'firewood', name: '薪',                     bulk: 1.5,  kcal: 0,   group: 'material' },
+    { id: 'stone',    name: '石',                     bulk: 1.0,  kcal: 0,   group: 'material' },
+    { id: 'fiber',    name: '繊維（草・つる）',         bulk: 0.08, kcal: 0,   group: 'material' },
+    { id: 'clay',     name: '粘土',                   bulk: 0.5,  kcal: 0,   group: 'material' },
+    { id: 'rope',     name: '縄',                     bulk: 0.1,  kcal: 0,   group: 'material' },
     // 道具（使うほど傷み、やがて壊れる）
-    { id: 'knife',    name: '石のナイフ',              kg: 0.3,  kcal: 0,   group: 'tool' },
-    { id: 'axe',      name: '石斧',                   kg: 1.2,  kcal: 0,   group: 'tool' },
-    { id: 'net',      name: '魚網',                   kg: 0.8,  kcal: 0,   group: 'tool' },
-    { id: 'pot',      name: '土器',                   kg: 2.0,  kcal: 0,   group: 'tool' },
+    { id: 'knife',    name: '石のナイフ',              bulk: 0.3,  kcal: 0,   group: 'tool' },
+    { id: 'axe',      name: '石斧',                   bulk: 1.2,  kcal: 0,   group: 'tool' },
+    { id: 'net',      name: '魚網',                   bulk: 0.8,  kcal: 0,   group: 'tool' },
+    { id: 'pot',      name: '土器',                   bulk: 2.0,  kcal: 0,   group: 'tool' },
     // 加工したもの（水さらし・焼いた・煮た）：そのまま食べられる
-    { id: 'nutL',     name: '水さらしした木の実',       kg: 0.05, kcal: 65,  group: 'food' },
-    { id: 'nutC',     name: '焼いた木の実',            kg: 0.05, kcal: 80,  group: 'food' },
-    { id: 'rootC',    name: '焼いた根',                kg: 0.14, kcal: 120, group: 'food' },
-    { id: 'seedC',    name: '炒った草の実',            kg: 0.03, kcal: 45,  group: 'food' },
-    { id: 'shellC',   name: '焼き貝',                  kg: 0.06, kcal: 35,  group: 'food' },
-    { id: 'fishC',    name: '焼き魚',                  kg: 0.25, kcal: 280, group: 'food' },
-    { id: 'stew',     name: '煮物',                    kg: 0.4,  kcal: 260, group: 'food' },
+    { id: 'nutL',     name: '水さらしした木の実',       bulk: 0.05, kcal: 65,  group: 'food' },
+    { id: 'nutC',     name: '焼いた木の実',            bulk: 0.05, kcal: 80,  group: 'food' },
+    { id: 'rootC',    name: '焼いた根',                bulk: 0.14, kcal: 120, group: 'food' },
+    { id: 'seedC',    name: '炒った草の実',            bulk: 0.03, kcal: 45,  group: 'food' },
+    { id: 'shellC',   name: '焼き貝',                  bulk: 0.06, kcal: 35,  group: 'food' },
+    { id: 'fishC',    name: '焼き魚',                  bulk: 0.25, kcal: 280, group: 'food' },
+    { id: 'stew',     name: '煮物',                    bulk: 0.4,  kcal: 260, group: 'food' },
   ];
   const IDX = {}; ITEMS.forEach((it, i) => { IDX[it.id] = i; });
-  const CARRY_KG = 25;           // 運べる重さの基本値［仮］
+  // 持ち物の上限は「枠」の数（重さは使わない）。1つの枠に積める数は、かさで決まる［仮］
+  const SLOTS = 20;
+  function stackOf(it) { return it.group === 'tool' ? 3 : it.bulk >= 1 ? 10 : it.bulk >= 0.25 ? 20 : 40; }
+  function slotsUsed(st, except) { let n = 0; for (const id in st.inv) if (id !== except && IDX[id] != null && st.inv[id] > 0) n += Math.ceil(st.inv[id] / stackOf(ITEMS[IDX[id]])); return n; }
+  // その品物を、あと何個持てるか
+  function roomFor(st, id, slots) {
+    const it = ITEMS[IDX[id]], st1 = stackOf(it), free = (slots || SLOTS) - slotsUsed(st, id);
+    return Math.max(0, free * st1 - (st.inv[id] || 0));
+  }
+  const FULL_MSG = '持ち物がいっぱいで持てない';
   const SPOT_CAP = 6;            // 1ブロック（約33m四方）・1か月に、豊かさ1の場所で採れる回数の目安［仮］
 
   // 体と暮らしの状態：kcal＝おなかの蓄え、t＝最後に時間を反映した日、sickUntil＝体調不良が続く日、fire＝焚き火、soak＝水にさらした木の実
   const KCAL_MAX = 3000, KCAL_DAY = 2000, KCAL_START = 2200;
   function newState() { return { inv: {}, depl: {}, total: {}, wear: {}, seq: 0, kcal: KCAL_START, t: 0, sickUntil: 0, fire: null, soak: null }; }
-  function weight(st) { let w = 0; for (const id in st.inv) if (IDX[id] != null) w += st.inv[id] * ITEMS[IDX[id]].kg; return w; }
   function count(st, id) { return st.inv[id] || 0; }
 
   // 場所の状況から、拾えるものの「豊かさ」を求める（0〜）
@@ -82,7 +90,7 @@
   // 返り値：{ ok, id?, n?, why?, items? }
   function gather(st, ctx, bx, by, monthIdx, rng, opt) {
     opt = opt || {};
-    const skill = opt.skill == null ? 0.3 : opt.skill, cap = opt.carryKg || CARRY_KG;
+    const skill = opt.skill == null ? 0.3 : opt.skill, slots = opt.slots || SLOTS;
     const av = availability(ctx), left = spotLeft(st, bx, by, monthIdx);
     let ids = Object.keys(av).filter(k => av[k] > 0.02 && (!opt.want || k === opt.want));
     if (opt.group) ids = ids.filter(k => ITEMS[IDX[k]].group === opt.group);
@@ -99,15 +107,15 @@
     if (rng() > chance) return { ok: false, why: '見つけられなかった' };
     const it = ITEMS[IDX[pick]];
     // 数：重い物は少なく、軽い物は多く。豊かさ・残り・腕前で増える
-    const base = it.kg >= 1 ? 1 : it.kg >= 0.25 ? 1 + (rng() < 0.3 ? 1 : 0) : 3 + Math.floor(rng() * 4);
+    const base = it.bulk >= 1 ? 1 : it.bulk >= 0.25 ? 1 + (rng() < 0.3 ? 1 : 0) : 3 + Math.floor(rng() * 4);
     let n = Math.max(1, Math.round(base * (0.6 + 0.4 * Math.min(1.5, av[pick])) * (0.7 + 0.6 * skill) * (0.4 + 0.6 * left)));
     // 道具の効き目：斧→薪が2倍、網→魚が2倍、ナイフ→根・繊維・貝・新芽が3割増
     let used = null;
     if (pick === 'firewood' && has('axe')) { n *= 2; used = 'axe'; }
     else if (pick === 'fish' && has('net')) { n *= 2; used = 'net'; }
     else if ((pick === 'root' || pick === 'fiber' || pick === 'shell' || pick === 'bud') && has('knife')) { n = Math.ceil(n * 1.3); used = 'knife'; }
-    const room = Math.floor((cap - weight(st)) / it.kg + 1e-9);
-    if (room <= 0) return { ok: false, why: '持ちきれない（重さ ' + weight(st).toFixed(1) + '/' + cap + 'kg）' };
+    const room = roomFor(st, pick, slots);
+    if (room <= 0) return { ok: false, why: FULL_MSG + '（' + slotsUsed(st) + '/' + slots + '枠）' };
     if (n > room) n = room;
     st.inv[pick] = (st.inv[pick] || 0) + n;
     st.total[pick] = (st.total[pick] || 0) + n;
@@ -123,7 +131,7 @@
     return k;
   }
   function list(st) {
-    return ITEMS.filter(it => st.inv[it.id]).map(it => ({ id: it.id, name: it.name, n: st.inv[it.id], kg: st.inv[it.id] * it.kg, raw: !!it.raw }));
+    return ITEMS.filter(it => st.inv[it.id]).map(it => ({ id: it.id, name: it.name, n: st.inv[it.id], bulk: st.inv[it.id] * it.bulk, raw: !!it.raw }));
   }
 
   // ---------------------------------------------------------------- 食べる・火・調理
@@ -205,8 +213,8 @@
     const k = st.soak; if (!k) return { ok: false, why: '水にさらしている物がない' };
     if (Math.abs(k.bx - bx) > FIRE_RANGE || Math.abs(k.by - by) > FIRE_RANGE) return { ok: false, why: '水にさらした場所に戻らないと受け取れない（' + k.bx + ', ' + k.by + ' 付近）' };
     if (day < k.ready) return { ok: false, why: 'まだ早い（あと' + Math.ceil(k.ready - day) + '日）' };
-    const room = Math.floor((CARRY_KG - weight(st)) / ITEMS[IDX.nutL].kg + 1e-9), n = Math.min(k.n, Math.max(0, room));
-    if (n <= 0) return { ok: false, why: '持ちきれない' };
+    const n = Math.min(k.n, roomFor(st, 'nutL'));
+    if (n <= 0) return { ok: false, why: FULL_MSG };
     st.inv.nutL = (st.inv.nutL || 0) + n; st.total.nutL = (st.total.nutL || 0) + n; k.n -= n; if (k.n <= 0) st.soak = null;
     return { ok: true, n };
   }
@@ -232,9 +240,10 @@
     const name = ITEMS[IDX[id]].name;
     for (const k in r.need) if ((st.inv[k] || 0) < r.need[k]) return { ok: false, why: name + 'の材料が足りない（' + needText(r) + '）' };
     if (r.fire && !fireActive(st, bx, by, day)) return { ok: false, why: '土器は火のそばで焼いて作る' };
-    // 持ちきれないなら作らない
-    let w = weight(st); for (const k in r.need) w -= r.need[k] * ITEMS[IDX[k]].kg; w += r.out * ITEMS[IDX[id]].kg;
-    if (w > CARRY_KG + 1e-9) return { ok: false, why: '持ちきれない（重さ ' + weight(st).toFixed(1) + '/' + CARRY_KG + 'kg）' };
+    // 材料を使ったあとに、できた物が入らないなら作らない
+    const after = { inv: { ...st.inv } }; for (const k in r.need) { after.inv[k] -= r.need[k]; if (!after.inv[k]) delete after.inv[k]; }
+    after.inv[id] = (after.inv[id] || 0) + r.out;
+    if (slotsUsed(after) > SLOTS) return { ok: false, why: FULL_MSG + '（' + slotsUsed(st) + '/' + SLOTS + '枠）' };
     const p = Math.min(0.95, r.p + 0.3 * (skill == null ? 0.3 : skill));
     if (rng() > p) { for (const k in r.lose) drop(st, k, r.lose[k]); return { ok: false, why: name + 'づくりに失敗した（' + lostText(r) + 'を失った）' }; }
     for (const k in r.need) drop(st, k, r.need[k]);
@@ -284,6 +293,6 @@
     return function () { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   }
 
-  const api = { RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, CARRY_KG, SPOT_CAP, newState, weight, count, availability, spotLeft, gather, drop, list, save, load, prune };
+  const api = { SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohForage = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
