@@ -6185,7 +6185,22 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     { id: 'axe',      name: '石斧',                   bulk: 1.2,  kcal: 0,   group: 'tool' },
     { id: 'net',      name: '魚網',                   bulk: 0.8,  kcal: 0,   group: 'tool' },
     { id: 'pot',      name: '土器',                   bulk: 2.0,  kcal: 0,   group: 'tool' },
-    // 加工したもの（水さらし・焼いた・煮た）：そのまま食べられる
+    { id: 'herb',     name: '薬草',                   bulk: 0.05, kcal: 0,   group: 'material' },
+    { id: 'hide',     name: '毛皮',                   bulk: 0.5,  kcal: 0,   group: 'material' },
+    { id: 'bone',     name: '骨',                     bulk: 0.1,  kcal: 0,   group: 'material' },
+    { id: 'antler',   name: '角',                     bulk: 0.3,  kcal: 0,   group: 'material' },
+    { id: 'meat',     name: '肉',                     bulk: 0.5,  kcal: 1000, raw: true, group: 'food' },
+    // 狩りの道具・衣服・水袋
+    { id: 'bow',      name: '弓',                     bulk: 0.8,  kcal: 0,   group: 'tool' },
+    { id: 'spear',    name: '槍',                     bulk: 1.0,  kcal: 0,   group: 'tool' },
+    { id: 'skin',     name: '水袋',                   bulk: 0.4,  kcal: 0,   group: 'tool' },
+    { id: 'fur',      name: '毛皮の衣',               bulk: 1.0,  kcal: 0,   group: 'tool' },
+    { id: 'cloak',    name: '草の外套',               bulk: 0.8,  kcal: 0,   group: 'tool' },
+    // 加工したもの（水さらし・焼いた・煮た・干した）
+    { id: 'meatC',    name: '焼き肉',                 bulk: 0.45, kcal: 1100, group: 'food' },
+    { id: 'meatD',    name: '干し肉',                 bulk: 0.3,  kcal: 800, group: 'food' },
+    { id: 'fishD',    name: '干し魚',                 bulk: 0.2,  kcal: 200, group: 'food' },
+    { id: 'fruitD',   name: '干し果実',               bulk: 0.05, kcal: 60,  group: 'food' },
     { id: 'nutL',     name: '水さらしした木の実',       bulk: 0.05, kcal: 65,  group: 'food' },
     { id: 'nutC',     name: '焼いた木の実',            bulk: 0.05, kcal: 80,  group: 'food' },
     { id: 'rootC',    name: '焼いた根',                bulk: 0.14, kcal: 120, group: 'food' },
@@ -6210,7 +6225,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
 
   // 体と暮らしの状態：kcal＝おなかの蓄え、t＝最後に時間を反映した日、sickUntil＝体調不良が続く日、fire＝焚き火、soak＝水にさらした木の実
   const KCAL_MAX = 3000, KCAL_DAY = 2000, KCAL_START = 2200;
-  function newState() { return { inv: {}, depl: {}, total: {}, wear: {}, home: null, store: {}, n: {}, hp: 100, sp: 100, water: 80, exhausted: false, mortal: true, dyingDays: 0, dead: null, lastCause: null, standing: 0, given: 0, rationAt: -99, lessons: {}, talkDay: {}, seq: 0, kcal: KCAL_START, t: 0, sickUntil: 0, fire: null, soak: null }; }
+  function newState() { return { inv: {}, depl: {}, total: {}, wear: {}, home: null, store: {}, n: {}, hp: 100, sp: 100, water: 80, exhausted: false, mortal: true, injuredUntil: 0, carried: 0, rotAcc: {}, rotted: {}, clothWear: {}, dyingDays: 0, dead: null, lastCause: null, standing: 0, given: 0, rationAt: -99, lessons: {}, talkDay: {}, seq: 0, kcal: KCAL_START, t: 0, sickUntil: 0, fire: null, soak: null }; }
   function count(st, id) { return st.inv[id] || 0; }
 
   // 場所の状況から、拾えるものの「豊かさ」を求める（0〜）
@@ -6229,6 +6244,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
       stone: (ctx.rock || 0) * 1.2,
       fiber: p[0] * 0.5 + f * 0.25 + g * 0.5,
       clay: ctx.water ? 0.9 : ctx.coast ? 0.25 : 0,
+      herb: (f * 0.45 + g * 0.2) * Math.min(1, p[1] + p[2] + 0.2),
     };
     for (const k in a) a[k] = Math.max(0, a[k]);
     return a;
@@ -6296,6 +6312,78 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     return ITEMS.filter(it => st.inv[it.id]).map(it => ({ id: it.id, name: it.name, n: st.inv[it.id], bulk: st.inv[it.id] * it.bulk, raw: !!it.raw }));
   }
 
+  // ---------------------------------------------------------------- 衣服・保存食（傷む）・水の持ち運び・怪我
+  // 衣服：持っていれば自動で着る。寒さを防ぎ、日がたつと傷む
+  const CLOTH = { fur: { cut: 0.8, days: 240 }, cloak: { cut: 0.4, days: 80 } };
+  function clothOf(st) { return (st.inv.fur > 0 ? 'fur' : st.inv.cloak > 0 ? 'cloak' : null); }
+  function clothFactor(st) { const c = clothOf(st); return c ? 1 - CLOTH[c].cut : 1; }
+  function wearCloth(st, days) {
+    const c = clothOf(st); if (!c) return; st.clothWear = st.clothWear || {};
+    st.clothWear[c] = (st.clothWear[c] || 0) + days;
+    if (st.clothWear[c] >= CLOTH[c].days) { st.clothWear[c] = 0; drop(st, c, 1); st.rotted = st.rotted || {}; st.rotted[c] = (st.rotted[c] || 0) + 1; }
+  }
+  // 傷む：1日に失う割合。干した物・木の実・種は長持ち。貯蔵庫では半分
+  const ROT = { meat: 0.30, fish: 0.25, shell: 0.20, fruit: 0.10, bud: 0.20, root: 0.02, meatC: 0.12, fishC: 0.12, shellC: 0.12, stew: 0.20, rootC: 0.03, nutL: 0.03, nutC: 0.01, seedC: 0.005, meatD: 0.008, fishD: 0.008, fruitD: 0.008 };
+  function rot(st, days) {
+    st.rotAcc = st.rotAcc || {}; st.rotted = st.rotted || {};
+    for (const [inv, k] of [[st.inv, 1], [st.store || {}, 0.5]]) for (const id in ROT) {
+      const n = inv[id] || 0; if (n <= 0) continue;
+      const key = (inv === st.inv ? 'i:' : 's:') + id, a = (st.rotAcc[key] || 0) + n * ROT[id] * k * days, lost = Math.floor(a + 1e-9);
+      st.rotAcc[key] = a - lost; if (lost > 0) { const m = Math.min(lost, n); inv[id] = n - m; if (!inv[id]) delete inv[id]; st.rotted[id] = (st.rotted[id] || 0) + m; }
+    }
+  }
+  function takeRotted(st) { const r = st.rotted || {}; st.rotted = {}; return Object.keys(r).length ? r : null; }
+  // 干す・燻す：火のそばで、生ものを日持ちする干し物にする
+  const DRY = { meat: 'meatD', fish: 'fishD', fruit: 'fruitD' };
+  function dry(st, bx, by, day) {
+    if (!fireActive(st, bx, by, day)) return { ok: false, why: '火のそばでしか干せない（燻す）' };
+    const made = {}; let n = 0;
+    for (const raw in DRY) { const c = st.inv[raw] || 0; if (c > 0) { drop(st, raw, c); const out = raw === 'fish' ? c : c; st.inv[DRY[raw]] = (st.inv[DRY[raw]] || 0) + out; st.total[DRY[raw]] = (st.total[DRY[raw]] || 0) + out; made[DRY[raw]] = out; n += out; } }
+    if (!n) return { ok: false, why: '干せる物がない（肉・魚・果実）' };
+    if (ownFireActive(st, bx, by, day)) st.fire.until = Math.max(day, st.fire.until - 0.2); else bump(st, 'commonCook');
+    bump(st, 'dry'); return { ok: true, made, n };
+  }
+  // 水の持ち運び：水袋（3回分）と土器（4回分）に汲める
+  function carryCap(st) { return (st.inv.skin > 0 ? 3 : 0) + (st.inv.pot > 0 ? 4 : 0); }
+  function fillWater(st, freshWater) {
+    if (!freshWater) return { ok: false, why: '水を汲めるのは川や湖のそば' };
+    const cap = carryCap(st); if (cap <= 0) return { ok: false, why: '水を入れる物がない（水袋か土器）' };
+    const have = st.carried || 0; if (have >= cap) return { ok: false, why: 'もういっぱい（' + cap + '回分）' };
+    st.carried = cap; bump(st, 'fill'); return { ok: true, n: cap - have, cap };
+  }
+  // 持ち歩いた水を飲む（水辺でなくても）
+  function drinkCarried(st) {
+    const w = st.water == null ? 80 : st.water, have = Math.min(st.carried || 0, carryCap(st));
+    if (have <= 0) return { ok: false, why: '持ち歩いている水がない' }; if (w >= 98) return { ok: false, why: 'いまは喉が渇いていない' };
+    st.carried = have - 1; firstAid(st, w < 30 ? 6 : 0); st.water = Math.min(WATER_MAX, w + 45); bump(st, 'drink'); return { ok: true, gain: Math.round(st.water - w), left: st.carried };
+  }
+  // 怪我：しばらく体力が減り続ける。薬草で手当てすると、すぐ止まる
+  function injured(st, day) { return day < (st.injuredUntil || 0); }
+  function hurt(st, day, days, hp) { st.injuredUntil = Math.max(st.injuredUntil || 0, day + days); st.hp = Math.max(st.hp == null ? 100 : st.hp, 0); st.hp = Math.max(1, st.hp - hp); }
+  function treat(st, day) {
+    if (!injured(st, day)) return { ok: false, why: '手当てが要る怪我はない' };
+    if ((st.inv.herb || 0) < 2) return { ok: false, why: '薬草が足りない（2つ）' };
+    drop(st, 'herb', 2); st.injuredUntil = day; firstAid(st, 6); st.hp = Math.min(HP_MAX, st.hp + 4); bump(st, 'treat'); return { ok: true };
+  }
+  // 狩り：武器がなければ出られない。弓は遠くから（危険が少ない）、槍は近くで（危険が多いが獲りやすい）
+  const WEAPON = { bow: { mult: 1.0, risk: 0.7 }, spear: { mult: 0.85, risk: 1.2 } };
+  const HUNT_RISK = { deer: 0.04, aurochs: 0.30, boar: 0.22, sheep: 0.05 };
+  function bestWeapon(st) { return st.inv.bow > 0 ? 'bow' : st.inv.spear > 0 ? 'spear' : null; }
+  // 狩りの結果を持ち物へ。res＝{kills, meat(kg), hide, bone, antler}。持てない分は残す。怪我をすることがある
+  function applyHunt(st, res, sid, weapon, day, rng) {
+    const out = { kills: res.kills || 0, got: {}, left: 0, hurt: false };
+    const W = WEAPON[weapon] || WEAPON.spear, risk = (HUNT_RISK[sid] != null ? HUNT_RISK[sid] : 0.1) * W.risk;
+    if (out.kills > 0) {
+      const units = Math.min(14 * out.kills, Math.max(1, Math.round((res.meat || 0) / 0.55)));
+      const want = { meat: units, hide: res.hide || 0, bone: Math.min(res.bone || 0, 4 * out.kills), antler: Math.min(res.antler || 0, out.kills) };
+      for (const id in want) { if (!want[id]) continue; const k = Math.min(want[id], roomFor(st, id)); if (k > 0) { st.inv[id] = (st.inv[id] || 0) + k; st.total[id] = (st.total[id] || 0) + k; out.got[id] = k; } if (k < want[id]) out.left += want[id] - k; }
+      bump(st, 'hunt');
+    }
+    for (let i = 0; i < Math.max(1, out.kills); i++) if (rng() < (out.kills ? risk : risk * 0.3)) { hurt(st, day, 6, 8); out.hurt = true; break; }
+    const w = wearTool(st, weapon); out.broke = w;
+    return out;
+  }
+
   // ---------------------------------------------------------------- 体力・スタミナ・水分
   function rest(st, hp) { st.hp = Math.min(HP_MAX, (st.hp == null ? 100 : st.hp) + hp); if (st.hp >= RECOVER_HP) st.dyingDays = 0; st.sp = staminaCap(st); st.exhausted = false; }
   // スタミナの上限：体力が低い・喉が渇いている・飢えていると下がる
@@ -6324,7 +6412,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
   }
   function vitalsInfo(st) {
     const hp = st.hp == null ? 100 : st.hp, sp = st.sp == null ? 100 : st.sp, wt = st.water == null ? 80 : st.water;
-    return { hp, sp, water: wt, food: 100 * st.kcal / KCAL_MAX, spCap: staminaCap(st), exhausted: !!st.exhausted, dying: hp <= 10, thirsty: wt < 25 };
+    return { hp, sp, water: wt, food: 100 * st.kcal / KCAL_MAX, spCap: staminaCap(st), exhausted: !!st.exhausted, dying: hp <= 10, thirsty: wt < 25, cloth: clothOf(st), carried: Math.min(st.carried || 0, carryCap(st)), carryCap: carryCap(st) };
   }
 
   // ---------------------------------------------------------------- 食べる・火・調理
@@ -6343,16 +6431,17 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
       const step = Math.min(1, rem); rem -= step; cur += step;
       st.kcal = Math.max(0, st.kcal - step * KCAL_DAY);
       st.water = Math.max(0, (st.water == null ? 80 : st.water) - step * WATER_DAY);
-      const env = st.env || {}, cold = env.temp != null && env.temp < 0 && !env.sheltered ? Math.min(10, -env.temp * 0.4) : 0;
-      const thirst = st.water <= 0, hungry = st.kcal <= 0, ill = cur < st.sickUntil;
-      const loss = (thirst ? 12 : 0) + (hungry ? 8 : 0) + (ill ? 3 : 0) + cold;
+      const env = st.env || {}, cold = (env.temp != null && env.temp < 0 && !env.sheltered ? Math.min(10, -env.temp * 0.4) : 0) * clothFactor(st);
+      const thirst = st.water <= 0, hungry = st.kcal <= 0, ill = cur < st.sickUntil, hurt = cur < (st.injuredUntil || 0);
+      wearCloth(st, step); rot(st, step);
+      const loss = (thirst ? 12 : 0) + (hungry ? 8 : 0) + (ill ? 3 : 0) + (hurt ? 4 : 0) + cold;
       const regen = loss === 0 && st.kcal > 900 && st.water > 30 ? 5 : 0;
       const mortal = st.mortal !== false;
       st.hp = Math.min(HP_MAX, (st.hp == null ? 100 : st.hp) + (regen - loss) * step);
       if (!mortal) { if (st.hp < 1) st.hp = 1; st.dyingDays = 0; continue; }
       if (st.hp <= 0) {
         st.hp = 0; st.dyingDays = (st.dyingDays || 0) + step;
-        const parts = [[thirst ? 12 : 0, 'thirst'], [hungry ? 8 : 0, 'hunger'], [cold, 'cold'], [ill ? 3 : 0, 'illness']].sort((a, b) => b[0] - a[0]);   // いちばん効いた原因
+        const parts = [[thirst ? 12 : 0, 'thirst'], [hungry ? 8 : 0, 'hunger'], [cold, 'cold'], [ill ? 3 : 0, 'illness'], [hurt ? 4 : 0, 'injury']].sort((a, b) => b[0] - a[0]);   // いちばん効いた原因
         st.lastCause = parts[0][0] > 0 ? parts[0][1] : 'exhaustion';
         if (st.dyingDays >= DYING_DAYS - 1e-9) { st.dead = st.lastCause; st.dyingDays = DYING_DAYS; break; }
       } else if (st.hp >= RECOVER_HP) st.dyingDays = 0;
@@ -6382,7 +6471,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
   function vigor(st, day) { const hp = st.hp == null ? 100 : st.hp, wt = st.water == null ? 80 : st.water; return hunger(st).vigor * (sick(st, day) ? 0.75 : 1) * (hp < 10 ? 0.5 : hp < 30 ? 0.7 : 1) * (wt < 15 ? 0.85 : 1); }
 
   // 生で食べたときの扱い：kcal の割合、体調を崩す確率。木の実（ドングリ）は渋くてそのままでは食べられない
-  const RAW = { nut: null, root: { f: 0.5, bad: 0.3 }, shell: { f: 0.6, bad: 0.4 }, fish: { f: 0.6, bad: 0.4 } };
+  const RAW = { meat: { f: 0.7, bad: 0.35 }, nut: null, root: { f: 0.5, bad: 0.3 }, shell: { f: 0.6, bad: 0.4 }, fish: { f: 0.6, bad: 0.4 } };
   const EAT_FULL = 3000;
   const WATER_GAIN = { fruit: 8, bud: 4, shell: 2, stew: 18, shellC: 2 };      // 食べ物からとれる水分
   // 食べる：1個ずつ。返り値 { ok, why?, kcal?, sick? }
@@ -6431,7 +6520,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
   }
 
   // 焼く：火のそばで、持っている物を一度にまとめて焼く
-  const ROAST = { fish: 'fishC', shell: 'shellC', root: 'rootC', seed: 'seedC', nutL: 'nutC' };
+  const ROAST = { meat: 'meatC', fish: 'fishC', shell: 'shellC', root: 'rootC', seed: 'seedC', nutL: 'nutC' };
   function roast(st, bx, by, day) {
     if (!fireActive(st, bx, by, day)) return { ok: false, why: '火のそばでしか焼けない' };
     const made = {}; let n = 0;
@@ -6463,7 +6552,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
   }
 
   // ---------------------------------------------------------------- 道具づくり・土器・煮る
-  const LIFE = { knife: 40, axe: 40, net: 30, pot: 25 };      // 使える回数［仮］
+  const LIFE = { knife: 40, axe: 40, net: 30, pot: 25, bow: 30, spear: 30, skin: 60 };      // 使える回数［仮］
   function wearTool(st, id) {
     st.wear = st.wear || {}; st.wear[id] = (st.wear[id] || 0) + 1;
     if (st.wear[id] >= LIFE[id]) { st.wear[id] = 0; drop(st, id, 1); return ITEMS[IDX[id]].name; }
@@ -6476,6 +6565,11 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     axe:   { need: { stone: 2, firewood: 1, rope: 1 }, lose: { rope: 1 }, p: 0.65, out: 1 },
     net:   { need: { rope: 3 }, lose: { rope: 1 }, p: 0.6, out: 1 },
     pot:   { need: { clay: 4, firewood: 2 }, lose: { clay: 2 }, p: 0.5, out: 1, fire: true },
+    bow:   { need: { firewood: 2, rope: 2 }, lose: { rope: 1 }, p: 0.6, out: 1 },
+    spear: { need: { firewood: 1, stone: 1, rope: 1 }, lose: { stone: 1 }, p: 0.7, out: 1 },
+    skin:  { need: { hide: 1, rope: 1 }, lose: { rope: 1 }, p: 0.75, out: 1 },
+    fur:   { need: { hide: 4, rope: 2 }, lose: { hide: 1, rope: 1 }, p: 0.6, out: 1 },
+    cloak: { need: { fiber: 16, rope: 2 }, lose: { fiber: 4, rope: 1 }, p: 0.7, out: 1 },
   };
   function canCraft(st, id) { const r = RECIPES[id]; if (!r) return false; for (const k in r.need) if ((st.inv[k] || 0) < r.need[k]) return false; return true; }
   function craft(st, id, skill, rng, bx, by, day) {
@@ -6576,6 +6670,11 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     { id: 'hearth', text: '集団のみんなの炉で調理する', need: 1,  have: st => (st.n || {}).commonCook || 0 },
     { id: 'give',   text: '食べ物や薪を集団に分ける',   need: 1,  have: st => (st.n || {}).give || 0 },
     { id: 'learn',  text: '集団の人に技を教わる',       need: 1,  have: st => (st.n || {}).learn || 0 },
+    { id: 'bow',    text: '弓か槍を作る',              need: 1,  have: st => (st.total.bow || 0) + (st.total.spear || 0) },
+    { id: 'hunt',   text: '狩りで獲物を得る',          need: 1,  have: st => (st.n || {}).hunt || 0 },
+    { id: 'dry',    text: '肉や魚を干して蓄える',       need: 1,  have: st => (st.n || {}).dry || 0 },
+    { id: 'cloth',  text: '毛皮の衣か草の外套を作る',   need: 1,  have: st => (st.total.fur || 0) + (st.total.cloak || 0) },
+    { id: 'skin',   text: '水を汲んで持ち歩く',        need: 1,  have: st => (st.n || {}).fill || 0 },
   ];
   // 順番に、最初の未達成の目標を返す。done＝達成した数、all＝全部達成
   function goals(st) {
@@ -6667,7 +6766,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     return { ok: true, text: lines.join('') };
   }
 
-  function save(st) { const o = JSON.parse(JSON.stringify(st)); delete o.commons; delete o.env; return o; }
+  function save(st) { const o = JSON.parse(JSON.stringify(st)); delete o.commons; delete o.env; delete o.rotted; return o; }
   function load(o) {
     const st = newState();
     if (o && typeof o === 'object') {
@@ -6679,6 +6778,9 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
       const hm = o.home; if (hm && Number.isFinite(hm.bx) && Number.isFinite(hm.by) && Number.isFinite(hm.ready)) st.home = { bx: hm.bx, by: hm.by, xM: Number.isFinite(hm.xM) ? hm.xM : null, yM: Number.isFinite(hm.yM) ? hm.yM : null, ready: hm.ready };
       for (const id in (o.store || {})) if (IDX[id] != null && o.store[id] > 0) st.store[id] = o.store[id] | 0;
       for (const k in (o.n || {})) if (Number.isFinite(o.n[k]) && o.n[k] > 0) st.n[k] = o.n[k] | 0;
+      if (Number.isFinite(o.injuredUntil)) st.injuredUntil = o.injuredUntil; if (Number.isFinite(o.carried)) st.carried = Math.max(0, o.carried | 0);
+      for (const k in (o.clothWear || {})) if (CLOTH[k] && Number.isFinite(o.clothWear[k])) st.clothWear[k] = o.clothWear[k];
+      for (const k in (o.rotAcc || {})) if (Number.isFinite(o.rotAcc[k])) st.rotAcc[k] = o.rotAcc[k];
       if (Number.isFinite(o.hp)) st.hp = Math.max(0, Math.min(HP_MAX, o.hp));
       if (o.mortal === false) st.mortal = false; if (Number.isFinite(o.dyingDays)) st.dyingDays = Math.max(0, Math.min(DYING_DAYS, o.dyingDays));
       if (Number.isFinite(o.sp)) st.sp = Math.max(0, Math.min(SP_MAX, o.sp));
@@ -6702,7 +6804,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
     return function () { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   }
 
-  const api = { dyingLeft, takeDeath, firstAid, inherit, DYING_DAYS, RECOVER_HP, setEnv, rest, staminaCap, staminaStep, jumpCost, drink, vitalsInfo, HP_MAX, SP_MAX, WATER_MAX, setCommons, atCommons, ownFireActive, standingInfo, gainStanding, giveToGroup, ration, share, learn, talk, nearCamp, KCAL_PER_KG, goals, GOALS, slotsOf, HOME_NEED, HOME_DAYS, HOME_REACH, STORE_SLOTS, homeStatus, nearHome, homeNeedText, buildHome, demolishHome, storePut, storeTake, storeList, storeRoom, sleep, SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
+  const api = { clothOf, clothFactor, CLOTH, ROT, rot, takeRotted, dry, DRY, carryCap, fillWater, drinkCarried, injured, hurt, treat, bestWeapon, applyHunt, WEAPON, HUNT_RISK, dyingLeft, takeDeath, firstAid, inherit, DYING_DAYS, RECOVER_HP, setEnv, rest, staminaCap, staminaStep, jumpCost, drink, vitalsInfo, HP_MAX, SP_MAX, WATER_MAX, setCommons, atCommons, ownFireActive, standingInfo, gainStanding, giveToGroup, ration, share, learn, talk, nearCamp, KCAL_PER_KG, goals, GOALS, slotsOf, HOME_NEED, HOME_DAYS, HOME_REACH, STORE_SLOTS, homeStatus, nearHome, homeNeedText, buildHome, demolishHome, storePut, storeTake, storeList, storeRoom, sleep, SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohForage = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
@@ -9607,7 +9709,8 @@ function forageContext() {
 function forageSkill(kind) {
   try { const y = people && WohPeople.peopleYou(people); if (!y || y.over) return 0.3; const P = people.npc, SK = P.skills, N = WohNpc.NSKILL; return Math.min(1, SK[y.id * N + (kind === 'fish' ? 2 : kind === 'craft' ? 3 : 0)] / 255); } catch (e) { return 0.3; }
 }
-function forageSay(t) { const el = document.getElementById('forageMsg'); if (!el) return; el.textContent = t; el.style.display = 'block'; clearTimeout(forageMsgTimer); forageMsgTimer = setTimeout(() => { el.style.display = 'none'; }, 3500); }
+let forageLastMsg = '', forageLastAt = 0;
+function forageSay(t) { const el = document.getElementById('forageMsg'); if (!el) return; forageLastMsg = t; forageLastAt = Date.now(); el.textContent = t; el.style.display = 'block'; clearTimeout(forageMsgTimer); forageMsgTimer = setTimeout(() => { el.style.display = 'none'; }, 3500); }
 // ---- 近くの人と話す
 let talkNpc = null;
 const TALK_FOODS = ['stew', 'fishC', 'nutC', 'rootC', 'shellC', 'seedC', 'nutL', 'fruit', 'bud', 'seed', 'root', 'shell', 'fish'];
@@ -9638,6 +9741,44 @@ function talkAct(k) {
 document.getElementById('talkPanel')?.addEventListener('click', e => { const b = e.target.closest('button'); if (b && b.dataset.tk) talkAct(b.dataset.tk); });
 function talkOpen(npc) { talkNpc = npc; document.getElementById('bagPanel')?.classList.remove('show'); talkRender(); }
 globalThis.__wohTalk = { open: talkOpen, act: talkAct, get npc() { return talkNpc; } };
+// ---- 狩りの旅（朝・昼・夕の3回＝1日）：武器が要る。獲物は動物の仕組みの個体群から
+const HUNT_ROUNDS = 6;
+function forageHunt() {
+  const F = WohForage, day = forageNow();
+  if (!people || !people.player || people.player.id < 0 || !fauna || !FA) { forageSay('いまは狩りに出られない'); return; }
+  const weapon = F.bestWeapon(forageSt); if (!weapon) { forageSay('狩りには弓か槍が要る（作る欄から）'); return; }
+  const vi = F.vitalsInfo(forageSt); if (vi.sp < 20 || vi.hp < 20) { forageSay('疲れすぎている。休んでから出よう'); return; }
+  const b = window.__wohAvatar && __wohAvatar.block && __wohAvatar.block(); if (!b || !world || !world.climate) return;
+  const cc = world.climate.cell, w = cc.gridW || cc.w, hh = cc.gridH || cc.h, stp = cc.gridStep || Math.max(1, Math.round(world.stats.width / w));
+  const cell = Math.min(hh - 1, Math.max(0, Math.floor(b.y / stp))) * w + Math.min(w - 1, Math.max(0, Math.floor(b.x / stp)));
+  // その場所にいる獲物のうち、いちばん多い種（狩りやすさを掛けて選ぶ）
+  let best = null;
+  for (const sid of Object.keys(fauna.species)) {
+    const S = fauna.species[sid]; let d = 0;
+    for (const p of S.pops) { if (!p.alive || !p.cells.includes(cell)) continue; let tot = 0; for (const v of p.juv) tot += v; for (const v of p.adults) tot += v; d = Math.max(d, tot / (p.cells.length * fauna.areaKm2)); }
+    const sc = d * (FA.ANIMAL_SPECIES[sid].hunt.rate || 0.05); if (d > 0 && (!best || sc > best.sc)) best = { sid, d, sc };
+  }
+  if (!best) { forageSay('この辺りに獲物の気配がない（別の場所を探そう）'); return; }
+  const P = people.npc, me = people.player.id, sk = Math.min(1, P.skills[me * WohNpc.NSKILL + 1] / 255), W = F.WEAPON[weapon];
+  const rng = F.rngFor(forageSt, seedToInt(currentSeed), day), ctx = faunaCtx(clockMonth());
+  const tot = { kills: 0, meat: 0, hide: 0, bone: 0, antler: 0 };
+  for (let round = 0; round < HUNT_ROUNDS; round++) for (const time of ['dawn', 'day', 'dusk']) {   // 1日に6回、獲物を追う
+    const r = FA.faunaHunt(fauna, ctx, best.sid, { owner: 'player', hunters: 1, skill: Math.min(1, (0.3 + 0.7 * sk) * W.mult * F.vigor(forageSt, day)), time, cell }, 1, rng);
+    for (const k of Object.keys(tot)) tot[k] += r[k] || 0;
+  }
+  const res = F.applyHunt(forageSt, tot, best.sid, weapon, day, rng);
+  try { P.practice(me, 1, 1, 2); } catch (e) { }
+  if (tot.kills) faDirty = true;
+  forageSt.sp = Math.max(0, forageSt.sp - 40);
+  const nm = FA.ANIMAL_SPECIES[best.sid].name.replace(/（.*）/, ''), N = F.ITEMS, nameOf = id => N[F.IDX[id]].name;
+  let msg;
+  if (res.kills) msg = nm + 'を' + res.kills + '頭しとめた。' + Object.keys(res.got).map(k => nameOf(k) + '×' + res.got[k]).join('・') + 'を持ち帰った' + (res.left ? '（持ちきれず ' + res.left + ' 個を残した）' : '');
+  else msg = nm + 'の気配はあったが、仕留められなかった';
+  if (res.hurt) msg += '。獲物に反撃されて怪我をした（薬草で手当てを）';
+  if (res.broke) msg += '。' + res.broke + 'が壊れた';
+  try { clockSkipDays(1); clockAfterStep(); } catch (e) { }
+  forageBagRender(); forageSay(msg);
+}
 // 家と焚き火を、3Dの世界に置く（状態に合わせて出し入れする）
 function forageSyncProps() {
   const P = globalThis.__wohProps; if (!P) return;
@@ -9673,7 +9814,7 @@ function forageTemp() {
   } catch (e) { return null; }
 }
 // ---- 死亡と継承（体力0から3日で亡くなる）
-const DEATH_TEXT = { thirst: '渇き', hunger: '飢え', cold: '寒さ', illness: '病気', exhaustion: '衰弱' };
+const DEATH_TEXT = { thirst: '渇き', hunger: '飢え', cold: '寒さ', illness: '病気', injury: '怪我', exhaustion: '衰弱' };
 let vitalsBusy = false;
 function vitalsDie(cause) {
   if (vitalsBusy) return; vitalsBusy = true;
@@ -9681,7 +9822,7 @@ function vitalsDie(cause) {
     const F = WohForage; F.takeDeath(forageSt);
     if (!people || !people.player || people.player.id < 0 || people.player.over) return;
     const P = people.npc, id = people.player.id; if (P.death[id] !== 0x7fffffff) return;
-    const oldName = personName(id), code = { thirst: 7, hunger: 7, cold: 10, illness: 3, exhaustion: 7 }[cause] || 7;
+    const oldName = personName(id), code = { thirst: 7, hunger: 7, cold: 10, illness: 3, injury: 6, exhaustion: 7 }[cause] || 7;
     P.day = clock.day; P._die(id, code);
     const ev = []; WohPeople.peopleSuccession(people, ev);
     for (const e of ev) { const f = PE_EVENT_TEXT[e.type]; if (f) postEvent({ cat: 'people', imp: Math.max(2, e.imp || 0), relevant: true, group: 'people-' + e.type, text: f(e), place: e.x !== undefined ? { x: e.x, y: e.y } : undefined }); }
@@ -9714,6 +9855,7 @@ function forageNow() {
   } catch (e) { }
   F.tick(forageSt, clock.day);
   if (forageSt.dead && !vitalsBusy) vitalsDie(forageSt.dead);
+  try { const rt = F.takeRotted(forageSt); if (rt) { const txt = '傷んで捨てた：' + Object.keys(rt).map(k => F.ITEMS[F.IDX[k]].name + '×' + rt[k]).join('・'); forageSay(Date.now() - forageLastAt < 4000 && forageLastMsg ? forageLastMsg + '　※' + txt : txt); } } catch (e) { }
   return clock.day;
 }
 // スタミナ：実時間で動く。ダッシュで減り、休むと戻る。尽きるとダッシュできない
@@ -9756,7 +9898,11 @@ function forageAct(act, id) {
   else if (act === 'demolish') { r = F.demolishHome(forageSt); msg = r.ok ? '家を壊した' : r.why; }
   else if (act === 'put') { r = F.storePut(forageSt, id, null, f.bx, f.by, day); msg = r.ok ? '貯蔵庫に ' + r.n + '個 預けた' : r.why; }
   else if (act === 'take') { r = F.storeTake(forageSt, id, null, f.bx, f.by, day); msg = r.ok ? '貯蔵庫から ' + r.n + '個 取り出した' : r.why; }
-  else if (act === 'drink') { r = F.drink(forageSt, f.ctx.water && !f.ctx.coast); msg = r.ok ? '水を飲んだ（水分 +' + r.gain + '）' : r.why; }
+  else if (act === 'drink') { const fresh = f.ctx.water && !f.ctx.coast; r = fresh ? F.drink(forageSt, true) : F.drinkCarried(forageSt); if (!fresh && !r.ok && !(forageSt.carried > 0)) r = F.drink(forageSt, false); msg = r.ok ? '水を飲んだ（水分 +' + r.gain + (fresh ? '' : '。持ち歩きの水 あと' + r.left + '回') + '）' : r.why; }
+  else if (act === 'fill') { r = F.fillWater(forageSt, f.ctx.water && !f.ctx.coast); msg = r.ok ? '水を汲んだ（' + r.cap + '回分）' : r.why; }
+  else if (act === 'treat') { r = F.treat(forageSt, day); msg = r.ok ? '薬草で手当てした。怪我は治まった' : r.why; }
+  else if (act === 'dry') { r = F.dry(forageSt, f.bx, f.by, day); msg = r.ok ? r.n + '個を干して、日持ちするようにした' : r.why; }
+  else if (act === 'hunt') { forageHunt(); return; }
   else if (act === 'give') { const G = forageGroup(); r = F.giveToGroup(forageSt, G && G.g, G && G.camp, id, 5, f.bx, f.by); msg = r.ok ? r.name + 'を' + r.n + '個、集団の蓄えに分けた（評判が上がった）' : r.why; }
   else if (act === 'ration') { const G = forageGroup(); r = F.ration(forageSt, G && G.g, G && G.camp, day, f.bx, f.by); msg = r.ok ? '集団から配給をもらった（+' + r.kcal + 'kcal）' : r.why; }
   else if (act === 'craft') { r = F.craft(forageSt, id, forageSkill('craft'), rng, f.bx, f.by, day); msg = r.ok ? r.name + 'を作った' : r.why; }
@@ -9771,7 +9917,7 @@ function forageBagRender() {
   const fl = F.fireLeft(forageSt, day), so = forageSt.soak, stl = F.standingInfo(forageSt), vi = F.vitalsInfo(forageSt), GG = forageGroup(), hs = F.homeStatus(forageSt, day), blk = (window.__wohAvatar && window.__wohAvatar.block && window.__wohAvatar.block()) || null, near = !!(blk && hs === 'built' && F.nearHome(forageSt, blk.x, blk.y)), y0 = (people && WohPeople.peopleYou(people)) || null, SL = F.storeList(forageSt), campNear = !!(blk && GG && F.nearCamp(GG.camp, blk.x, blk.y)), campD = (blk && GG) ? ((d => d >= 1000 ? (d / 1000).toFixed(1) + ' km' : d + ' m')(Math.round(Math.hypot(GG.camp.bx - blk.x, GG.camp.by - blk.y) * 33))) : null;
   const edible = id => F.ITEMS[F.IDX[id]].group === 'food';
   el.innerHTML = '<div class="bh"><span>持ち物</span><span>' + used + ' / ' + F.SLOTS + ' 枠</span></div>' +
-    '<div class="bst"><span>体力 ' + Math.round(vi.hp) + '　スタミナ ' + Math.round(vi.sp) + (vi.exhausted ? '（疲れ切り）' : '') + '　水分 ' + Math.round(vi.water) + (vi.thirsty ? '（喉が渇いた）' : '') + '</span></div>' +
+    '<div class="bst"><span>体力 ' + Math.round(vi.hp) + '　スタミナ ' + Math.round(vi.sp) + (vi.exhausted ? '（疲れ切り）' : '') + '　水分 ' + Math.round(vi.water) + (vi.thirsty ? '（喉が渇いた）' : '') + (F.injured(forageSt, day) ? '　怪我' : '') + (vi.cloth ? '　衣：' + F.ITEMS[F.IDX[vi.cloth]].name : '') + (vi.carryCap ? '　持ち水 ' + vi.carried + '/' + vi.carryCap : '') + '</span></div>' +
     '<div class="bst"><span>おなか：' + hg.name + (F.sick(forageSt, day) ? '・体調不良' : '') + '</span><span class="bar"><b style="width:' + pct + '%" class="' + hg.id + '"></b></span></div>' +
     '<div class="bst"><span>焚き火：' + (fl > 0 ? '燃えている（残り約' + fl.toFixed(1) + '日）' : 'なし') + '</span><span>' + (so ? '水さらし：' + so.n + '個（' + (day >= so.ready ? '受け取れる' : 'あと' + Math.ceil(so.ready - day) + '日') + '）' : '') + '</span></div>' +
     '<div class="bstand"><span>集団での評判：' + stl.label + '</span><span class="bar"><b style="width:' + Math.round(stl.v) + '%;background:#8ab4f8"></b></span>' + (campNear ? '<button data-act="ration">配給をもらう</button>' : '') + '</div>' +
@@ -9779,14 +9925,14 @@ function forageBagRender() {
     '<div class="bst"><span>住まい：' + (hs === 'none' ? 'なし' : hs === 'building' ? '建築中（あと' + Math.ceil(forageSt.home.ready - day) + '日）' : 'あり') + (y0 && y0.camp && blk ? '</span><span>野営地まで約' + (d => d >= 1000 ? (d / 1000).toFixed(1) + ' km' : d + ' m')(Math.round(Math.hypot(y0.camp.x - blk.x, y0.camp.y - blk.y) * 33)) : '') + '</span></div>' +
     '<div class="bact">' + (hs === 'none' ? '<button data-act="home" title="' + F.homeNeedText() + '">家を建てる</button>' : '<button data-act="gohome">家へ戻る</button>') + '<button data-act="sleep">眠る（1日）</button>' + (hs === 'built' ? '<button data-act="demolish">家を壊す</button>' : '') + '</div>' +
     (hs === 'none' ? '<div class="bnote">家＝' + F.homeNeedText() + '（水辺・海辺は不可。完成まで' + F.HOME_DAYS + '日）／家で眠ると体調が戻る。焚き火のそばでも野宿できる</div>' : '') +
-    '<div class="bact"><button data-act="drink">水を飲む</button><button data-act="fire">火を起こす</button><button data-act="stoke">薪をくべる</button><button data-act="roast">焼く</button><button data-act="soak">木の実を水にさらす</button><button data-act="collect">受け取る</button></div>' +
+    '<div class="bact"><button data-act="drink">水を飲む</button><button data-act="fill">水を汲む</button><button data-act="hunt">狩りに出る</button><button data-act="treat">手当て</button><button data-act="dry">干す</button><button data-act="fire">火を起こす</button><button data-act="stoke">薪をくべる</button><button data-act="roast">焼く</button><button data-act="soak">木の実を水にさらす</button><button data-act="collect">受け取る</button></div>' +
     '<div class="bsec">作る</div><div class="bact">' + Object.keys(F.RECIPES).map(id => '<button data-act="craft" data-id="' + id + '" class="' + (F.canCraft(forageSt, id) ? '' : 'dim') + '" title="' + Object.keys(F.RECIPES[id].need).map(k => F.ITEMS[F.IDX[k]].name + '×' + F.RECIPES[id].need[k]).join('・') + (F.RECIPES[id].fire ? '（火のそばで）' : '') + '">' + F.ITEMS[F.IDX[id]].name + '</button>').join('') + '<button data-act="boil">煮る</button></div>' +
     '<div class="bnote">' + Object.keys(F.RECIPES).map(id => F.ITEMS[F.IDX[id]].name + '＝' + Object.keys(F.RECIPES[id].need).map(k => F.ITEMS[F.IDX[k]].name.replace(/（.*）/, '') + F.RECIPES[id].need[k]).join('+') + (F.RECIPES[id].fire ? '(火)' : '')).join('　') + '　煮る＝土器・火・水辺で食材4つ→煮物</div>' +
     (L.length ? L.map(it => '<div class="br"><span>' + it.name + (it.raw ? ' <i>（生）</i>' : '') + (F.LIFE[it.id] ? ' <i>（あと' + (F.LIFE[it.id] - ((forageSt.wear || {})[it.id] || 0)) + '回ほど）</i>' : '') + '</span><span>×' + it.n + ' ' + (edible(it.id) ? '<button data-act="eat" data-id="' + it.id + '">食べる</button> ' : '') + (near ? '<button data-act="put" data-id="' + it.id + '">預ける</button> ' : '') + (campNear && edible(it.id) ? '<button data-act="give" data-id="' + it.id + '">分ける</button> ' : '') + '<button data-drop="' + it.id + '">捨てる</button></span></div>').join('') : '<div class="br"><i>何も持っていない</i></div>') +
     (near ? '<div class="bsec">貯蔵庫（' + F.slotsOf(forageSt.store) + ' / ' + F.STORE_SLOTS + ' 枠）</div>' + (SL.length ? SL.map(it => '<div class="br"><span>' + it.name + '</span><span>×' + it.n + ' <button data-act="take" data-id="' + it.id + '">取り出す</button></span></div>').join('') : '<div class="br"><i>空</i></div>') : (hs === 'built' ? '<div class="bnote">貯蔵庫は家のそばで使える</div>' : '')) +
     '<div class="bh" style="margin-top:6px"><span></span><button id="bagClose">閉じる</button></div>';
 }
-globalThis.__wohForage = { context: forageContext, get state() { return forageSt; } };
+globalThis.__wohForage = { context: forageContext, fauna: () => fauna, FA: () => FA, ctx: m => faunaCtx(m), get state() { return forageSt; } };
 (function forageUiInit() {
   const q = id => document.getElementById(id); if (!q('fgFood')) return;
   q('fgFood').addEventListener('click', () => forageDo('food'));
@@ -9849,7 +9995,7 @@ globalThis.__wohForage = { context: forageContext, get state() { return forageSt
     '<div id="hudHot" class="hud">' +
       [['bag', '持ち物', 'bag'], ['hammer', '製作', 'craft'], ['swords', '装備', '装備'], ['people', '仲間', '仲間'], ['scroll', '依頼', '依頼'], ['book', '記録', 'rec']].map(a => '<button class="hb" data-hot="' + a[2] + '">' + svg(a[0]) + '<span>' + a[1] + '</span></button>').join('') + '</div>' +
     '<div id="hudVig" class="hud"></div><div id="hudDanger" class="hud"></div>' +
-    '<div id="hudMode" class="hud"><button id="hmFood" class="on">食料</button><button id="hmMat">素材</button><button id="hmWat">水</button></div>' +
+    '<div id="hudMode" class="hud"><button id="hmFood" class="on">食料</button><button id="hmMat">素材</button><button id="hmWat">水</button><button id="hmHunt">狩</button></div>' +
     '<button id="hudTalk" class="rb hud">' + svg('hand') + '<span>調べる</span></button>';
   document.body.insertAdjacentHTML('beforeend', html);
   // 時間のバーを左上の枠へ
@@ -9872,10 +10018,11 @@ globalThis.__wohForage = { context: forageContext, get state() { return forageSt
   q('mzView').addEventListener('click', () => click('fgView'));
   q('hudDate').addEventListener('click', () => click('tDate'));
   let hmode = 'food';
-  const setMode = m => { hmode = m; q('hmFood').classList.toggle('on', m === 'food'); q('hmMat').classList.toggle('on', m === 'mat'); q('hmWat').classList.toggle('on', m === 'wat'); };
+  const setMode = m => { hmode = m; q('hmFood').classList.toggle('on', m === 'food'); q('hmMat').classList.toggle('on', m === 'mat'); q('hmWat').classList.toggle('on', m === 'wat'); q('hmHunt').classList.toggle('on', m === 'hunt'); };
+  q('hmHunt').addEventListener('click', () => setMode('hunt'));
   q('hmFood').addEventListener('click', () => setMode('food')); q('hmMat').addEventListener('click', () => setMode('mat')); q('hmWat').addEventListener('click', () => setMode('wat'));
   let nearNpc = null;
-  q('hudTalk').addEventListener('click', () => { if (nearNpc !== null && globalThis.__wohTalk) { __wohTalk.open(nearNpc); return; } if (hmode === 'wat') { forageAct('drink'); return; } click(hmode === 'food' ? 'fgFood' : 'fgMat'); });
+  q('hudTalk').addEventListener('click', () => { if (nearNpc !== null && globalThis.__wohTalk) { __wohTalk.open(nearNpc); return; } if (hmode === 'wat') { forageAct('drink'); return; } if (hmode === 'hunt') { forageHunt(); return; } click(hmode === 'food' ? 'fgFood' : 'fgMat'); });
   q('hudHot').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return; const k = b.dataset.hot;
     if (k === 'bag') click('fgBag');
@@ -9916,6 +10063,7 @@ globalThis.__wohForage = { context: forageContext, get state() { return forageSt
       let txt = '', cls = '';
       if (left !== null) txt = '瀕死：あと' + Math.max(1, Math.ceil(left - 1e-9)) + '日のうちに、水・食べ物・休息で体力を戻さないと死ぬ';
       else if (vi.hp < 30) { txt = '体力が少ない。水を飲み、食べて、休もう'; cls = 'warn'; }
+      else if (WohForage.injured(forageSt, clock.day)) { txt = '怪我をしている。薬草で手当てするか、休もう'; cls = 'warn'; }
       else if (vi.thirsty && vi.water < 12) { txt = '喉が渇いている。水辺を探そう'; cls = 'warn'; }
       if (lastTxt.get('danger') !== txt) { lastTxt.set('danger', txt); dg.textContent = txt; dg.style.display = txt ? 'block' : 'none'; dg.classList.toggle('warn', cls === 'warn'); }
       const op = left !== null ? 0.65 : vi.hp < 30 ? (30 - vi.hp) / 30 * 0.5 : 0; vg.style.opacity = String(op.toFixed(2));
