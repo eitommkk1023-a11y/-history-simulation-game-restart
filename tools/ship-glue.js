@@ -242,7 +242,7 @@
   function deckPoint(m) {
     m.group.updateMatrixWorld(true);
     const { cgX, draft } = m.frame;
-    return m.group.localToWorld(new THREE_.Vector3(m.pos.y, m.interior.deckZ(m.pos.deck) - draft + 0.02, cgX - m.pos.x));
+    return m.group.localToWorld(new THREE_.Vector3(m.pos.y, m.interior.deckZ(m.pos.deck) - draft + 0.02 + (m.climbZ || 0), cgX - m.pos.x)); // climbZ: eased height offset while climbing a ladder
   }
   /**
    * Walking on the deck. The game's own input (stick, keys, run, crouch) calls __wohDev.step; while aboard, our step applies that
@@ -256,6 +256,11 @@
     const east = (ix * Math.cos(yaw) + iy * Math.sin(yaw)) / len * speed * step, south = (-ix * Math.sin(yaw) + iy * Math.cos(yaw)) / len * speed * step;
     const sp = Math.sin(st.psi), cs = Math.cos(st.psi), north = -south;
     m.pos = m.interior.move(m.pos, east * sp + north * cs, east * cs - north * sp); // (forward, starboard) in the hull frame
+    // Seamless ladders: walking into a ladder foot climbs it (eased over ~0.9 s); the lock stops an instant climb back down at the other end.
+    const near = m.interior.laddersNear(m.pos, 1.0);
+    if (m.ladderLock && !near.some((l) => l.id === m.ladderLock)) m.ladderLock = null;
+    const foot = near.find((l) => l.dist < 0.45 && l.id !== m.ladderLock);
+    if (foot && (ix || iy)) { const z0 = m.interior.deckZ(m.pos.deck); m.pos = m.interior.climb(m.pos, foot.id); m.climbZ = z0 - m.interior.deckZ(m.pos.deck); m.ladderLock = foot.id; ladderSig = ''; }
     const w = deckPoint(m);
     return { xM: w.x + S.origin.xM, yM: w.z + S.origin.yM, elevationM: w.y + S.origin.elevationM, blocked: false };
   }
@@ -268,6 +273,7 @@
     const m = meshes.get(boarded), mp0 = cp.markerPoint;
     // The game moved the player somewhere else (explore / teleport / loading): they have left the ship, so do not drag them back.
     if (lastPlaced && mp0 && Math.hypot(mp0.xM - lastPlaced.xM, mp0.yM - lastPlaced.yM) > 8) { leaveShip('移動したので船を降りた'); return; }
+    if (m.climbZ) m.climbZ = Math.abs(m.climbZ) < 0.02 ? 0 : m.climbZ * Math.exp(-Math.min(dt, 0.1) / 0.28); // ease the height change after a ladder
     const w = deckPoint(m);
     cp.placeMarker(w.x + S.origin.xM, w.z + S.origin.yM, false);
     lastPlaced = cp.markerPoint ? { xM: cp.markerPoint.xM, yM: cp.markerPoint.yM } : null;
@@ -277,8 +283,8 @@
     setWater(!m.cutaway); // below deck the hold floor is under the sea surface: hide the sea (cutaway view) so the hold can be seen
     if (m.crewFigs?.length) Ship.updateCrewFigures(m, m.pos.deck);
     const near = m.interior.laddersNear(m.pos), sig = near.map((l) => l.id).join(',');
-    const foot = near.find((l) => l.dist < 0.7); dwell = uiHidden && foot ? dwell + dt : 0; if (dwell > 1) { m.pos = m.interior.climb(m.pos, foot.id); dwell = 0; ladderSig = ''; return; }
-    if (sig !== ladderSig) { ladderSig = sig; ui.ladders.replaceChildren(...near.map((l) => $('button', { textContent: l.direction === 'up' ? '上る' : '下りる', className: 'on', onclick: () => { m.pos = m.interior.climb(m.pos, l.id); ladderSig = ''; } }))); }
+    const foot = near.find((l) => l.dist < 0.7 && l.id !== m.ladderLock); dwell = uiHidden && foot ? dwell + dt : 0; if (dwell > 1) { m.pos = m.interior.climb(m.pos, foot.id); dwell = 0; ladderSig = ''; return; }
+    if (sig !== ladderSig) { ladderSig = sig; ui.ladders.replaceChildren(...near.map((l) => $('button', { textContent: l.direction === 'up' ? '上る' : '下りる', className: 'on', onclick: () => { const z0 = m.interior.deckZ(m.pos.deck); m.pos = m.interior.climb(m.pos, l.id); m.climbZ = z0 - m.interior.deckZ(m.pos.deck); m.ladderLock = l.id; ladderSig = ''; } }))); }
   }
   const captainActive = (rec) => !!rec.captain && ['sailing', 'arriving'].includes(rec.captain.mode);
   const posOf = (id) => { const s = fleet.get(id).vessel.state; return { X: s.X, Y: s.Y }; };
