@@ -16,12 +16,15 @@ Latched throttle cannot restart after deep brake or collision without new input.
 ### Task 1: Riding controls, velocity and four-beat gallop
 Files: prototypes/horse/riding-controls.mjs (new), controller.mjs, motion.mjs, identity.mjs; tests/horse-riding.test.mjs (new), horse-model.test.mjs.
 Interfaces: freshRideControls(), stepRideControls(state,{x,y,advance,stop}) → latched {gear,mode,steer,brake,forwardHeld}; stepHorse() accepts requested gait and brake strength; horsePose() includes gallop.
-- [ ] Write behavioral tests, observe failure, implement pure latch/metric targets and gallop.
-- [ ] Verify held inputs, tiered braking, exhaustion and all footfall/hoof constraints; commit coherent core.
+- [x] Write behavioral tests, observe failure, implement pure latch/metric targets and gallop.
+- [x] Verify held inputs, tiered braking, exhaustion and all footfall/hoof constraints; commit coherent core.
 
 ### Task 2: Host, shared clips and standalone delivery
 Files: app.mjs, index.html, renderer.mjs, rider.mjs; tools/build-horse-assets.mjs, export-horse-glb.mjs, build-horse-prototype.mjs; horse assets/manifest; browser tests.
-- [ ] Connect accelerator, forward start, horse-relative steering, backward brake, lifecycle stops and clear UI; preserve camera/foot separation.
-- [ ] Bake/export five clips, keep texture size and polygon budgets, verify GLB reconstruction.
-- [ ] Browser functional/touch/layout checks, actual GPU-vs-CPU gallop comparison and visual frames; exercise 5000 submitted horses.
-- [ ] Self-review, package prototype03, verify saved remote HTML matches local, final prototype branch commit/report.
+- [x] Connect accelerator, forward start, horse-relative steering, backward brake, lifecycle stops and clear UI; preserve camera/foot separation.
+- [x] Bake/export five clips, keep texture size and polygon budgets, verify GLB reconstruction.
+- [x] Browser functional/touch/layout checks, actual GPU-vs-CPU gallop comparison and visual frames; exercise 5000 submitted horses.
+- [x] Self-review, package prototype03, verify saved remote HTML matches local, final prototype branch commit/report.
+
+## Outcome
+113 unit tests and 27 browser checks pass. Five fixed-pose GPU/CPU silhouettes match. 5000 galloping instances are submitted. Desktop functional verification only; iOS speed is not claimed. Prototype01/02 and formal source remain untouched.

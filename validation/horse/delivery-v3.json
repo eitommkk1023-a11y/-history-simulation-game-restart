@@ -1,0 +1,17 @@
+{
+  "version": 3,
+  "htmlBytes": 1253974,
+  "htmlSha256": "63d19f9f136da76b2c389b0e84e3bfd1606de7f01ab71efe81d3848bb7524141",
+  "unitTests": 113,
+  "browserChecks": 27,
+  "actualDrawnHorses": 5000,
+  "gpuSilhouetteDiffPixels": [
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "animationTextureBytes": 262144,
+  "iOSHardwareTestedByAgent": false
+}

@@ -1,0 +1,288 @@
+{
+  "checks": [
+    "mount starts stopped",
+    "button advances once to walk",
+    "button advances once to trot",
+    "button advances once to canter",
+    "button advances once to gallop",
+    "fifth gait tap is capped",
+    "released stick maintains gallop at individual top speed",
+    "pull depth latches trot, walk, stop after release",
+    "forward starts walk once and fresh forward is needed after stop",
+    "reins turn left and right with correct sign",
+    "camera drag does not steer or stop cruising horse",
+    "brake touch remains independent of camera touch",
+    "touch brake tier 2 stays selected on release",
+    "touch brake tier 1 stays selected on release",
+    "touch brake tier 0 stays selected on release",
+    "exhaustion reduces target and blocks another immediate gallop",
+    "collision cancels persistent throttle without tunneling",
+    "moving dismount waits for safe stop",
+    "blur and overview cancel riding",
+    "foot movement still follows screen left/right at all camera headings",
+    "hidden info keeps accelerator and joystick",
+    "landscape 667x375 controls fit",
+    "landscape 844x390 controls fit",
+    "landscape 1180x820 controls fit",
+    "GPU skinning matches CPU geometry for all five clips",
+    "5000 submitted horses render the gallop clip",
+    "no browser/shader errors"
+  ],
+  "cruise": {
+    "gear": 4,
+    "speed": 19.266536612606917,
+    "mode": "gallop",
+    "travel": 214.0356586263832,
+    "max": 19.266536612606917
+  },
+  "braking": [
+    {
+      "pull": -0.3,
+      "gear": 2,
+      "selected": 2,
+      "retained": 2,
+      "speed": 3.6666666666666665,
+      "mode": "trot"
+    },
+    {
+      "pull": -0.6,
+      "gear": 1,
+      "selected": 1,
+      "retained": 1,
+      "speed": 1.8333333333333333,
+      "mode": "walk"
+    },
+    {
+      "pull": -1,
+      "gear": 0,
+      "selected": 0,
+      "retained": 0,
+      "speed": 0,
+      "mode": "idle"
+    }
+  ],
+  "steering": [
+    {
+      "x": -0.8,
+      "delta": 0.7345715818541956
+    },
+    {
+      "x": 0.8,
+      "delta": -0.7345715818541956
+    }
+  ],
+  "touchBrakes": [
+    {
+      "depth": 0.3,
+      "selected": 2,
+      "expected": 2
+    },
+    {
+      "depth": 0.6,
+      "selected": 1,
+      "expected": 1
+    },
+    {
+      "depth": 0.95,
+      "selected": 0,
+      "expected": 0
+    }
+  ],
+  "lifecycle": {
+    "collision": true,
+    "stillRiding": true,
+    "dismounted": true,
+    "focus": true,
+    "overview": true
+  },
+  "footCases": [
+    1.5999999999999976,
+    1.5999999999999976,
+    1.5999999999985448,
+    1.5999999999985448,
+    1.599999999999998,
+    1.599999999999998,
+    1.5999999999985448,
+    1.5999999999985448
+  ],
+  "layouts": [
+    {
+      "width": 667,
+      "height": 375,
+      "rects": {
+        "top": {
+          "x": 12,
+          "y": 7,
+          "right": 655,
+          "bottom": 43
+        },
+        "card": {
+          "x": 12,
+          "y": 55,
+          "right": 204,
+          "bottom": 143
+        },
+        "stick": {
+          "x": 26,
+          "y": 255,
+          "right": 134,
+          "bottom": 363
+        },
+        "accelerate": {
+          "x": 473,
+          "y": 297,
+          "right": 563,
+          "bottom": 361
+        },
+        "mount": {
+          "x": 583,
+          "y": 297,
+          "right": 647,
+          "bottom": 361
+        },
+        "rideMode": {
+          "x": 473,
+          "y": 258,
+          "right": 563,
+          "bottom": 284
+        }
+      }
+    },
+    {
+      "width": 844,
+      "height": 390,
+      "rects": {
+        "top": {
+          "x": 12,
+          "y": 7,
+          "right": 832,
+          "bottom": 43
+        },
+        "card": {
+          "x": 12,
+          "y": 55,
+          "right": 204,
+          "bottom": 143
+        },
+        "stick": {
+          "x": 26,
+          "y": 270,
+          "right": 134,
+          "bottom": 378
+        },
+        "accelerate": {
+          "x": 650,
+          "y": 312,
+          "right": 740,
+          "bottom": 376
+        },
+        "mount": {
+          "x": 760,
+          "y": 312,
+          "right": 824,
+          "bottom": 376
+        },
+        "rideMode": {
+          "x": 650,
+          "y": 273,
+          "right": 740,
+          "bottom": 299
+        }
+      }
+    },
+    {
+      "width": 1180,
+      "height": 820,
+      "rects": {
+        "top": {
+          "x": 12,
+          "y": 10,
+          "right": 1168,
+          "bottom": 52
+        },
+        "card": {
+          "x": 12,
+          "y": 65,
+          "right": 234,
+          "bottom": 164
+        },
+        "stick": {
+          "x": 26,
+          "y": 678,
+          "right": 148,
+          "bottom": 800
+        },
+        "accelerate": {
+          "x": 976,
+          "y": 734,
+          "right": 1066,
+          "bottom": 798
+        },
+        "mount": {
+          "x": 1088,
+          "y": 726,
+          "right": 1160,
+          "bottom": 798
+        },
+        "rideMode": {
+          "x": 976,
+          "y": 695,
+          "right": 1066,
+          "bottom": 721
+        }
+      }
+    }
+  ],
+  "skinComparison": [
+    {
+      "mode": "idle",
+      "xor": 0,
+      "union": 8310,
+      "fraction": 0
+    },
+    {
+      "mode": "walk",
+      "xor": 0,
+      "union": 8190,
+      "fraction": 0
+    },
+    {
+      "mode": "trot",
+      "xor": 0,
+      "union": 8288,
+      "fraction": 0
+    },
+    {
+      "mode": "canter",
+      "xor": 0,
+      "union": 8612,
+      "fraction": 0
+    },
+    {
+      "mode": "gallop",
+      "xor": 0,
+      "union": 8987,
+      "fraction": 0
+    }
+  ],
+  "crowd": {
+    "placed": 5000,
+    "submitted": 5000,
+    "culled": 0,
+    "lods": [
+      1,
+      0,
+      4999
+    ],
+    "triangles": 871958,
+    "horseDrawCalls": 2,
+    "render": {
+      "frame": 94,
+      "calls": 30,
+      "triangles": 883192,
+      "points": 0,
+      "lines": 14
+    }
+  },
+  "errors": []
+}

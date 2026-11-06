@@ -6,7 +6,7 @@ export function stepHorse(state,input,dt,terrain){
  const s={...state};if(!Number.isFinite(dt)||dt<=0)return s;dt=Math.min(.1,dt);
  const stats=s.identity.stats,effort=clamp(input.forward??0,0,1),desiredMode=input.mode??'trot';
  s.fatigued=desiredMode==='gallop'&&s.stamina<8;
- const max=horseTargetSpeed(s.fatigued?'canter':desiredMode,s.identity),target=effort*max,brake=clamp(input.brake??0,0,1);
+ const max=horseTargetSpeed(s.fatigued?'canter':desiredMode,s.identity),brake=clamp(input.brake??0,0,1),target=brake>0?Math.min(s.speed,effort*max):effort*max;
  const accel=target>s.speed?stats.acceleration:stats.acceleration*1.7+brake*5;
  s.speed+=clamp(target-s.speed,-accel*dt,accel*dt);if(s.speed<.008)s.speed=0;
  const delta=angle((input.heading??s.yaw)-s.yaw),turn=stats.agility*2.2/(1+s.speed*.20);
