@@ -1,0 +1,72 @@
+{
+  "checks": [
+    "dead -> recovery clears sideways saddle offset",
+    "dismount and remount keep rider centered",
+    "forward/back stick cannot change gait or start the horse",
+    "three accelerate taps select walk trot canter",
+    "live canter reaches27km/h without stamina loss",
+    "decelerate button lowers one gear",
+    "stop button brakes to zero",
+    "reverse button engages actual backward travel",
+    "acceleration tap works while another finger holds steering",
+    "boarded wagon has6.6 and14km/h forward gears with three people",
+    "live steering radius grows with speed and towing is wider",
+    "repeated dead fall rear recovery cycles leave no rider drift",
+    "landscape 667x375 action targets are on screen and do not overlap",
+    "landscape 844x390 action targets are on screen and do not overlap",
+    "landscape 1180x820 action targets are on screen and do not overlap",
+    "no browser or shader errors"
+  ],
+  "recovery": {
+    "before": {
+      "local": [
+        0,
+        1.6712821114601577,
+        0
+      ],
+      "rider": [
+        0,
+        1.6568501348241502,
+        0
+      ]
+    },
+    "dead": {
+      "local": [
+        0.9399999809265136,
+        0.4900000095367433,
+        0
+      ],
+      "rider": [
+        0.9318828248404435,
+        0.49776872587685933,
+        0
+      ]
+    },
+    "after": {
+      "local": [
+        0,
+        1.6717370239636302,
+        0
+      ],
+      "rider": [
+        0,
+        1.657301119034143,
+        0
+      ]
+    },
+    "remounted": {
+      "local": [
+        0,
+        1.6724735879429364,
+        0
+      ],
+      "rider": [
+        0,
+        1.658031322582695,
+        0
+      ]
+    },
+    "mounted": true
+  },
+  "errors": []
+}

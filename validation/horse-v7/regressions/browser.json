@@ -1,0 +1,526 @@
+{
+  "checks": [
+    "normal controls select four gaits and can stop",
+    "rear test button closes panel for an unobstructed view",
+    "rear plays once and returns to idle",
+    "mounted rider follows the same posed saddle point",
+    "fall transitions to dead, holds still and ignores movement",
+    "left/right turn step in place by 90 degrees",
+    "cart defaults to two harnessed horses and supports one",
+    "cart speed cap and signed wheel travel work",
+    "wheel rotation changes actual rendered pixels",
+    "both cargo variants stay in a single instanced cart batch",
+    "player boards the wagon and follows its driver seat",
+    "wagon driver steers with the original stick then safely disembarks",
+    "optional opaque canopy changes real pixels while three seated people stay batched",
+    "cargo mode removes passenger models without hiding the cart",
+    "existing five normal horse renders remain visually identical",
+    "all five additional crowd clips match baked CPU silhouette references",
+    "fall progress is clamped after its one-shot duration",
+    "actual fall shader remains dead after several seconds",
+    "actual rear shader returns to idle without repeating",
+    "5000 mixed-state horses are actually submitted in a few batches",
+    "horse and cart programs fit eight vertex attribute slots",
+    "landscape 667x375 controls stay inside viewport",
+    "landscape 844x390 controls stay inside viewport",
+    "landscape 1180x820 controls stay inside viewport",
+    "no page or shader errors"
+  ],
+  "legacy": {
+    "gaits": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "stopped": true
+  },
+  "rear": {
+    "active": "rear",
+    "returned": true
+  },
+  "seat": {
+    "actual": [
+      0,
+      2.1640279942750933,
+      -0.6870688974857331
+    ],
+    "expected": [
+      0,
+      2.1640279942750933,
+      -0.6870688974857331
+    ],
+    "actualWorld": [
+      0,
+      2.1573410226149,
+      -0.6811358702560104
+    ],
+    "expectedWorld": [
+      0,
+      2.1573410012752654,
+      -0.6811358634476576
+    ]
+  },
+  "fall": {
+    "midway": "fall",
+    "dead": "dead",
+    "unchanged": true
+  },
+  "turns": [
+    {
+      "kind": "turn_l",
+      "angle": 1.5707963267948966,
+      "finished": true
+    },
+    {
+      "kind": "turn_r",
+      "angle": -1.5707963267948966,
+      "finished": true
+    }
+  ],
+  "cart": {
+    "two": {
+      "count": 2,
+      "harness": 2
+    },
+    "one": 1,
+    "speed": 3.888888888888889,
+    "gear": 2,
+    "distance": 8.638321638193268,
+    "cart": {
+      "x": 0,
+      "y": 0,
+      "z": 4.988321638193268,
+      "yaw": 0,
+      "distance": 8.638321638193268,
+      "frontSteer": 0
+    },
+    "horse": {
+      "identity": {
+        "id": "horse-1",
+        "seed": 71031,
+        "coatIndex": 5,
+        "coat": {
+          "name": "月毛",
+          "body": [
+            0.69,
+            0.53,
+            0.29
+          ],
+          "dark": [
+            0.74,
+            0.69,
+            0.53
+          ]
+        },
+        "blaze": false,
+        "socks": 11,
+        "scale": 0.9913647273927927,
+        "stats": {
+          "speed": 19.266536612606917,
+          "acceleration": 2.4706139374757186,
+          "endurance": 99.04595439787954,
+          "agility": 1.1810758767067455
+        },
+        "appearance": 181
+      },
+      "x": 0,
+      "z": 8.638321638193268,
+      "y": 0,
+      "yaw": 0,
+      "speed": 3.888888888888889,
+      "phase": 3.7780253893686675,
+      "stamina": 99.04595439787954,
+      "mode": "trot",
+      "blocked": false,
+      "distance": 8.638321638193268,
+      "fatigued": false
+    },
+    "render": {
+      "submitted": 1,
+      "lods": [
+        1,
+        0,
+        0
+      ],
+      "drawCalls": 1,
+      "triangles": 736
+    }
+  },
+  "covered": {
+    "boarded": true,
+    "actual": [
+      0,
+      1.5199999809265137,
+      -2.609999895095825
+    ],
+    "expected": [
+      0,
+      1.52,
+      -2.61
+    ],
+    "moved": {
+      "speed": 1.8333333333333333,
+      "distance": 3.0602848463535897,
+      "gear": 1
+    },
+    "rejectedMovingExit": true,
+    "hiddenPlayer": true,
+    "movedSeat": [
+      0,
+      1.5199999809265137,
+      0.45028483867645264
+    ],
+    "movedExpected": [
+      0,
+      1.52,
+      0.4502848463535898
+    ],
+    "disembarked": true,
+    "playerOnCart": false,
+    "people": 2,
+    "visible": true
+  },
+  "canopyPixels": {
+    "changed": 5785,
+    "people": 3,
+    "passengerDraws": 1,
+    "cartDraws": 1
+  },
+  "wheelPixelChanges": 1424,
+  "legacyPixels": [
+    {
+      "mode": "idle",
+      "changedChannels": 0,
+      "maxChannelDifference": 0
+    },
+    {
+      "mode": "walk",
+      "changedChannels": 0,
+      "maxChannelDifference": 0
+    },
+    {
+      "mode": "trot",
+      "changedChannels": 0,
+      "maxChannelDifference": 0
+    },
+    {
+      "mode": "canter",
+      "changedChannels": 0,
+      "maxChannelDifference": 0
+    },
+    {
+      "mode": "gallop",
+      "changedChannels": 0,
+      "maxChannelDifference": 0
+    }
+  ],
+  "gpu": [
+    {
+      "name": "rear",
+      "xor": 0,
+      "union": 7155,
+      "fraction": 0
+    },
+    {
+      "name": "fall",
+      "xor": 0,
+      "union": 5430,
+      "fraction": 0
+    },
+    {
+      "name": "dead",
+      "xor": 0,
+      "union": 6644,
+      "fraction": 0
+    },
+    {
+      "name": "turn_l",
+      "xor": 0,
+      "union": 7184,
+      "fraction": 0
+    },
+    {
+      "name": "turn_r",
+      "xor": 0,
+      "union": 7216,
+      "fraction": 0
+    }
+  ],
+  "ending": {
+    "state": 2,
+    "rider": 0,
+    "harness": 0,
+    "turn": 0,
+    "progress": 1
+  },
+  "oneShots": {
+    "fallStable": true,
+    "rearIdle": true
+  },
+  "crowd": {
+    "metrics": {
+      "placed": 5000,
+      "submitted": 5000,
+      "culled": 0,
+      "lods": [
+        0,
+        0,
+        5000
+      ],
+      "triangles": 890004,
+      "horseDrawCalls": 2,
+      "harness": 1667
+    },
+    "render": {
+      "frame": 84,
+      "calls": 11,
+      "triangles": 899974,
+      "points": 0,
+      "lines": 14
+    }
+  },
+  "attributes": [
+    {
+      "names": [
+        "instanceMatrix",
+        "position",
+        "normal",
+        "uv",
+        "horseData"
+      ],
+      "slots": 8
+    },
+    {
+      "names": [
+        "instanceMatrix",
+        "position",
+        "normal",
+        "uv",
+        "horseData"
+      ],
+      "slots": 8
+    },
+    {
+      "names": [
+        "instanceMatrix",
+        "position",
+        "normal",
+        "uv",
+        "horseData"
+      ],
+      "slots": 8
+    },
+    {
+      "names": [
+        "instanceMatrix",
+        "position",
+        "normal",
+        "uv",
+        "cartData"
+      ],
+      "slots": 8
+    },
+    {
+      "names": [
+        "instanceMatrix",
+        "position",
+        "normal",
+        "uv",
+        "cartData"
+      ],
+      "slots": 8
+    },
+    {
+      "names": [
+        "instanceMatrix",
+        "position",
+        "normal",
+        "uv",
+        "cartData"
+      ],
+      "slots": 8
+    },
+    {
+      "names": [
+        "instanceMatrix",
+        "position",
+        "normal",
+        "uv",
+        "horseData"
+      ],
+      "slots": 8
+    },
+    {
+      "names": [
+        "instanceMatrix",
+        "position",
+        "normal",
+        "uv",
+        "horseData"
+      ],
+      "slots": 8
+    },
+    {
+      "names": [
+        "instanceMatrix",
+        "position",
+        "normal",
+        "uv",
+        "horseData"
+      ],
+      "slots": 8
+    },
+    {
+      "names": [
+        "instanceMatrix",
+        "position",
+        "normal",
+        "uv",
+        "cartData"
+      ],
+      "slots": 8
+    },
+    {
+      "names": [
+        "instanceMatrix",
+        "position",
+        "normal",
+        "uv",
+        "cartData"
+      ],
+      "slots": 8
+    },
+    {
+      "names": [
+        "instanceMatrix",
+        "position",
+        "normal",
+        "uv",
+        "cartData"
+      ],
+      "slots": 8
+    },
+    {
+      "names": [
+        "instanceMatrix",
+        "position",
+        "normal",
+        "uv",
+        "horseData"
+      ],
+      "slots": 8
+    }
+  ],
+  "layouts": [
+    {
+      "width": 667,
+      "height": 375,
+      "rects": {
+        "top": {
+          "x": 12,
+          "y": 7,
+          "right": 655,
+          "bottom": 43
+        },
+        "card": {
+          "x": 12,
+          "y": 55,
+          "right": 204,
+          "bottom": 143
+        },
+        "stick": {
+          "x": 26,
+          "y": 255,
+          "right": 134,
+          "bottom": 363
+        },
+        "gaitUp": {
+          "x": 501.5,
+          "y": 266,
+          "right": 573,
+          "bottom": 310
+        },
+        "mount": {
+          "x": 583,
+          "y": 297,
+          "right": 647,
+          "bottom": 361
+        }
+      }
+    },
+    {
+      "width": 844,
+      "height": 390,
+      "rects": {
+        "top": {
+          "x": 12,
+          "y": 7,
+          "right": 832,
+          "bottom": 43
+        },
+        "card": {
+          "x": 12,
+          "y": 55,
+          "right": 204,
+          "bottom": 143
+        },
+        "stick": {
+          "x": 26,
+          "y": 270,
+          "right": 134,
+          "bottom": 378
+        },
+        "gaitUp": {
+          "x": 678.5,
+          "y": 281,
+          "right": 750,
+          "bottom": 325
+        },
+        "mount": {
+          "x": 760,
+          "y": 312,
+          "right": 824,
+          "bottom": 376
+        }
+      }
+    },
+    {
+      "width": 1180,
+      "height": 820,
+      "rects": {
+        "top": {
+          "x": 12,
+          "y": 10,
+          "right": 1168,
+          "bottom": 52
+        },
+        "card": {
+          "x": 12,
+          "y": 65,
+          "right": 234,
+          "bottom": 164
+        },
+        "stick": {
+          "x": 26,
+          "y": 678,
+          "right": 148,
+          "bottom": 800
+        },
+        "gaitUp": {
+          "x": 1004.5,
+          "y": 703,
+          "right": 1076,
+          "bottom": 747
+        },
+        "mount": {
+          "x": 1088,
+          "y": 726,
+          "right": 1160,
+          "bottom": 798
+        }
+      }
+    }
+  ],
+  "errors": []
+}
