@@ -7,7 +7,7 @@
 (function (root) {
 const Npc = typeof require !== 'undefined' ? require('./npc-core.js') : root.WohNpc;
 const Arch = typeof require !== 'undefined' ? require('./arch-gen.js') : root.WohArch, Settle = typeof require !== 'undefined' ? require('./settle-layout.js') : root.WohSettle;
-const Nation = typeof require !== 'undefined' ? require('./nation.js') : root.WohNation;
+const Nation = typeof require !== 'undefined' ? require('./nation.js') : root.WohNation, Tech = typeof require !== 'undefined' ? require('./tech.js') : root.WohTech;
 const { Population, NJOB, NSKILL, SI, mix, SOC_K } = Npc, NONE = 0xffffffff, ALIVE = 0x7fffffff;
 
 // ---------------------------------------------------------------- 設定値
@@ -1124,6 +1124,35 @@ function peopleGrowth(people, gid) {
   return { stage, label: GROWTH_LABELS[stage], pop, farm: tech.farm, herd: tech.herd, farmers: cnt(9), herders: cnt(10), herdN: Math.round(g.herdN || 0), farmFrac: g.farmFrac || 0, share: g.share || 0, policy: g.policy || 'auto', facil: Object.assign({}, peFacil(g)), avail: peFacilAvail(people, g), stock: { dur: Math.max(0, g.food - (g.fresh || 0) - (g.dried || 0)), fresh: g.fresh || 0, dried: g.dried || 0 }, build: g.build ? { kind: g.build.kind, left: g.build.left } : null, storeDays: need > 0 ? Math.round(30 * g.food / need) : 0,
     income: g.lastFood ? { hunt: g.lastFood.hunt, gather: g.lastFood.gather, fish: g.lastFood.fish, farm: g.lastFood.farm || 0, herd: g.lastFood.herd || 0, need } : null };
 }
+// ---------------------------------------------------------------- 村の技術・技能の集計（表示用。新しい数値や制度は作らず、いま管理しているものを集めて見せる）
+// 管理しているもの：①技術（民族が持つ。その民族の人は「知っている」）②技能（個人ごとの 0〜255。仕事ごとに11種。使うほど伸びる）。
+// 「熟練者」＝その技術に結びつく仕事の技能が TECH_PRACTICE_MIN 以上の人。結びつきは下の表（表示用の対応）。技能と結びつかない技術（組織・記録の一部）は、熟練は管理していない。
+const TECH_SKILL = { cultivate: 8, irrigate: 8, rotation: 8, herd: 9, draft: 9, pottery: 3, copper: 3, bronze: 3, iron: 3, steel: 3, goldwork: 3, kiln: 3, metalarms: 3, waterwheel: 4, fort: 4, dugout: 5, seafaring: 5, cart: 5, tally: 10, script: 10, bow: 1 };
+const TECH_PRACTICE_MIN = 30;
+const TECH_AX = { food: '食料', material: '素材・加工', energy: '動力', transport: '輸送', record: '記録', organize: '組織', military: '軍事' };
+function peopleTechSummary(people, gid) {
+  const P = people.npc, S = people.nation, g = people.groups[gid - 1]; if (!g || !S || !Tech) return null;
+  const members = [], names = Npc.JOBS.map(j => j.skill).slice(1);
+  for (const i of P.members[gid] || []) {
+    if (P.death[i] !== ALIVE || P.group[i] !== gid) continue;   // 生存者で、いまこの村に所属する人だけ（死亡・離脱は入らない）
+    const age = Math.floor(P.age(i)); if (age < 10) continue;
+    const eth = P.eth[i] || P.groupEth[gid], sk = []; for (let k = 0; k < NSKILL; k++) sk.push(P.skills[i * NSKILL + k]);
+    const known = []; for (const n of Tech.NODES) if (Nation.hasNode(S, eth, n.id)) known.push(n.id);
+    members.push({ id: i, age, job: P.job[i], eth, skills: sk, known });
+  }
+  const techs = [];
+  for (const n of Tech.NODES) {
+    const si = TECH_SKILL[n.id], holders = [];
+    let knowers = 0;
+    for (const m of members) if (m.known.includes(n.id)) { knowers++; if (si !== undefined && m.skills[si] >= TECH_PRACTICE_MIN) holders.push({ id: m.id, skill: m.skills[si] }); }
+    if (!knowers) continue;
+    holders.sort((a, b) => b.skill - a.skill);
+    techs.push({ id: n.id, name: n.jp, ax: n.ax, cat: TECH_AX[n.ax] || n.ax, knowers, practiced: holders.length, top: holders.length ? holders[0].skill : 0, holders, skillName: si !== undefined ? names[si] : null, solo: si !== undefined && holders.length === 1 });
+  }
+  return { gid, count: members.length, members, techs, skillNames: names, min: TECH_PRACTICE_MIN };
+}
+function peDefaultTechs() { return Tech ? Tech.NODES.map(n => ({ id: n.id, name: n.jp, ax: n.ax })) : []; }
+
 // 技術を民族に与える（開発・試験用）
 function peopleGrantTech(people, ethId, node) { const S = people.nation; if (!S || !S.idx.has(ethId)) return false; return Nation.adoptNode(S, ethId, node, S.year); }
 // 技術に合わせて、集団に農民・牧人の職が開く
@@ -1361,6 +1390,6 @@ function peopleEthCounts(people) {
   const P = people.npc, o = {}; for (let i = 0; i < P.n; i++) { if (P.death[i] !== ALIVE) continue; const e = P.eth[i] || P.groupEth[P.group[i]]; o[e] = (o[e] || 0) + 1; } return o;
 }
 
-if (typeof module !== 'undefined' && module.exports) module.exports = { FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, peCultureRules, PROPOSALS, peopleProposal, LEADERSHIP, peLeaders, ACTIVITIES, peopleSetActivity, peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
-else root.WohPeople = { FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peopleSuccession, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, PROPOSALS, peopleProposal, LEADERSHIP, ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+if (typeof module !== 'undefined' && module.exports) module.exports = { TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, peCultureRules, PROPOSALS, peopleProposal, LEADERSHIP, peLeaders, ACTIVITIES, peopleSetActivity, peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+else root.WohPeople = { TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peopleSuccession, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, PROPOSALS, peopleProposal, LEADERSHIP, ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
