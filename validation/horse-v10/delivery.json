@@ -1,0 +1,19 @@
+{
+  "branch": "codex/prototype-horse-v1",
+  "baseCommit": "0afdf660329d855eea281adf717e6c1aa22efaff",
+  "coreCommit": "e78b79239fbf2f80e164c399e61b2e8954acb444",
+  "html": {
+    "path": "exports/World-of-History-horse-prototype-v10.html",
+    "bytes": 2104857,
+    "sha256": "5c3258cd2547d70eb9b1c5b6ff8147df9c6f4ed5acab5f367535cf33c21a0773",
+    "gitBlobSha": "02913cad6bc2dc18a9431b9d23aab175519bb2af"
+  },
+  "unitTests": 148,
+  "motionReviewBrowserChecks": 11,
+  "inputBrowserChecks": 14,
+  "regressionBrowserChecks": 25,
+  "errors": [],
+  "iOSHardwareVerified": false,
+  "mainWritten": false,
+  "assetsChanged": false
+}

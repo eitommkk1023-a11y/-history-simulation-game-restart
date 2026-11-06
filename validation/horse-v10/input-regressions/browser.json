@@ -1,0 +1,514 @@
+{
+  "checks": [
+    "real forward stick touch starts walk and holding never raises gait",
+    "second-finger stop stays stopped while forward stick remains held",
+    "fresh backward stick touch starts reverse",
+    "moving stick gestures keep gait; buttons still select27km/h canter",
+    "wagon supports stick start and reverse while keeping14km/h and occupants",
+    "rider initially follows the tilting saddle instead of launching immediately",
+    "release has no upward impulse and side speed exceeds forward carry",
+    "quiet side drop lands without bounce or buried limbs and gets up",
+    "landing stays on the same side as horse collapse rather than far ahead",
+    "recovery and remount stay centered; early recovery does not teleport rider",
+    "landscape 667x375 controls stay separate",
+    "landscape 844x390 controls stay separate",
+    "landscape 1180x820 controls stay separate",
+    "no browser or shader errors"
+  ],
+  "forward": {
+    "gear": 1,
+    "speed": 1.8333333333333333,
+    "axis": 1
+  },
+  "stopped": {
+    "gear": 0,
+    "speed": 0,
+    "y": 0.78125,
+    "axis": 1
+  },
+  "reverse": {
+    "gear": -1,
+    "speed": -0.8
+  },
+  "running": {
+    "gear": 2,
+    "canter": 7.5,
+    "mode": "canter",
+    "stamina": 99.04595439787954
+  },
+  "cart": {
+    "walk": 1,
+    "speed": 3.888888888888889,
+    "reverse": -1,
+    "people": 3
+  },
+  "attached": {
+    "held": true,
+    "anchor": [
+      0,
+      1.315463500529913,
+      1.527926424991216
+    ],
+    "actual": [
+      0,
+      1.315463500529913,
+      1.527926424991216
+    ],
+    "y": 1.315463500529913,
+    "mounted": false
+  },
+  "drop": {
+    "flight": {
+      "x": 0.3114011102326456,
+      "y": 0.993825180671602,
+      "z": 2.5681435859823942,
+      "yaw": 0,
+      "scale": 0.9913647273927927,
+      "vx": 2,
+      "vz": 1.1,
+      "vy": -1.6715,
+      "elapsed": 0.15,
+      "groundT": 0,
+      "grounded": false,
+      "done": false,
+      "pitch": 0.0125,
+      "roll": -0.2261601596406049,
+      "startRoll": -0.008782411425902113,
+      "fallSide": 1
+    },
+    "horse": {
+      "x": 0,
+      "z": 2.8527417649826146
+    },
+    "minY": 0.1228309417021089
+  },
+  "landing": {
+    "min": 0.02499999999999991,
+    "max": 0.9795553890049353,
+    "contact": {
+      "x": 0.4614011102326456,
+      "z": 2.650643585982395,
+      "minY": 0.02500000000000001
+    },
+    "landing": {
+      "x": 0.6698499079871998,
+      "z": 2.7652904247473966,
+      "yaw": 0
+    },
+    "horse": {
+      "x": 0,
+      "z": 3.678451701544072
+    },
+    "done": true,
+    "root": [
+      0,
+      0,
+      0
+    ]
+  },
+  "restore": {
+    "mounted": true,
+    "center": 0,
+    "kept": true,
+    "clean": true
+  },
+  "layouts": [
+    {
+      "width": 667,
+      "height": 375,
+      "rects": [
+        {
+          "id": "top",
+          "x": 12,
+          "y": 7,
+          "right": 655,
+          "bottom": 43,
+          "scroll": 643,
+          "client": 643
+        },
+        {
+          "id": "card",
+          "x": 12,
+          "y": 55,
+          "right": 204,
+          "bottom": 185,
+          "scroll": 190,
+          "client": 190
+        },
+        {
+          "id": "stick",
+          "x": 26,
+          "y": 255,
+          "right": 134,
+          "bottom": 363,
+          "scroll": 106,
+          "client": 106
+        },
+        {
+          "id": "gaitDown",
+          "x": 423,
+          "y": 266,
+          "right": 494.5,
+          "bottom": 310,
+          "scroll": 70,
+          "client": 70
+        },
+        {
+          "id": "gaitUp",
+          "x": 501.5,
+          "y": 266,
+          "right": 573,
+          "bottom": 310,
+          "scroll": 70,
+          "client": 70
+        },
+        {
+          "id": "halt",
+          "x": 423,
+          "y": 317,
+          "right": 494.5,
+          "bottom": 361,
+          "scroll": 70,
+          "client": 70
+        },
+        {
+          "id": "reverse",
+          "x": 501.5,
+          "y": 317,
+          "right": 573,
+          "bottom": 361,
+          "scroll": 70,
+          "client": 70
+        },
+        {
+          "id": "mount",
+          "x": 583,
+          "y": 297,
+          "right": 647,
+          "bottom": 361,
+          "scroll": 62,
+          "client": 62
+        },
+        {
+          "id": "rear",
+          "x": 303,
+          "y": 55,
+          "right": 416.328125,
+          "bottom": 99,
+          "scroll": 111,
+          "client": 111
+        },
+        {
+          "id": "fall",
+          "x": 422.328125,
+          "y": 55,
+          "right": 535.65625,
+          "bottom": 99,
+          "scroll": 111,
+          "client": 111
+        },
+        {
+          "id": "dead",
+          "x": 541.65625,
+          "y": 55,
+          "right": 655,
+          "bottom": 99,
+          "scroll": 111,
+          "client": 111
+        },
+        {
+          "id": "turn_l",
+          "x": 303,
+          "y": 105,
+          "right": 416.328125,
+          "bottom": 149,
+          "scroll": 111,
+          "client": 111
+        },
+        {
+          "id": "turn_r",
+          "x": 422.328125,
+          "y": 105,
+          "right": 535.65625,
+          "bottom": 149,
+          "scroll": 111,
+          "client": 111
+        },
+        {
+          "id": "actionReset",
+          "x": 541.65625,
+          "y": 105,
+          "right": 655,
+          "bottom": 149,
+          "scroll": 111,
+          "client": 111
+        }
+      ]
+    },
+    {
+      "width": 844,
+      "height": 390,
+      "rects": [
+        {
+          "id": "top",
+          "x": 12,
+          "y": 7,
+          "right": 832,
+          "bottom": 43,
+          "scroll": 820,
+          "client": 820
+        },
+        {
+          "id": "card",
+          "x": 12,
+          "y": 55,
+          "right": 204,
+          "bottom": 185,
+          "scroll": 190,
+          "client": 190
+        },
+        {
+          "id": "stick",
+          "x": 26,
+          "y": 270,
+          "right": 134,
+          "bottom": 378,
+          "scroll": 106,
+          "client": 106
+        },
+        {
+          "id": "gaitDown",
+          "x": 600,
+          "y": 281,
+          "right": 671.5,
+          "bottom": 325,
+          "scroll": 70,
+          "client": 70
+        },
+        {
+          "id": "gaitUp",
+          "x": 678.5,
+          "y": 281,
+          "right": 750,
+          "bottom": 325,
+          "scroll": 70,
+          "client": 70
+        },
+        {
+          "id": "halt",
+          "x": 600,
+          "y": 332,
+          "right": 671.5,
+          "bottom": 376,
+          "scroll": 70,
+          "client": 70
+        },
+        {
+          "id": "reverse",
+          "x": 678.5,
+          "y": 332,
+          "right": 750,
+          "bottom": 376,
+          "scroll": 70,
+          "client": 70
+        },
+        {
+          "id": "mount",
+          "x": 760,
+          "y": 312,
+          "right": 824,
+          "bottom": 376,
+          "scroll": 62,
+          "client": 62
+        },
+        {
+          "id": "rear",
+          "x": 480,
+          "y": 55,
+          "right": 593.328125,
+          "bottom": 99,
+          "scroll": 111,
+          "client": 111
+        },
+        {
+          "id": "fall",
+          "x": 599.328125,
+          "y": 55,
+          "right": 712.65625,
+          "bottom": 99,
+          "scroll": 111,
+          "client": 111
+        },
+        {
+          "id": "dead",
+          "x": 718.65625,
+          "y": 55,
+          "right": 832,
+          "bottom": 99,
+          "scroll": 111,
+          "client": 111
+        },
+        {
+          "id": "turn_l",
+          "x": 480,
+          "y": 105,
+          "right": 593.328125,
+          "bottom": 149,
+          "scroll": 111,
+          "client": 111
+        },
+        {
+          "id": "turn_r",
+          "x": 599.328125,
+          "y": 105,
+          "right": 712.65625,
+          "bottom": 149,
+          "scroll": 111,
+          "client": 111
+        },
+        {
+          "id": "actionReset",
+          "x": 718.65625,
+          "y": 105,
+          "right": 832,
+          "bottom": 149,
+          "scroll": 111,
+          "client": 111
+        }
+      ]
+    },
+    {
+      "width": 1180,
+      "height": 820,
+      "rects": [
+        {
+          "id": "top",
+          "x": 12,
+          "y": 10,
+          "right": 1168,
+          "bottom": 52,
+          "scroll": 1156,
+          "client": 1156
+        },
+        {
+          "id": "card",
+          "x": 12,
+          "y": 65,
+          "right": 234,
+          "bottom": 216.78125,
+          "scroll": 220,
+          "client": 220
+        },
+        {
+          "id": "stick",
+          "x": 26,
+          "y": 678,
+          "right": 148,
+          "bottom": 800,
+          "scroll": 120,
+          "client": 120
+        },
+        {
+          "id": "gaitDown",
+          "x": 926,
+          "y": 703,
+          "right": 997.5,
+          "bottom": 747,
+          "scroll": 70,
+          "client": 70
+        },
+        {
+          "id": "gaitUp",
+          "x": 1004.5,
+          "y": 703,
+          "right": 1076,
+          "bottom": 747,
+          "scroll": 70,
+          "client": 70
+        },
+        {
+          "id": "halt",
+          "x": 926,
+          "y": 754,
+          "right": 997.5,
+          "bottom": 798,
+          "scroll": 70,
+          "client": 70
+        },
+        {
+          "id": "reverse",
+          "x": 1004.5,
+          "y": 754,
+          "right": 1076,
+          "bottom": 798,
+          "scroll": 70,
+          "client": 70
+        },
+        {
+          "id": "mount",
+          "x": 1088,
+          "y": 726,
+          "right": 1160,
+          "bottom": 798,
+          "scroll": 70,
+          "client": 70
+        },
+        {
+          "id": "rear",
+          "x": 816,
+          "y": 65,
+          "right": 929.328125,
+          "bottom": 109,
+          "scroll": 111,
+          "client": 111
+        },
+        {
+          "id": "fall",
+          "x": 935.328125,
+          "y": 65,
+          "right": 1048.65625,
+          "bottom": 109,
+          "scroll": 111,
+          "client": 111
+        },
+        {
+          "id": "dead",
+          "x": 1054.65625,
+          "y": 65,
+          "right": 1168,
+          "bottom": 109,
+          "scroll": 111,
+          "client": 111
+        },
+        {
+          "id": "turn_l",
+          "x": 816,
+          "y": 115,
+          "right": 929.328125,
+          "bottom": 159,
+          "scroll": 111,
+          "client": 111
+        },
+        {
+          "id": "turn_r",
+          "x": 935.328125,
+          "y": 115,
+          "right": 1048.65625,
+          "bottom": 159,
+          "scroll": 111,
+          "client": 111
+        },
+        {
+          "id": "actionReset",
+          "x": 1054.65625,
+          "y": 115,
+          "right": 1168,
+          "bottom": 159,
+          "scroll": 111,
+          "client": 111
+        }
+      ]
+    }
+  ],
+  "errors": []
+}
