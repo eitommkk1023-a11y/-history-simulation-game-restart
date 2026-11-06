@@ -56,7 +56,7 @@ export function stepRiderFlight(state,dt,terrain){
 
 export function poseThrownRider(THREE,rider,state,terrain,bounds){
  const root=rider.root,hips=rider.hips,up=state.grounded?clamp((state.groundT-.75)/.6,0,1):0;
- root.position.set(state.x,state.y,state.z);root.rotation.set(0,state.yaw,0);root.rotateY(0);root.rotateX(state.pitch);root.rotateZ(state.roll);root.scale.setScalar(state.scale);
+ root.position.set(state.x,state.y,state.z);root.rotation.set(0,state.yaw,0);root.rotateX(state.pitch);root.rotateZ(state.roll);root.scale.setScalar(state.scale);
  hips.position.set(0,0,0);hips.quaternion.identity();hips.children[0].rotation.x=.12*(1-up);
  const spread=(1-up)*Math.min(1,state.elapsed/.10);
  for(const leg of rider.legs){leg.thigh.position.x=leg.sign*.105;leg.thigh.rotation.set(-.35*spread,0,leg.sign*.15*spread);leg.shin.rotation.set(.8*spread,0,0);}
