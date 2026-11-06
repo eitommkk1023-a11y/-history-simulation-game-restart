@@ -40,7 +40,7 @@ for (const r of results) {
   // 前提の順序：取り入れた節の前提は、同じ民族が先に（同じ年か前に）持っている
   let badReq = 0; for (let i = 0; i < S.n; i++) for (let k = 0; k < N.NN; k++) if (S.has[i * N.NN + k]) for (const q of T.NODES[k].req) { const o = i * N.NN + T.NODE_IDX[q]; if (!S.has[o] || S.since[o] > S.since[i * N.NN + k]) badReq++; }
   t('前提の順序が守られる（' + r.W.name + '）', badReq === 0, badReq);
-  t('人口は上限を超えない', Array.from(S.pop).every((p, i) => p <= S.cap[i] * S.capMult[i] * 1.001 + 1));
+  t('人口は上限を超えない', Array.from(S.pop).every((p, i) => p <= S.cap0[i] * S.capMult[i] * 1.001 + 1));
   t('1年あたりの計算：民族100で5ms以下（' + r.W.name + '）', r.msPerYear <= 5, r.msPerYear);
   const c = N.waveCorrelation(S, 'cultivate'), og = N.origins(S, 'cultivate');
   if (og.adopters - og.inventors >= 10) t('農耕は、最も近い発明者から離れるほど遅れて広がる（相関0.1以上）（' + r.W.name + '）', c >= 0.1, c);

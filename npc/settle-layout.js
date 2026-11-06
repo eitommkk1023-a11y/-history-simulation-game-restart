@@ -149,7 +149,7 @@ function layoutSettlement(spec) {
   layout.resolved = true; return layout;
 }
 function layoutFields(layout, spec, nH) {   // 畑：水に近い平らな所に、家の外側。農耕の仕組みが入ったときに使う
-  const { terr, seed, gid } = spec, n = Math.ceil(nH * 0.5); const dws = layout.items.filter(i => i.role === 'dwelling');
+  const { terr, seed, gid } = spec, lv = spec.economy && spec.economy.farmLv != null ? spec.economy.farmLv : 3, n = Math.max(1, Math.ceil(nH * 0.5 * lv / 4)); const dws = layout.items.filter(i => i.role === 'dwelling');
   for (let k = 0; k < n * 6 && layout.fields.length < n; k++) {
     const a = rnd(seed, gid, 1500 + k) * 6.283, r = layout.plaza.r + 30 + rnd(seed, gid, 1600 + k) * 60, x = layout.center.x + Math.cos(a) * r, z = layout.center.z + Math.sin(a) * r, w = 14 + rnd(seed, gid, 1700 + k) * 10, d = 10 + rnd(seed, gid, 1800 + k) * 8, rot = a;
     if (terr.slope(x, z) > 9 || terr.water(x, z) > 0.1) continue;

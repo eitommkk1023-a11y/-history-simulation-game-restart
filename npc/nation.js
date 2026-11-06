@@ -20,30 +20,17 @@
   const K = { INVENT: 0.0004, DIFFUSE: 0.006, CONTACT_R: 450, NEIGH: 8, GROW: 0.012 };
 
   // ---------------------------------------------------------------- 作る
-  // eths：[{ id, x, y, pop, cult:[8値], lang }]。world は、資源の近さ・肥沃さを見るために使う
+  // eths：[{ id, x, y, pop, cult:[8値] }]。world は、資源の近さ・肥沃さを見るために使う。opts.capacity：後から増える民族のための余裕（分裂・融合で増える）
   function create(world, seed, eths, opts) {
-    opts = opts || {}; const n = eths.length;
-    const S = { seed: seed | 0, year: 0, n, eths, world,
-      pop: new Float64Array(n), cap: new Float64Array(n), capMult: new Float64Array(n).fill(1),
-      has: new Uint8Array(n * NN), since: new Int32Array(n * NN).fill(-1), from: new Int32Array(n * NN).fill(-1),   // 取り入れた年・どの民族から伝わったか（-1＝自分で発明）
-      variant: new Int16Array(n * NN).fill(-1), loan: new Uint8Array(n * NN),
-      needF: new Float32Array(n * NN), diffF: new Float32Array(n * NN), open: new Float32Array(n * NN), coast: new Uint8Array(n),
-      nbr: new Int32Array(n * K.NEIGH).fill(-1), nbrD: new Float32Array(n * K.NEIGH), cult: eths.map(e => e.cult),
+    opts = opts || {}; const n = eths.length, cap = Math.max(n, opts.capacity || n);
+    const S = { seed: seed | 0, year: 0, n, cap, eths: eths.slice(), world, idx: new Map(),
+      pop: new Float64Array(cap), cap0: new Float64Array(cap), capMult: new Float64Array(cap).fill(1),
+      has: new Uint8Array(cap * NN), since: new Int32Array(cap * NN).fill(-1), from: new Int32Array(cap * NN).fill(-1),   // 取り入れた年・どの民族から伝わったか（-1＝自分で発明）
+      variant: new Int16Array(cap * NN).fill(-1), loan: new Uint8Array(cap * NN),
+      needF: new Float32Array(cap * NN), diffF: new Float32Array(cap * NN), open: new Float32Array(cap * NN), coast: new Uint8Array(cap),
+      nbr: new Int32Array(cap * K.NEIGH).fill(-1), nbrD: new Float32Array(cap * K.NEIGH), cult: eths.map(e => e.cult), fert: new Float32Array(cap),
       firstYear: new Int32Array(NN).fill(-1), firstEth: new Int32Array(NN).fill(-1), log: [] };
-    const fert = world && world.resources && world.resources.grid ? world.resources.grid.fertility : null, g = world && world.resources && world.resources.grid;
-    for (let i = 0; i < n; i++) {
-      const e = eths[i], pr = T.siteProfile(world, e.x, e.y, T.RADII, 1e9); S.coast[i] = pr.coast ? 1 : 0;
-      let fv = 0.4; if (fert && g) { const st = g.step, w = g.w, cx = Math.floor(e.x / st), cy = Math.floor(e.y / st); let s = 0, c = 0; for (let j = Math.max(0, cy - 2); j <= Math.min(g.h - 1, cy + 2); j++) for (let ii = Math.max(0, cx - 2); ii <= Math.min(w - 1, cx + 2); ii++) { s += fert[j * w + ii]; c++; } fv = c ? s / c : 0.4; }
-      for (let k = 0; k < NN; k++) {
-        const f = NODES[k].need(pr); S.needF[i * NN + k] = f > 0 ? f : 0; S.open[i * NN + k] = Math.max(0, Math.min(1, NODES[k].adopt(e.cult)));
-        S.diffF[i * NN + k] = S.needF[i * NN + k];
-        // 作物・家畜は、伝わってくれば野生の群生地から遠くても育てられる（その土地の肥沃さ・草地しだい）
-        if (NODES[k].id === 'cultivate') S.diffF[i * NN + k] = Math.max(0.1, Math.min(1, 0.15 + 1.6 * fv));
-        if (NODES[k].id === 'herd') S.diffF[i * NN + k] = 0.8;
-      }
-      S.pop[i] = Math.max(10, e.pop);
-      S.cap[i] = Math.max(S.pop[i] * 1.5, 120 + 900 * fv);
-    }
+    for (let i = 0; i < n; i++) { S.idx.set(eths[i].id, i); initRow(S, i, eths[i]); }
     // 近くの民族（近い順に最大 NEIGH 個）
     const cell = K.CONTACT_R, gx = new Map(), key = (x, y) => x * 100003 + y;
     for (let i = 0; i < n; i++) { const kx = Math.floor(eths[i].x / cell), ky = Math.floor(eths[i].y / cell), k = key(kx, ky); (gx.get(k) || gx.set(k, []).get(k)).push(i); }
@@ -52,7 +39,7 @@
       for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) { const L = gx.get(key(kx + a, ky + b)); if (!L) continue; for (const j of L) if (j !== i) { const dx = eths[j].x - eths[i].x, dy = eths[j].y - eths[i].y, d = Math.sqrt(dx * dx + dy * dy); if (d <= K.CONTACT_R) cand.push([d, j]); } }
       cand.sort((p, q) => p[0] - q[0]); for (let m = 0; m < Math.min(K.NEIGH, cand.length); m++) { S.nbr[i * K.NEIGH + m] = cand[m][1]; S.nbrD[i * K.NEIGH + m] = cand[m][0]; }
     }
-    // はじまりの技術：どの民族も、はじめから持っている（前提が無く、必要な資源が近くにある物。時代の「出発点」）。農耕・牧畜・銅・首長制は、ここから自分で発明する
+    // はじまりの技術：どの民族も、はじめから持っている（前提が無く、必要な資源が近くにある物。時代の「出発点」）。農耕・牧畜・銅・首長制は、「発明される」ことで時代が動くので、はじめには持たない
     const NOT_AT_START = { cultivate: 1, herd: 1, copper: 1, chiefdom: 1 };
     if (opts.start !== false) for (let i = 0; i < n; i++) for (let k = 0; k < NN; k++) {
       if (DEPTH[k] !== 1 || NOT_AT_START[NODES[k].id] || S.needF[i * NN + k] < 1) continue;
@@ -60,6 +47,54 @@
     }
     return S;
   }
+  // 1つの民族の、場所ごとの値（必要な資源の近さ・文化の開き・肥沃さ・人口の上限）
+  function initRow(S, i, e) {
+    const world = S.world, fert = world && world.resources && world.resources.grid ? world.resources.grid.fertility : null, g = world && world.resources && world.resources.grid;
+    const pr = T.siteProfile(world, e.x, e.y, T.RADII, 1e9); S.coast[i] = pr.coast ? 1 : 0;
+    let fv = 0.4; if (fert && g) { const st = g.step, w = g.w, cx = Math.floor(e.x / st), cy = Math.floor(e.y / st); let s = 0, c = 0; for (let j = Math.max(0, cy - 2); j <= Math.min(g.h - 1, cy + 2); j++) for (let ii = Math.max(0, cx - 2); ii <= Math.min(w - 1, cx + 2); ii++) { s += fert[j * w + ii]; c++; } fv = c ? s / c : 0.4; }
+    S.fert[i] = fv; S.cult[i] = e.cult;
+    for (let k = 0; k < NN; k++) {
+      const f = NODES[k].need(pr); S.needF[i * NN + k] = f > 0 ? f : 0; S.open[i * NN + k] = Math.max(0, Math.min(1, NODES[k].adopt(e.cult)));
+      S.diffF[i * NN + k] = S.needF[i * NN + k];
+      // 作物・家畜は、伝わってくれば野生の群生地から遠くても育てられる（その土地の肥沃さ・草地しだい）
+      if (NODES[k].id === 'cultivate') S.diffF[i * NN + k] = Math.max(0.1, Math.min(1, 0.15 + 1.6 * fv));
+      if (NODES[k].id === 'herd') S.diffF[i * NN + k] = 0.8;
+    }
+    S.pop[i] = Math.max(10, e.pop || 10);
+    S.cap0[i] = Math.max(S.pop[i] * 1.5, 120 + 900 * fv);
+  }
+  // 新しい民族（分裂・融合）：親の民族の技術・やり方を受け継ぐ。近くの民族は、場所から求める
+  function spawn(S, e, parentId) {
+    if (S.idx.has(e.id)) return S.idx.get(e.id);
+    if (S.n >= S.cap) grow(S, Math.max(16, S.cap));
+    const i = S.n++, p = S.idx.has(parentId) ? S.idx.get(parentId) : -1; S.eths[i] = e; S.idx.set(e.id, i); initRow(S, i, e);
+    if (p >= 0) for (let k = 0; k < NN; k++) { const o = i * NN + k, q = p * NN + k; if (S.has[q]) { S.has[o] = 1; S.since[o] = S.since[q]; S.from[o] = p; S.variant[o] = S.variant[q]; S.loan[o] = S.loan[q]; } }
+    if (p >= 0) S.capMult[i] = S.capMult[p];
+    const cand = []; for (let j = 0; j < S.n; j++) if (j !== i) { const dx = S.eths[j].x - e.x, dy = S.eths[j].y - e.y, d = Math.sqrt(dx * dx + dy * dy); if (d <= K.CONTACT_R) cand.push([d, j]); }
+    cand.sort((a, b) => a[0] - b[0]); for (let m = 0; m < Math.min(K.NEIGH, cand.length); m++) { S.nbr[i * K.NEIGH + m] = cand[m][1]; S.nbrD[i * K.NEIGH + m] = cand[m][0]; }
+    return i;
+  }
+  function grow(S, extra) {
+    const nc = S.cap + extra;
+    for (const [k, per] of [['pop', 1], ['cap0', 1], ['capMult', 1], ['has', NN], ['since', NN], ['from', NN], ['variant', NN], ['loan', NN], ['needF', NN], ['diffF', NN], ['open', NN], ['coast', 1], ['nbr', K.NEIGH], ['nbrD', K.NEIGH], ['fert', 1]]) {
+      const A = S[k], B = new A.constructor(nc * per); if (k === 'since' || k === 'from' || k === 'variant' || k === 'nbr') B.fill(-1); if (k === 'capMult') B.fill(1); B.set(A); S[k] = B;
+    }
+    S.cap = nc;
+  }
+  // 保存：動く部分だけ（場所から決まる値は読み込み時に作り直す）
+  function save(S) {
+    const n = S.n, cut = (A, per) => Array.from(A.subarray(0, n * per));
+    return { seed: S.seed, year: S.year, n, eths: S.eths.slice(0, n).map(e => ({ id: e.id, x: e.x, y: e.y, pop: e.pop, cult: e.cult })), has: cut(S.has, NN), since: cut(S.since, NN), from: cut(S.from, NN), variant: cut(S.variant, NN), loan: cut(S.loan, NN), capMult: cut(S.capMult, 1), firstYear: Array.from(S.firstYear), firstEth: Array.from(S.firstEth), log: S.log.slice(-200) };
+  }
+  function load(world, sv) {
+    const S = create(world, sv.seed, sv.eths, { start: false, capacity: Math.max(sv.n * 2, sv.n + 16) }), n = sv.n;
+    S.year = sv.year; S.has.set(sv.has); S.since.set(sv.since); S.from.set(sv.from); S.variant.set(sv.variant); S.loan.set(sv.loan); S.capMult.set(sv.capMult);
+    S.firstYear.set(sv.firstYear); S.firstEth.set(sv.firstEth); S.log = sv.log.slice(); return S;
+  }
+  function adoptNode(S, ethId, node, year) { const i = S.idx.get(ethId), k = IDX[node]; if (i === undefined || k === undefined || S.has[i * NN + k]) return false; adopt(S, i, k, -1, year == null ? S.year : year, -1); return true; }
+  // 民族 id が、節 node を持っているか
+  function hasNode(S, ethId, node) { const i = S.idx.get(ethId); return i !== undefined && !!S.has[i * NN + IDX[node]]; }
+  function sinceNode(S, ethId, node) { const i = S.idx.get(ethId); return i === undefined ? -1 : S.since[i * NN + IDX[node]]; }
 
   function adopt(S, i, k, from, year, variantFrom) {
     const e = S.eths[i], n = NODES[k], o = i * NN + k;
@@ -79,7 +114,7 @@
     const year = ++S.year, n = S.n, seed = S.seed, NB = K.NEIGH;
     for (let i = 0; i < n; i++) {
       // 人口：ロジスティック（技術で上限が上がる）
-      const cap = S.cap[i] * S.capMult[i], p = S.pop[i]; S.pop[i] = Math.max(10, p + K.GROW * p * (1 - p / cap));
+      const cap = S.cap0[i] * S.capMult[i], p = S.pop[i]; S.pop[i] = Math.max(10, p + K.GROW * p * (1 - p / cap));
       const pop = S.pop[i], base = i * NN;
       for (let k = 0; k < NN; k++) {
         const o = base + k; if (S.has[o]) continue;
@@ -123,6 +158,6 @@
   }
   function origins(S, node) { const k = IDX[node]; let c = 0, a = 0; for (let i = 0; i < S.n; i++) if (S.has[i * NN + k]) { a++; if (S.from[i * NN + k] < 0) c++; } return { inventors: c, adopters: a }; }
 
-  const api = { origins, K, DEPTH, create, step, run, fractions, techCount, signature, digest, waveCorrelation, pearson, hm, NN };
+  const api = { adoptNode, spawn, save, load, hasNode, sinceNode, origins, K, DEPTH, create, step, run, fractions, techCount, signature, digest, waveCorrelation, pearson, hm, NN };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohNation = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
