@@ -25,10 +25,12 @@ export function stepHorseFall(state,dt,terrain){
  return s;
 }
 
-export function launchRider({x,y,z,yaw,speed,scale=1}){
- const sign=speed<0?-1:1,forward=speed+sign*1.6,side=-1.1;
- return {x,y,z,yaw,scale,vx:Math.sin(yaw)*forward+Math.cos(yaw)*side,vz:Math.cos(yaw)*forward-Math.sin(yaw)*side,vy:3.4,
-  elapsed:0,groundT:0,grounded:false,done:false,pitch:0,roll:0};
+export function launchRider({x,y,z,yaw,speed,scale=1,fallSide=1,initialRoll=-.12}){
+ // The current fall clip rolls toward local+X. Carry only a little momentum,
+ // with no launch upwards; the body slips down that same side.
+ const side=Math.sign(fallSide)||1,forward=clamp(speed*.15,-1.1,1.1),lateral=side*2.0;
+ return {x,y,z,yaw,scale,vx:Math.sin(yaw)*forward+Math.cos(yaw)*lateral,vz:Math.cos(yaw)*forward-Math.sin(yaw)*lateral,vy:-.2,
+  elapsed:0,groundT:0,grounded:false,done:false,pitch:0,roll:initialRoll,startRoll:initialRoll,fallSide:side};
 }
 
 export function stepRiderFlight(state,dt,terrain){
@@ -42,13 +44,13 @@ export function stepRiderFlight(state,dt,terrain){
   const ground=terrain.height(s.x,s.z);
   if(s.grounded){
    s.groundT+=h;s.vx*=Math.exp(-10*h);s.vz*=Math.exp(-10*h);s.y=ground+.24;
-   const gettingUp=clamp((s.groundT-.75)/.6,0,1);s.pitch=Math.PI/2*(1-gettingUp);s.roll=0;
+   const gettingUp=clamp((s.groundT-.75)/.6,0,1);s.pitch=.08*(1-gettingUp);s.roll=-s.fallSide*Math.PI/2*(1-gettingUp);
    if(s.groundT>=1.35){s.done=true;s.vx=s.vz=s.vy=0;break;}
   }else{
    s.y+=s.vy*h-9.81*h*h/2;s.vy-=9.81*h;
-   s.pitch=Math.min(1.48,s.elapsed*1.8);s.roll=.18*Math.sin(s.elapsed*5);
+   const t=clamp(s.elapsed/.6,0,1),ease=t*t*(3-2*t);s.pitch=.08*ease;s.roll=s.startRoll+(-s.fallSide*1.4-s.startRoll)*ease;
    const support=(.20+.72*Math.abs(Math.cos(s.pitch)*Math.cos(s.roll)))*s.scale;
-   if(s.vy<0&&s.y<=ground+support){s.grounded=true;s.vy=0;s.y=ground+.24;s.pitch=Math.PI/2;s.roll=0;}
+   if(s.vy<0&&s.y<=ground+support){s.grounded=true;s.vy=0;s.y=ground+.24;s.pitch=.08;s.roll=-s.fallSide*Math.PI/2;}
   }
  }
  return s;
@@ -58,9 +60,9 @@ export function poseThrownRider(THREE,rider,state,terrain,bounds){
  const root=rider.root,hips=rider.hips,up=state.grounded?clamp((state.groundT-.75)/.6,0,1):0;
  root.position.set(state.x,state.y,state.z);root.rotation.set(0,state.yaw,0);root.rotateX(state.pitch);root.rotateZ(state.roll);root.scale.setScalar(state.scale);
  hips.position.set(0,0,0);hips.quaternion.identity();hips.children[0].rotation.x=.12*(1-up);
- const spread=(1-up)*Math.min(1,state.elapsed/.10);
- for(const leg of rider.legs){leg.thigh.position.x=leg.sign*.105;leg.thigh.rotation.set(-.35*spread,0,leg.sign*.15*spread);leg.shin.rotation.set(.8*spread,0,0);}
- for(const arm of rider.arms){arm.arm.rotation.set(-.70*spread,0,-arm.sign*.65*spread);arm.forearm.rotation.set(-.30*spread,0,0);}
+ const enter=Math.min(1,state.elapsed/.24),hold=1-up;
+ for(const leg of rider.legs){leg.thigh.position.x=leg.sign*.105;leg.thigh.rotation.set((-.65+.4*enter)*hold,0,leg.sign*.10*hold);leg.shin.rotation.set((.95-.5*enter)*hold,0,0);}
+ for(const arm of rider.arms){arm.arm.rotation.set((-.85+.55*enter)*hold,0,-arm.sign*.15*hold);arm.forearm.rotation.set(.65*hold,0,0);}
  root.updateMatrixWorld(true);bounds.setFromObject(root);
  const ground=terrain.height(state.x,state.z),adjust=ground+.025-bounds.min.y;
  if(state.grounded||adjust>0){root.position.y+=adjust;root.updateMatrixWorld(true);}

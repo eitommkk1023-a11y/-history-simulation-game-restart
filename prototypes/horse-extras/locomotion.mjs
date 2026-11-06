@@ -8,15 +8,19 @@ export function horseTurnRadius(speed,identity,{cart=false}={}){
  const agility=clamp(identity.stats.agility,.6,1.4),v=Math.abs(speed);
  return (cart?5.5:1.8)/agility+v*v/(cart?1.6:3.0);
 }
-export function freshButtonRide(){return {gear:0,mode:'idle',steer:0,brake:1,brakeStage:0};}
+export function freshButtonRide(){return {gear:0,mode:'idle',steer:0,brake:1,brakeStage:0,startAxis:0};}
 export function stepButtonRide(state,input={}){
  let gear=clamp(state.gear,-1,input.maxGear??4);const speed=input.speed??0;
  if(input.command==='up')gear=gear<0?(speed<-.04?0:1):Math.min(input.maxGear??4,gear+1);
  if(input.command==='down')gear=gear<0?0:Math.max(0,gear-1);
  if(input.command==='stop'||input.stop)gear=0;
  if(input.command==='reverse')gear=gear<0||Math.abs(speed)>.08?0:-1;
+ const y=clamp(input.y??0,-1,1),previousAxis=state.startAxis??0;
+ const startAxis=y>.45?1:y<-.45?-1:Math.abs(y)<.28?0:previousAxis;
+ const startEdge=startAxis!==0&&startAxis!==previousAxis;
+ if(!input.command&&!input.stop&&gear===0&&Math.abs(speed)<.08&&startEdge)gear=startAxis;
  const x=clamp(input.x??0,-1,1);
- return {gear,mode:gear<0?'reverse':['idle','walk','trot','canter','gallop'][gear],steer:Math.abs(x)<.12?0:Math.sign(x)*(Math.abs(x)-.12)/.88,brake:gear===0?1:0,brakeStage:0};
+ return {gear,mode:gear<0?'reverse':['idle','walk','trot','canter','gallop'][gear],steer:Math.abs(x)<.12?0:Math.sign(x)*(Math.abs(x)-.12)/.88,brake:gear===0?1:0,brakeStage:0,startAxis};
 }
 export function stepHorse07(state,input,dt,terrain){
  const s={...state};if(!Number.isFinite(dt)||dt<=0)return s;dt=Math.min(.1,dt);
