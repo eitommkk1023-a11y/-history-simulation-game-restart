@@ -50,7 +50,7 @@
   const MM = 2.2, SPEED_M = { walk: SPEED.walk * MM, jog: SPEED.jog * MM, run: SPEED.run * MM, retreat: SPEED.retreat * MM, chase: SPEED.chase * MM };
   const HORSE = { hp: 30, riderHp: 12, hitShare: 0.3, rearP: 0.3, rearSec: 2.0, fallSec: 1.5, pikeP: 0.25, pikeDmg: 12, coverSlow: 0.5, charge: 0.9 };
   // 馬の歩様（Codex の馬の5クリップ名）：速さ(m/s)から決める
-  function gaitOf(v) { return v < 0.3 ? 'idle' : v < 2.8 ? 'walk' : v < 4.7 ? 'trot' : v < 7 ? 'canter' : 'gallop'; }
+  function gaitOf(v) { return v < 0.04 ? 'idle' : v < 2.5 ? 'walk' : v < 4.6 ? 'trot' : v < 8.3 ? 'canter' : 'gallop'; }   // 境目は Codex の馬の描画と同じ
 
   // ---------------------------------------------------------------- 戦いを作る
   function create(field, seed) { return { field, t: 0, rnd: makeRng(seed || 1), soldiers: [], units: [], messengers: [], commanders: {}, wagons: [], log: [], nextId: 1, stats: { wagonsLost: 0, horsesLost: 0, dismounted: 0, msgSent: 0, msgDelivered: 0, msgLost: 0, sprung: 0, routs: 0 }, ended: null, _grid: null, _visT: -9, _thinkT: -9 }; }
@@ -327,6 +327,14 @@
     } else {
       for (let i = 0; i < 3; i++) addUnit(B, { side: 2, x: 1350, y: 700 + i * 100, facing: Math.PI, weapons: W20, discipline: kind === 'attack' ? 0.3 : 0.9, name: 'B' + i });
       const cb = addCommander(B, 2, { x: 1500, y: 800, doctrine: kind === 'attack' ? 'frontal' : 'cautious' }); cb.guess = { x: 250, y: 800 }; cb.advanceAt = 10;
+      // 'cav'：両軍に騎兵12騎と荷馬車3台。味方の射手は矢が限られ、荷馬車から補給される
+      if (kind === 'cav') {
+        addUnit(B, { side: 1, x: 250, y: 1020, facing: 0, weapons: [['lance', false, 12]], mounted: true, discipline: 0.3, name: 'A騎兵' });
+        addUnit(B, { side: 2, x: 1350, y: 1020, facing: Math.PI, weapons: [['lance', false, 12]], mounted: true, discipline: 0.6, name: 'B騎兵' });
+        addTrain(B, { side: 1, x: 140, y: 760, facing: 0, wagons: 3, arrows: 300, dest: { x: 300, y: 760 }, home: { x: 90, y: 800 } });
+        addTrain(B, { side: 2, x: 1480, y: 840, facing: Math.PI, wagons: 3, arrows: 300, dest: { x: 1440, y: 840 }, home: { x: 1560, y: 800 } });
+        for (const u of B.units) if (u.side === 1) for (const s of u.members) if (s.w === 'bow') s.ar = 30;
+      }
     }
     return B;
   }
