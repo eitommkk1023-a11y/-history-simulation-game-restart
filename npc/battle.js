@@ -44,25 +44,45 @@
   }
 
   // ---------------------------------------------------------------- 武器（人物の実態から：長さ・射程・傷）
-  const WEAPON = { spear: { reach: 2.4, dmg: [3, 6], cd: 1.3, acc: 0.65 }, sword: { reach: 1.4, dmg: [3, 5], cd: 0.9, acc: 0.7 }, bow: { range: 70, dmg: [2, 5], cd: 3.0, acc: 0.4 } };
+  const WEAPON = { spear: { reach: 2.4, dmg: [3, 6], cd: 1.3, acc: 0.65 }, sword: { reach: 1.4, dmg: [3, 5], cd: 0.9, acc: 0.7 }, bow: { range: 70, dmg: [2, 5], cd: 3.0, acc: 0.4 }, lance: { reach: 3.2, dmg: [4, 7], cd: 2.0, acc: 0.6 } };   // lance＝騎兵の槍（走りながら当てると傷が大きい）
   const SPEED = { walk: 1.5, jog: 3.0, run: 4.4, retreat: 4.0, chase: 3.8 };
+  // 騎兵：馬に乗ると約2.2倍の速さ。軍馬の体力、突撃・槍衾・森と坂の係数［仮］
+  const MM = 2.2, SPEED_M = { walk: SPEED.walk * MM, jog: SPEED.jog * MM, run: SPEED.run * MM, retreat: SPEED.retreat * MM, chase: SPEED.chase * MM };
+  const HORSE = { hp: 30, riderHp: 12, hitShare: 0.3, rearP: 0.3, rearSec: 2.0, fallSec: 1.5, pikeP: 0.25, pikeDmg: 12, coverSlow: 0.5, charge: 0.9 };
+  // 馬の歩様（Codex の馬の5クリップ名）：速さ(m/s)から決める
+  function gaitOf(v) { return v < 0.3 ? 'idle' : v < 2.8 ? 'walk' : v < 4.7 ? 'trot' : v < 7 ? 'canter' : 'gallop'; }
 
   // ---------------------------------------------------------------- 戦いを作る
-  function create(field, seed) { return { field, t: 0, rnd: makeRng(seed || 1), soldiers: [], units: [], messengers: [], commanders: {}, log: [], nextId: 1, stats: { msgSent: 0, msgDelivered: 0, msgLost: 0, sprung: 0, routs: 0 }, ended: null, _grid: null, _visT: -9, _thinkT: -9 }; }
-  const ROLE_ORDER = { shield: 0, spear: 1, sword: 2, bow: 3 };
+  function create(field, seed) { return { field, t: 0, rnd: makeRng(seed || 1), soldiers: [], units: [], messengers: [], commanders: {}, wagons: [], log: [], nextId: 1, stats: { wagonsLost: 0, horsesLost: 0, dismounted: 0, msgSent: 0, msgDelivered: 0, msgLost: 0, sprung: 0, routs: 0 }, ended: null, _grid: null, _visT: -9, _thinkT: -9 }; }
+  const ROLE_ORDER = { lance: 0, shield: 0, spear: 1, sword: 2, bow: 3 };
   // 部隊：n人。weapons＝[[武器, 盾かどうか, 人数], ...]。x,y＝中心、facing＝向き（ラジアン、0＝東）
   function addUnit(B, o) {
-    const u = { id: B.nextId++, side: o.side, members: [], x: o.x, y: o.y, facing: o.facing || 0, formation: o.formation || 'line', discipline: o.discipline == null ? 0.5 : o.discipline, order: { type: 'hold', x: o.x, y: o.y, facing: o.facing || 0 }, post: { x: o.x, y: o.y }, hidden: false, seen: new Map(), phase: null, phaseT: 0, pursuing: false, springUntil: -1, origin: { x: o.x, y: o.y }, lastReport: -99, cen: null, ecenPrev: null, rally: { x: o.rally ? o.rally.x : o.x - Math.cos(o.facing || 0) * 120, y: o.rally ? o.rally.y : o.y - Math.sin(o.facing || 0) * 120 }, shocked: false, name: o.name || '' };
-    for (const [w, shield, cnt] of o.weapons) for (let i = 0; i < cnt; i++) { const s = { id: B.nextId++, side: o.side, unit: u.id, x: o.x + (B.rnd() - 0.5) * 6, y: o.y + (B.rnd() - 0.5) * 6, f: u.facing, hp: 10, state: 'ok', w, shield: !!shield, cd: B.rnd(), m: 62 + B.rnd() * 16, slot: [0, 0], fleeT: 0, hidden: false, role: shield ? 'shield' : w }; u.members.push(s); B.soldiers.push(s); }
+    const u = { id: B.nextId++, side: o.side, members: [], x: o.x, y: o.y, facing: o.facing || 0, formation: o.formation || 'line', discipline: o.discipline == null ? 0.5 : o.discipline, order: { type: 'hold', x: o.x, y: o.y, facing: o.facing || 0 }, post: { x: o.x, y: o.y }, hidden: false, seen: new Map(), phase: null, phaseT: 0, pursuing: false, springUntil: -1, origin: { x: o.x, y: o.y }, lastReport: -99, cen: null, ecenPrev: null, rally: { x: o.rally ? o.rally.x : o.x - Math.cos(o.facing || 0) * 120, y: o.rally ? o.rally.y : o.y - Math.sin(o.facing || 0) * 120 }, shocked: false, name: o.name || '', cav: !!o.mounted };
+    for (const [w, shield, cnt] of o.weapons) for (let i = 0; i < cnt; i++) { const s = { id: B.nextId++, side: o.side, unit: u.id, x: o.x + (B.rnd() - 0.5) * 6, y: o.y + (B.rnd() - 0.5) * 6, f: u.facing, hp: 10, state: 'ok', w, shield: !!shield, cd: B.rnd(), m: 62 + B.rnd() * 16, slot: [0, 0], fleeT: 0, hidden: false, role: shield ? 'shield' : w, ar: w === 'bow' && o.arrows != null ? o.arrows : Infinity }; if (o.mounted) { s.mounted = true; s.hp = HORSE.riderHp; s.horse = { hp: HORSE.hp, state: 0, t: -99, loose: false }; } u.members.push(s); B.soldiers.push(s); }
     B.units.push(u); assignSlots(u, B); return u;
   }
   function assignSlots(u, B) {
-    const arr = u.members.filter(s => s.state !== 'down').sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || a.id - b.id), n = arr.length;
+    const K = u.members.some(s => s.mounted) ? 1.8 : 1, arr = u.members.filter(s => s.state !== 'down').sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || a.id - b.id), n = arr.length;
     arr.forEach((s, i) => {
-      if (u.formation === 'line') { const cols = Math.min(n, 14), row = Math.floor(i / cols), col = i % cols, inRow = Math.min(cols, n - row * cols); s.slot = [(col - (inRow - 1) / 2) * 1.5, -row * 1.8]; }
-      else if (u.formation === 'column') { const cols = 3, row = Math.floor(i / cols), col = i % cols; s.slot = [(col - 1) * 1.4, -row * 1.6]; }
-      else { const r = 3 + 9 * Math.sqrt(hash2(s.id, 3, 11)), a = hash2(s.id, 5, 13) * Math.PI * 2; s.slot = [Math.cos(a) * r, Math.sin(a) * r]; }
+      if (u.formation === 'line') { const cols = Math.min(n, 14), row = Math.floor(i / cols), col = i % cols, inRow = Math.min(cols, n - row * cols); s.slot = [(col - (inRow - 1) / 2) * 1.5 * K, -row * 1.8 * K]; }
+      else if (u.formation === 'column') { const cols = 3, row = Math.floor(i / cols), col = i % cols; s.slot = [(col - 1) * 1.4 * K, -row * 1.6 * K]; }
+      else { const r = (3 + 9 * Math.sqrt(hash2(s.id, 3, 11))) * K, a = hash2(s.id, 5, 13) * Math.PI * 2; s.slot = [Math.cos(a) * r, Math.sin(a) * r]; }
     });
+  }
+  // 荷馬車隊：n台。arrows＝1台あたりの矢、home＝敵が近づいたとき引く先、dest＝進む先
+  function addTrain(B, o) {
+    const n = o.wagons || 3, out = [];
+    for (let i = 0; i < n; i++) { const wg = { id: B.nextId++, side: o.side, x: o.x - Math.cos(o.facing || 0) * i * 8, y: o.y - Math.sin(o.facing || 0) * i * 8 + (i % 2) * 3, f: o.facing || 0, hp: 40, arrows: o.arrows == null ? 0 : o.arrows, food: o.food == null ? 0 : o.food, state: 'ok', t: -99, dest: { x: o.dest ? o.dest.x : o.x, y: o.dest ? o.dest.y : o.y }, home: { x: o.home ? o.home.x : o.x, y: o.home ? o.home.y : o.y }, speed: 0 }; B.wagons.push(wg); out.push(wg); }
+    return out;
+  }
+  function stepWagons(B) {
+    for (const w of B.wagons) {
+      if (w.state !== 'ok') { w.speed = 0; continue; }
+      let threat = 0; near(B, w.x, w.y, 40, e => { if (e.side !== w.side && e.state === 'ok' && !e.hidden) threat++; });
+      const dst = threat ? w.home : w.dest, d = hyp(dst.x - w.x, dst.y - w.y), px = w.x, py = w.y;
+      if (d > 2) { const v = Math.min((threat ? 2.6 : 1.8) * DT, d) * clamp(1 - B.field.slopeAt(w.x, w.y) * 0.8, 0.3, 1); w.x += (dst.x - w.x) / d * v; w.y += (dst.y - w.y) / d * v; w.f = Math.atan2(dst.y - py, dst.x - px); }
+      w.speed = hyp(w.x - px, w.y - py) / DT;
+    }
   }
   function addCommander(B, side, o) { const c = { side, x: o.x, y: o.y, doctrine: o.doctrine, known: new Map(), est: null, units: [], plan: null, lastAdv: -99, t0: 0 }; B.commanders[side] = c; return c; }
 
@@ -151,7 +171,8 @@
     if (formation !== u.formation) { u.formation = formation; assignSlots(u, B); }
     u.dc = dc; u.mode = mode; u.eng = eng; u.facing = fac;
     // 中心の移動
-    const dd = hyp(dc.x - u.x, dc.y - u.y), sp = mode === 'march' ? SPEED.walk : mode === 'retreat' ? SPEED.retreat : mode === 'charge' ? SPEED.chase : mode === 'hidden' ? 0 : SPEED.walk;
+    u.cav = u.members.some(s => s.mounted && s.state === 'ok'); const SPU = u.cav ? SPEED_M : SPEED;
+    const dd = hyp(dc.x - u.x, dc.y - u.y), sp = mode === 'march' ? SPU.walk : mode === 'retreat' ? SPU.retreat : mode === 'charge' ? SPU.chase : mode === 'hidden' ? 0 : SPU.walk;
     if (mode === 'hidden') { u.x = cen.x; u.y = cen.y; }
     else if (dd > 0.5) { const v = Math.min(sp * DT, dd), slow = clamp(1 - B.field.slopeAt(u.x, u.y) * 0.6, 0.4, 1); u.x += (dc.x - u.x) / dd * v * slow; u.y += (dc.y - u.y) / dd * v * slow; }
     // 隊が遅れていたら待つ（中心が隊の実際の位置から離れすぎないように）
@@ -165,26 +186,38 @@
   function face(s, ang) { let d = ang - s.f; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; const m = TURN * DT; s.f += Math.abs(d) <= m ? d : (d > 0 ? m : -m); }
   const TURN = 1.0;
   function hitFactor(def, ax, ay) { const toA = Math.atan2(ay - def.y, ax - def.x), d = angDiff(def.f, toA); if (d < Math.PI / 3) return def.shield ? 0.5 : 0.8; if (d < 2 * Math.PI / 3) return 1.0; return 1.6; }   // 正面・側面・背面
+  // 馬の傷：体力0で倒れる。乗り手は落馬して歩兵になり、小さな傷を負う
+  function hurtHorse(B, s, amt) {
+    const H = s.horse; if (!H || H.state === 2) return; H.hp -= amt;
+    if (H.hp <= 0) { H.state = 2; H.t = B.t; s.mounted = false; s.hp -= 2; s.m -= 6; if (s.w === 'lance') { s.w = 'sword'; s.role = s.shield ? 'shield' : 'sword'; } B.stats.horsesLost++; B.stats.dismounted++; B.log.push({ t: B.t, e: 'horseDown', unit: s.unit }); }
+  }
   function applyDamage(B, att, def, dmg, u) {
     const f = hitFactor(def, att.x, att.y), spr = B.units.find(q => q.id === att.unit).springUntil > B.t ? 1.4 : 1;
-    const d = dmg * f * spr; def.hp -= d; def.m -= 1 + (f > 1.3 ? 3 : 0);
+    const d = dmg * f * spr;
+    if (def.mounted && def.horse.state !== 2 && B.rnd() < HORSE.hitShare) { hurtHorse(B, def, d * 1.5); if (def.mounted && def.horse.state === 0 && B.rnd() < HORSE.rearP) { def.horse.state = 1; def.horse.t = B.t; } }   // 当たりの一部は馬へ。生き残った馬は後ろ脚立ちになることがある
+    else def.hp -= d;
+    def.m -= 1 + (f > 1.3 ? 3 : 0);
+    // 槍衾：正面から騎兵が槍の歩兵に突っ込むと、馬が突かれることがある
+    if (att.mounted && def.w === 'spear' && f <= 0.8 && B.rnd() < HORSE.pikeP) hurtHorse(B, att, HORSE.pikeDmg);
     if (def.hp <= 0 && def.state !== 'down') {
-      def.state = 'down'; def.casSide = def.side; def.downBy = f > 1.3 ? 'rear' : f > 0.95 ? 'flank' : 'front';
+      if (def.mounted) { def.horse.loose = true; def.mounted = false; } def.state = 'down'; def.casSide = def.side; def.downBy = f > 1.3 ? 'rear' : f > 0.95 ? 'flank' : 'front';
       near(B, def.x, def.y, 20, e => { if (e.state !== 'ok') return; if (e.side === def.side) e.m -= 3.5; else e.m += 0.8; });
       const du = B.units.find(q => q.id === def.unit); if (du && du.members[0] === def) { /* 隊長が倒れた */ }
     }
   }
   function stepSoldier(B, s, u) {
     if (s.state === 'down') return;
+    const SP = s.mounted ? SPEED_M : SPEED, cs0 = s.mounted ? B.field.coverAt(s.x, s.y) : 0;
     s.cd -= DT; const px = s.x, py = s.y;
     s.still = true;
     if (s.state === 'flee') {
       let ex = 0, ey = 0, cnt = 0; near(B, s.x, s.y, 60, e => { if (e.side !== s.side && e.state === 'ok') { ex += s.x - e.x; ey += s.y - e.y; cnt++; } });
-      let dx = u.rally.x - s.x, dy = u.rally.y - s.y; if (cnt) { dx = ex / cnt; dy = ey / cnt; } const d = hyp(dx, dy) || 1; const v = SPEED.run * DT;
+      let dx = u.rally.x - s.x, dy = u.rally.y - s.y; if (cnt) { dx = ex / cnt; dy = ey / cnt; } const d = hyp(dx, dy) || 1; const v = SP.run * DT;
       s.x = clamp(s.x + dx / d * v, 1, B.field.size - 1); s.y = clamp(s.y + dy / d * v, 1, B.field.size - 1); face(s, Math.atan2(dy, dx)); s.still = false;
       if (s.m > 45 && !cnt && B.t - s.fleeT > 10) s.state = 'ok';
       return;
     }
+    if (s.w === 'bow' && s.ar < 6 && B.wagons.length) { for (const wg of B.wagons) if (wg.state === 'ok' && wg.side === s.side && wg.arrows > 0 && hyp(wg.x - s.x, wg.y - s.y) < 25) { const take = Math.min(12, wg.arrows); wg.arrows -= take; s.ar += take; break; } }
     // 士気：近くに敵がいなければ回復。囲まれると崩れる。四方のうち三方以上に敵が近いと「包囲」
     let sect = 0, nearEnemy = null, nd = 1e9, mask = 0;
     near(B, s.x, s.y, 22, e => { if (e.side === s.side || e.state !== 'ok' || e.hidden) return; const d = hyp(e.x - s.x, e.y - s.y); if (d < nd) { nd = d; nearEnemy = e; } if (d < 20) mask |= 1 << (Math.floor(((Math.atan2(e.y - s.y, e.x - s.x) + Math.PI) / (Math.PI / 2))) & 3); });
@@ -199,19 +232,25 @@
     const reach = s.w === 'bow' ? W.range : W.reach;
     if (tgt && s.w !== 'bow' && u.mode !== 'retreat') {
       face(s, Math.atan2(tgt.y - s.y, tgt.x - s.x));
-      if (td > reach * 0.9) { const v = (u.mode === 'charge' ? SPEED.chase : SPEED.jog) * DT; s.x += (tgt.x - s.x) / td * v; s.y += (tgt.y - s.y) / td * v; s.still = false; }
-      else if (s.cd <= 0) { s.cd = W.cd; if (B.rnd() < W.acc) { const dmg = W.dmg[0] + B.rnd() * (W.dmg[1] - W.dmg[0]); applyDamage(B, s, tgt, dmg, u); } }
+      if (td > reach * 0.9) { const v = (u.mode === 'charge' ? SP.chase : SP.jog) * DT; s.x += (tgt.x - s.x) / td * v; s.y += (tgt.y - s.y) / td * v; s.still = false; }
+      else if (s.cd <= 0) { s.cd = W.cd; if (B.rnd() < W.acc) { let dmg = W.dmg[0] + B.rnd() * (W.dmg[1] - W.dmg[0]); if (s.mounted && s.w === 'lance') dmg *= 1 + HORSE.charge * clamp((hyp(s.vx || 0, s.vy || 0) - 3) / 5, 0, 1); applyDamage(B, s, tgt, dmg, u); } }
     } else if (tgt && s.w === 'bow' && u.mode !== 'retreat') {
       face(s, Math.atan2(tgt.y - s.y, tgt.x - s.x));
-      if (s.cd <= 0 && td > 5) { s.cd = W.cd; const hit = W.acc * clamp(1 - td / (W.range * 1.15), 0.05, 1) * (B.field.coverAt(tgt.x, tgt.y) === 2 ? 0.5 : 1) * (tgt.still ? 1 : 0.7); if (B.rnd() < hit) applyDamage(B, s, tgt, W.dmg[0] + B.rnd() * (W.dmg[1] - W.dmg[0]), u); }
+      if (s.cd <= 0 && td > 5 && s.ar > 0) { s.cd = W.cd; s.ar--; const hit = W.acc * clamp(1 - td / (W.range * 1.15), 0.05, 1) * (B.field.coverAt(tgt.x, tgt.y) === 2 ? 0.5 : 1) * (tgt.still ? 1 : 0.7); if (B.rnd() < hit) applyDamage(B, s, tgt, W.dmg[0] + B.rnd() * (W.dmg[1] - W.dmg[0]), u); }
     }
-    if (!tgt || s.w === 'bow' || u.mode === 'retreat') {
+    let busyW = false;
+    if (!tgt && s.w !== 'bow' && B.wagons.length && u.mode !== 'retreat') {
+      let wg = null, wd = 1e9; const WR = Math.max(u.eng, 3) + 4; for (const q of B.wagons) if (q.state === 'ok' && q.side !== s.side) { const d = hyp(q.x - s.x, q.y - s.y); if (d < WR && d < wd) { wg = q; wd = d; } }
+      if (wg) { busyW = true; face(s, Math.atan2(wg.y - s.y, wg.x - s.x)); if (wd > W.reach * 0.9 + 2) { const v = SP.jog * DT; s.x += (wg.x - s.x) / wd * v; s.y += (wg.y - s.y) / wd * v; s.still = false; } else if (s.cd <= 0) { s.cd = W.cd; wg.hp -= W.dmg[0] + B.rnd() * (W.dmg[1] - W.dmg[0]); if (wg.hp <= 0) { wg.state = 'lost'; wg.t = B.t; B.stats.wagonsLost++; B.log.push({ t: B.t, e: 'wagonLost', side: wg.side }); } } }
+    }
+    if ((!tgt && !busyW) || s.w === 'bow' || u.mode === 'retreat') {
       // 隊形の位置へ
       const c = Math.cos(u.facing), sn = Math.sin(u.facing), rx = sn, ry = -c, fx = c, fy = sn, wx = u.x + rx * s.slot[0] + fx * s.slot[1], wy = u.y + ry * s.slot[0] + fy * s.slot[1];
       const d = hyp(wx - s.x, wy - s.y);
-      if (d > 0.4) { const base = u.mode === 'charge' ? SPEED.jog : u.mode === 'retreat' ? SPEED.retreat : SPEED.walk, v = Math.min(d, (d > 6 ? (u.mode === 'retreat' ? SPEED.retreat : SPEED.jog) : base * (0.8 + Math.min(1, d / 4) * 0.5)) * DT) * clamp(1 - B.field.slopeAt(s.x, s.y) * 0.6, 0.4, 1); s.x += (wx - s.x) / d * v; s.y += (wy - s.y) / d * v; s.still = false; if (!tgt) face(s, d > 2 ? Math.atan2(wy - s.y, wx - s.x) : u.facing); }
+      if (d > 0.4) { const base = u.mode === 'charge' ? SP.jog : u.mode === 'retreat' ? SP.retreat : SP.walk, v = Math.min(d, (d > 6 ? (u.mode === 'retreat' ? SP.retreat : SP.jog) : base * (0.8 + Math.min(1, d / 4) * 0.5)) * DT) * clamp(1 - B.field.slopeAt(s.x, s.y) * 0.6, 0.4, 1); s.x += (wx - s.x) / d * v; s.y += (wy - s.y) / d * v; s.still = false; if (!tgt) face(s, d > 2 ? Math.atan2(wy - s.y, wx - s.x) : u.facing); }
       else if (!tgt) face(s, u.facing);
     }
+    if (cs0 > 0) { s.x = px + (s.x - px) * HORSE.coverSlow; s.y = py + (s.y - py) * HORSE.coverSlow; }   // 馬は森の中で遅い
     s.vx = (s.x - px) / DT; s.vy = (s.y - py) / DT;
   }
 
@@ -236,7 +275,7 @@
     B.t += DT; buildGrid(B);
     if (B.t - B._visT >= 1) { B._visT = B.t; updateVisibility(B); }
     if (B.t - B._thinkT >= 5) { B._thinkT = B.t; for (const side in B.commanders) think(B, B.commanders[side]); }
-    stepMessengers(B);
+    stepMessengers(B); stepWagons(B);
     for (const u of B.units) stepUnit(B, u);
     // 人物は処理順に偏りが出ないよう、ステップごとに並べ替えず、IDの順で（決定的）
     for (const s of B.soldiers) stepSoldier(B, s, B.units.find(q => q.id === s.unit) || B.units[0]);
@@ -250,7 +289,20 @@
   // ---------------------------------------------------------------- 結果
   function summary(B) {
     const sides = {}; for (const s of B.soldiers) { const o = sides[s.side] || (sides[s.side] = { total: 0, ok: 0, down: 0, flee: 0, rear: 0, flank: 0, front: 0 }); o.total++; if (s.state === 'ok') o.ok++; else if (s.state === 'down') { o.down++; o[s.downBy || 'front']++; } else o.flee++; }
-    return { t: B.t, ended: B.ended, sides, stats: B.stats, log: B.log };
+    const wagons = {}; for (const w of B.wagons) { const o = wagons[w.side] || (wagons[w.side] = { total: 0, ok: 0, lost: 0, arrows: 0 }); o.total++; if (w.state === 'ok') { o.ok++; o.arrows += w.arrows; } else o.lost++; }
+    return { t: B.t, ended: B.ended, sides, wagons, stats: B.stats, log: B.log };
+  }
+
+  // ---------------------------------------------------------------- 画面へ渡す馬と荷馬車（Codex の馬の仕様：speed・歩様・state 0通常/1後ろ脚立ち/2倒れる/3倒れたまま・stateT・rider）
+  function viewHorses(B) {
+    const horses = [], wagons = [];
+    for (const s of B.soldiers) {
+      if (!s.horse) continue; const H = s.horse, v = hyp(s.vx || 0, s.vy || 0); let state = 0, stateT = 0;
+      if (H.state === 2) { stateT = B.t - H.t; if (stateT >= HORSE.fallSec) state = 3; else state = 2; } else if (H.state === 1) { stateT = B.t - H.t; if (stateT < HORSE.rearSec) state = 1; else { H.state = 0; stateT = 0; } }
+      horses.push({ id: s.id, side: s.side, x: s.x, y: s.y, f: s.f, speed: state >= 2 ? 0 : (H.loose ? 0 : v), gait: state >= 2 ? 'idle' : gaitOf(H.loose ? 0 : v), state, stateT, rider: s.mounted ? 1 : 0, riderDown: s.state === 'down' });
+    }
+    for (const w of B.wagons) { const dead = w.state !== 'ok', stateT = dead ? B.t - w.t : 0; wagons.push({ id: w.id, side: w.side, x: w.x, y: w.y, f: w.f, speed: w.speed, gait: gaitOf(w.speed), state: dead ? (stateT >= HORSE.fallSec ? 3 : 2) : 0, stateT, horses: 2, arrows: w.arrows }); }
+    return { horses, wagons };
   }
 
   // ---------------------------------------------------------------- 場面（試作用の配置）
@@ -278,6 +330,6 @@
     }
     return B;
   }
-  const api = { scenario, stampPatches, W20, face, hitFactor, angDiff, DT, makeRng, makeField, fieldFromWorld, create, addUnit, addCommander, issue, step, run, summary, WEAPON, SPEED, unitCenter };
+  const api = { scenario, stampPatches, W20, face, hitFactor, angDiff, DT, makeRng, makeField, fieldFromWorld, create, addUnit, addTrain, addCommander, issue, viewHorses, gaitOf, HORSE, SPEED_M, step, run, summary, WEAPON, SPEED, unitCenter };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohBattle = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

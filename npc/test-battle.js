@@ -81,4 +81,45 @@ if (process.argv.length >= 4) {
   const B = Bt.create(F, 4); Bt.addUnit(B, { side: 1, x: 300, y: 800, facing: 0, weapons: W20 }); Bt.addUnit(B, { side: 2, x: 1300, y: 800, facing: Math.PI, weapons: W20 }); Bt.addCommander(B, 1, { x: 200, y: 800, doctrine: 'cautious' }); Bt.addCommander(B, 2, { x: 1400, y: 800, doctrine: 'cautious' });
   Bt.run(B, 60); console.log(`実際の世界の戦場（${(F.size / 1000).toFixed(1)}km四方・標高 ${mn.toFixed(0)}〜${mx.toFixed(0)}m）：60秒を実行`); t('実際の標高の戦場で動く（標高に起伏がある）', mx - mn > 1 && B.t >= 60 - 1e-9, mx - mn);
 }
+
+// ---------------------------------------------------------------- 騎兵と荷馬車
+{
+  const mk = (seed) => { const F = Bt.makeField({ seed, size: 1800, hill: 0 }); return { F, B: Bt.create(F, seed) }; };
+  const LANCE = [['lance', false, 12]], INF = [['spear', true, 14], ['spear', false, 6]];
+  // 速さ・歩様
+  { const { B } = mk(1); const c = Bt.addUnit(B, { side: 1, x: 200, y: 900, facing: 0, weapons: LANCE, mounted: true, discipline: 0.5 }), f = Bt.addUnit(B, { side: 1, x: 200, y: 1000, facing: 0, weapons: INF });
+    Bt.addCommander(B, 1, { x: 100, y: 950, doctrine: 'cautious' }); Bt.issue(B, 1, c, { type: 'advance', x: 800, y: 900 }); Bt.issue(B, 1, f, { type: 'advance', x: 800, y: 1000 });
+    for (let i = 0; i < 160; i++) Bt.step(B); const cc = Bt.unitCenter(c), fc = Bt.unitCenter(f);
+    t('騎兵は歩兵の約2倍進む（80秒）', (cc.x - 200) > (fc.x - 200) * 1.8, (cc.x - 200) + ' vs ' + (fc.x - 200));
+    const v = Bt.viewHorses(B); t('騎兵12騎＝馬12頭、騎手あり', v.horses.length === 12 && v.horses.every(h => h.rider === 1), v.horses.length);
+    t('行軍中の馬は速歩〜駆け足の歩様', v.horses.every(h => ['trot', 'canter', 'walk'].includes(h.gait)), v.horses.map(h => h.gait).join()); }
+  t('歩様：速さ→名前', Bt.gaitOf(0) === 'idle' && Bt.gaitOf(2) === 'walk' && Bt.gaitOf(4) === 'trot' && Bt.gaitOf(6) === 'canter' && Bt.gaitOf(9) === 'gallop');
+  // 突撃：助走をつけると、止まったまま戦うより敵を多く倒す。背面・側面は正面より効く
+  const charge = (runUp, seed, from) => { const { B } = mk(seed); const inf = Bt.addUnit(B, { side: 2, x: 900, y: 900, facing: Math.PI, weapons: INF, discipline: 0.9 }); Bt.addCommander(B, 2, { x: 1100, y: 900, doctrine: 'cautious' });
+    const sx = from === 'back' ? 900 + runUp : from === 'flank' ? 900 : 900 - runUp, sy = from === 'flank' ? 900 + runUp : 900, fac = from === 'back' ? Math.PI : from === 'flank' ? -Math.PI / 2 : 0;
+    const c = Bt.addUnit(B, { side: 1, x: sx, y: sy, facing: fac, weapons: LANCE, mounted: true, discipline: 0.5 }); Bt.addCommander(B, 1, { x: sx, y: sy, doctrine: 'cautious' }); Bt.issue(B, 1, c, { type: 'advance', x: 900, y: 900 }); Bt.run(B, 120); const S = Bt.summary(B); return S.sides[2].down + S.sides[2].flee; };
+  const m = (f) => mean([1, 2, 3, 4, 5, 6, 7, 8].map(f));
+  { const withRun = m(s => charge(150, s, 'front')), noRun = m(s => charge(5, s, 'front')); t('助走をつけた突撃は、止まって戦うより敵を多く倒す', withRun > noRun, withRun.toFixed(1) + ' vs ' + noRun.toFixed(1)); }
+  { const front = m(s => charge(150, s, 'front')), back = m(s => charge(150, s, 'back')); t('騎兵は、槍の歩兵の背後から突くほうが、正面からより敵を倒す', back > front, back.toFixed(1) + ' vs ' + front.toFixed(1)); }
+  // 槍衾：槍の歩兵に正面から突っ込むと、馬を失う
+  let gotDead = false;
+  { const lost = m(s => { const { B } = mk(s); Bt.addUnit(B, { side: 2, x: 900, y: 900, facing: Math.PI, weapons: [['spear', true, 20]], discipline: 0.9 }); Bt.addCommander(B, 2, { x: 1100, y: 900, doctrine: 'cautious' }); Bt.addCommander(B, 1, { x: 690, y: 900, doctrine: 'cautious' }); const c = Bt.addUnit(B, { side: 1, x: 700, y: 900, facing: 0, weapons: LANCE, mounted: true }); Bt.issue(B, 1, c, { type: 'advance', x: 900, y: 900 }); Bt.run(B, 120); const v = Bt.viewHorses(B); if (v.horses.some(q => q.state === 3 && q.rider === 0)) gotDead = true; return B.stats.horsesLost; });
+    t('槍衾：正面から突っ込んだ騎兵は、馬を失う（平均1頭以上）', lost >= 1, lost.toFixed(1)); t('倒れた馬は state 3（倒れたまま）・乗り手なしで渡される', gotDead); }
+  // 荷馬車：進む・敵が近づくと引く・歩兵に壊される
+  { const { B } = mk(4); const tr = Bt.addTrain(B, { side: 1, x: 300, y: 900, facing: 0, wagons: 3, arrows: 100, dest: { x: 700, y: 900 }, home: { x: 100, y: 900 } }); Bt.addCommander(B, 1, { x: 100, y: 900, doctrine: 'cautious' }); Bt.addCommander(B, 2, { x: 1500, y: 900, doctrine: 'cautious' });
+    for (let i = 0; i < 400; i++) Bt.step(B); t('荷馬車は目的地へ進む（200秒で約360m）', tr.every(w => w.x > 600), tr.map(w => Math.round(w.x)).join());
+    const v = Bt.viewHorses(B); t('荷馬車の見た目の値：速さ・歩様・2頭立て', v.wagons.length === 3 && v.wagons.every(w => w.horses === 2 && w.state === 0)); }
+  { const lostN = (guard) => { const { B } = mk(5); Bt.addTrain(B, { side: 1, x: 400, y: 900, facing: 0, wagons: 4, arrows: 100, dest: { x: 400, y: 900 }, home: { x: 400, y: 900 } }); Bt.addCommander(B, 1, { x: 380, y: 900, doctrine: 'cautious' }); Bt.addCommander(B, 2, { x: 660, y: 900, doctrine: 'cautious' });
+      if (guard) Bt.addUnit(B, { side: 1, x: 460, y: 900, facing: 0, weapons: [['spear', true, 20]], discipline: 0.9 });
+      const raid = Bt.addUnit(B, { side: 2, x: 650, y: 900, facing: Math.PI, weapons: [['sword', true, 12]], discipline: 0.9 }); Bt.issue(B, 2, raid, { type: 'advance', x: 400, y: 900 }); Bt.run(B, 240); return B.stats.wagonsLost; };
+    const a = mean([1, 2, 3].map(() => lostN(false))), b = lostN(true); t('護衛が無い荷馬車は、敵の歩兵に壊される', a >= 3, a); t('護衛がいると、壊される荷馬車が減る', b < a, b + ' vs ' + a); }
+  // 矢：荷馬車が近くに無いと、射手は矢が尽きて撃てなくなる。荷馬車があれば補給される
+  { const arrowsLeft = (withWagon) => { const { B } = mk(6); const u = Bt.addUnit(B, { side: 1, x: 500, y: 900, facing: 0, weapons: [['bow', false, 10]], arrows: 8 }); Bt.addCommander(B, 1, { x: 100, y: 900, doctrine: 'cautious' }); Bt.addCommander(B, 2, { x: 1500, y: 900, doctrine: 'cautious' });
+      if (withWagon) Bt.addTrain(B, { side: 1, x: 490, y: 900, facing: 0, wagons: 1, arrows: 5000, dest: { x: 490, y: 900 }, home: { x: 100, y: 900 } });
+      Bt.addUnit(B, { side: 2, x: 560, y: 900, facing: Math.PI, weapons: [['spear', true, 30]], discipline: 0.9 }); Bt.run(B, 200); return mean(u.members.map(s => s.ar)); };
+    const a = arrowsLeft(false), b = arrowsLeft(true); t('補給なし：矢が尽きる', a < 1, a); t('荷馬車が近くにあると、矢が補給される', b > a, b + ' vs ' + a); }
+  // 5000体
+  { const F = Bt.makeField({ seed: 1, size: 1800, hill: 8 }), B = Bt.create(F, 1); for (const side of [1, 2]) { for (let i = 0; i < 50; i++) Bt.addUnit(B, { side, x: side === 1 ? 700 : 1100, y: 100 + (i % 25) * 60 + Math.floor(i / 25) * 30, facing: side === 1 ? 0 : Math.PI, weapons: i % 5 === 0 ? [['lance', false, 50]] : [['spear', true, 30], ['bow', false, 10], ['sword', true, 10]], mounted: i % 5 === 0, discipline: 0.5 }); Bt.addCommander(B, side, { x: 800, y: 800, doctrine: 'frontal' }); }
+    const t0 = Date.now(); for (let i = 0; i < 200; i++) Bt.step(B); const ms = (Date.now() - t0) / 200; console.log('5000体（うち騎兵1000）：1ステップ ' + ms.toFixed(1) + 'ms'); t('5000体でも1ステップ60ms以内（PC）', ms < 60, ms); }
+}
 console.log(ng ? 'FAIL ' + ng + ' / ' + (ok + ng) : 'OK ' + ok + ' 件通過'); process.exit(ng ? 1 : 0);
