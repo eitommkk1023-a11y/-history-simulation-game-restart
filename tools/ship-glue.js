@@ -207,7 +207,8 @@
       m.group.rotation.order = 'YXZ'; // yaw, then pitch about the beam axis, then roll about the keel axis
       const sea = seaState.info(st.X, st.Y, 0), wm = Ship.waveMotion(sea, { psi: st.psi, u: st.u, lengthM: m.L ?? 21, beamM: 6.4, rollPeriodS: 5 }, simT);
       m.sea = { ...sea, ...wm }; // for the HUD
-      m.group.rotation.set(wm.pitchDeg * DEG, -st.psi, (-st.heelDeg + wm.rollDeg) * DEG); m.group.position.y += wm.heaveM;
+      // the game's sea surface is flat, so the visual motion is toned down: a full wave heave would sink the deck below the sea plane
+      m.group.rotation.set(wm.pitchDeg * 0.6 * DEG, -st.psi, (-st.heelDeg + wm.rollDeg * 0.6) * DEG); m.group.position.y += Math.max(-0.12, Math.min(0.25, wm.heaveM * 0.2));
       if (m.furn && m.loadRef !== (rec.massItems ?? null)) { m.loadRef = rec.massItems ?? null; m.furn(); Ship.updateFurnishingsVisibility(m); } // stores follow the real load
       { const aw = rec.vessel.apparentWind(env), sl = rec.vessel.sails, dep = sl.map((x) => x.deployed).join(','); if (m.lastDep !== undefined && m.lastDep !== dep) m.reefUntil = performance.now() + 1500; m.lastDep = dep;
         m.sailsMoving = sl.some((x) => x.targetTrimDeg !== undefined && Math.abs(x.targetTrimDeg - x.trimDeg) > 0.4) || performance.now() < (m.reefUntil || 0); // hands are working the sails
@@ -303,6 +304,9 @@
     const dt = lastT === null ? 0 : Math.min((t - lastT) / 1000, 0.1); lastT = t;
     if (cp.state !== S || !fleet) { if (cp.state) attach(); else return; }
     if (!fleet.list().length || !env || document.hidden) { updateHud(); return; }
+    // The game draws the 3D view only when something changed (power saving), so with a still camera the sea, sails and crew froze and FPS read 0.
+    // While a ship is boarded or near the camera, ask for a redraw every frame.
+    if (cp.state && !cp.view.overview && (boarded || [...meshes.values()].some((m) => m.group.visible && m.group.position.distanceTo(cp.camera.position) < 800))) cp.state.drawDirty = true;
     const mp = cp.markerPoint, focus = boarded ? posOf(boarded) : mp ? { X: mp.xM - ref.xM, Y: ref.yM - mp.yM } : null;
     for (const rec of fleet.list()) {
       const c = ctl[rec.id] ??= { heading: rec.vessel.snapshot().headingDeg, held: 0, auto: true, oar: 0.8 }, v = rec.vessel;
