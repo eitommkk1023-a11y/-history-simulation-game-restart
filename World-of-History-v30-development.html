@@ -597,7 +597,8 @@ body.rpg-menu-open .hud, body.rpg-menu-open #joystick, body.rpg-menu-open #actio
 #rpgScreen #bagPanel:not(.show) { display: none !important; }
 #rpgScreen #bagPanel button { height: 34px; border-radius: 17px; font-size: 12px; padding: 0 12px; }
 #rpgScreen #bagPanel #bagClose, #rpgScreen #bagPanel .bh:first-child { display: none; }
-#rpgSystem { flex: 1; min-height: 0; overflow: auto; touch-action: pan-y; }
+#rpgSystem, #rpgVillage { flex: 1; min-height: 0; overflow: auto; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
+#rpgScreen button, #rpgScreen summary { touch-action: manipulation; }
 .rpg-sys-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; margin-top: 8px; }
 .rpg-sys-date { align-self: center; font-weight: 600; font-size: 15px; margin-right: 8px; color: #e4c58b; }
 .rpg-sys { min-height: 48px; padding: 6px 16px; border: 1px solid #6e7c73; border-radius: 6px; background: #293b3e; color: #e4e6db; font-size: 14px; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
@@ -11346,6 +11347,13 @@ globalThis.__wohForage = { context: forageContext, fauna: () => fauna, FA: () =>
     if (open) { resume = !!clock.playing; if (resume) clockSetPlaying(false); $('rpgToast').hidden = true; selectTab(want || tab); $('rpgTab-' + tab).focus({ preventScroll: true }); }
     else { showLife(false); if (resume && !clock.playing) clockSetPlaying(true); resume = false; }
   }
+  // iOS では、タップ中に指がわずかに動くと click が出ないことがある。指を離した瞬間にボタンを押す（20px 以内の揺れはタップ。動かした分はスクロール）
+  { let ts = null, lastTap = 0;
+    screen.addEventListener('touchstart', e => { const t = e.changedTouches[0]; ts = { id: t.identifier, x: t.clientX, y: t.clientY, el: e.target.closest ? e.target.closest('button, summary') : null }; }, { passive: true });
+    screen.addEventListener('touchmove', e => { if (ts) { const t = [...e.changedTouches].find(c => c.identifier === ts.id); if (t && Math.hypot(t.clientX - ts.x, t.clientY - ts.y) > 20) ts = null; } }, { passive: true });
+    screen.addEventListener('touchend', e => { if (!ts) return; const t = [...e.changedTouches].find(c => c.identifier === ts.id), s0 = ts; ts = null; if (!t || !s0.el || s0.el.disabled) return;
+      if (Math.hypot(t.clientX - s0.x, t.clientY - s0.y) > 20) return; if (e.cancelable) e.preventDefault(); lastTap = Date.now(); s0.el.click(); }, { passive: false });
+    screen.addEventListener('click', e => { if (e.isTrusted && Date.now() - lastTap < 800) { e.stopImmediatePropagation(); e.preventDefault(); } }, true); }
   $('rpgClose').onclick = () => setOpen(false);
   for (const k of TABS) $('rpgTab-' + k).onclick = () => selectTab(k);
   $('rpgCategories').onclick = e => { const b = e.target.closest('[data-category]'); if (b) { category = b.dataset.category; $('rpgItemGrid').scrollTop = 0; renderInventory(); } };
@@ -11434,19 +11442,19 @@ globalThis.__wohForage = { context: forageContext, fauna: () => fauna, FA: () =>
   // ボタン
   q('hbMap').addEventListener('click', () => click('viewMode'));
   q('hbInfo').addEventListener('click', () => { click('btnInfo'); q('hbInfo').classList.toggle('on', q('info').classList.contains('show')); });
-  q('hbMenu').addEventListener('click', () => { if (globalThis.__wohRpgMenu) __wohRpgMenu.open('inventory'); else click('btnMenu'); });
-  q('hbUi').addEventListener('click', () => { const off = document.body.classList.toggle('hud-off'); q('hbUi').querySelector('span').textContent = off ? 'UI表示' : 'UI非表示'; q('hbUi').innerHTML = svg(off ? 'eye' : 'eyeoff') + '<span>' + (off ? 'UI表示' : 'UI非表示') + '</span>'; });
-  q('mzIn').addEventListener('click', () => { if (globalThis.__wohMapZoomBy) __wohMapZoomBy(+1); });
-  q('mzOut').addEventListener('click', () => { if (globalThis.__wohMapZoomBy) __wohMapZoomBy(-1); });
-  q('mzView').addEventListener('click', () => click('fgView'));
+  bindTap(q('hbMenu'), () => { if (globalThis.__wohRpgMenu) __wohRpgMenu.open('inventory'); else click('btnMenu'); });
+  bindTap(q('hbUi'), () => { const off = document.body.classList.toggle('hud-off'); q('hbUi').querySelector('span').textContent = off ? 'UI表示' : 'UI非表示'; q('hbUi').innerHTML = svg(off ? 'eye' : 'eyeoff') + '<span>' + (off ? 'UI表示' : 'UI非表示') + '</span>'; });
+  bindTap(q('mzIn'), () => { if (globalThis.__wohMapZoomBy) __wohMapZoomBy(+1); });
+  bindTap(q('mzOut'), () => { if (globalThis.__wohMapZoomBy) __wohMapZoomBy(-1); });
+  bindTap(q('mzView'), () => click('fgView'));
   q('hudDate').addEventListener('click', () => click('tDate'));
-  q('hudGoal').addEventListener('click', () => { if (globalThis.__wohRpgMenu) __wohRpgMenu.open('missions'); });
+  bindTap(q('hudGoal'), () => { if (globalThis.__wohRpgMenu) __wohRpgMenu.open('missions'); });
   let hmode = 'food';
   const setMode = m => { hmode = m; q('hmFood').classList.toggle('on', m === 'food'); q('hmMat').classList.toggle('on', m === 'mat'); q('hmWat').classList.toggle('on', m === 'wat'); q('hmHunt').classList.toggle('on', m === 'hunt'); };
-  q('hmHunt').addEventListener('click', () => setMode('hunt'));
-  q('hmFood').addEventListener('click', () => setMode('food')); q('hmMat').addEventListener('click', () => setMode('mat')); q('hmWat').addEventListener('click', () => setMode('wat'));
+  bindTap(q('hmHunt'), () => setMode('hunt'));
+  bindTap(q('hmFood'), () => setMode('food')); bindTap(q('hmMat'), () => setMode('mat')); bindTap(q('hmWat'), () => setMode('wat'));
   let nearNpc = null;
-  q('hudTalk').addEventListener('click', () => { if (nearNpc !== null && globalThis.__wohTalk) { __wohTalk.open(nearNpc); return; } if (hmode === 'wat') { forageAct('drink'); return; } if (hmode === 'hunt') { forageHunt(); return; } click(hmode === 'food' ? 'fgFood' : 'fgMat'); });
+  bindTap(q('hudTalk'), () => { if (nearNpc !== null && globalThis.__wohTalk) { __wohTalk.open(nearNpc); return; } if (hmode === 'wat') { forageAct('drink'); return; } if (hmode === 'hunt') { forageHunt(); return; } click(hmode === 'food' ? 'fgFood' : 'fgMat'); });
   q('hudHot').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return; const k = b.dataset.hot;
     if (k === 'bag') click('fgBag');
