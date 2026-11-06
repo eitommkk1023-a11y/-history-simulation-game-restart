@@ -209,7 +209,9 @@
       m.sea = { ...sea, ...wm }; // for the HUD
       m.group.rotation.set(wm.pitchDeg * DEG, -st.psi, (-st.heelDeg + wm.rollDeg) * DEG); m.group.position.y += wm.heaveM;
       if (m.furn && m.loadRef !== (rec.massItems ?? null)) { m.loadRef = rec.massItems ?? null; m.furn(); Ship.updateFurnishingsVisibility(m); } // stores follow the real load
-      Ship.updateShipObject(m, { leeSign: Math.sign(rec.vessel.apparentWind(env).y) || 1 }); syncFigures(m, rec); if (m.crewFigs?.length) Ship.updateCrewFigures(m, null); if (m.setDetail) m.setDetail(THREE_ && cp.camera.position.distanceTo(m.group.position) > 400 ? 2 : cp.camera.position.distanceTo(m.group.position) > 120 ? 1 : 0);
+      { const aw = rec.vessel.apparentWind(env), sl = rec.vessel.sails, dep = sl.map((x) => x.deployed).join(','); if (m.lastDep !== undefined && m.lastDep !== dep) m.reefUntil = performance.now() + 1500; m.lastDep = dep;
+        m.sailsMoving = sl.some((x) => x.targetTrimDeg !== undefined && Math.abs(x.targetTrimDeg - x.trimDeg) > 0.4) || performance.now() < (m.reefUntil || 0); // hands are working the sails
+        Ship.updateShipObject(m, { leeSign: Math.sign(aw.y) || 1, aw, time: simT + performance.now() / 1000 }); } syncFigures(m, rec); if (m.crewFigs?.length) Ship.updateCrewFigures(m, null); if (m.setDetail) m.setDetail(THREE_ && cp.camera.position.distanceTo(m.group.position) > 400 ? 2 : cp.camera.position.distanceTo(m.group.position) > 120 ? 1 : 0);
     }
     for (const id of [...meshes.keys()]) if (!fleet.has(id)) { disposeMesh(meshes.get(id)); meshes.delete(id); }
   }

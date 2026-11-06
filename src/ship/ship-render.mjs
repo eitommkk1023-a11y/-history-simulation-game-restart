@@ -154,6 +154,9 @@ export function updateCrewFigures(obj, playerDeck = null) {
     const L = f.userData.limbs; if (L) { // walking swing while the hand is moving (same idea as the game's villagers)
       const last = f.userData.last, moving = last && (Math.abs(last.x - m.pos.x) + Math.abs(last.y - m.pos.y) > 1e-4 || last.deck !== m.pos.deck); f.userData.last = { x: m.pos.x, y: m.pos.y, deck: m.pos.deck };
       const ph = (performance.now() / 1000) * 5.5, sw = moving ? Math.sin(ph) * 0.7 : 0; L.legL.rotation.x = -sw; L.legR.rotation.x = sw; L.armL.rotation.x = sw; L.armR.rotation.x = -sw;
+      if (!moving && m.task === 'sail' && obj.sailsMoving) { // hauling on the braces / sheets: both arms reach up and pull down in turn
+        const h = (performance.now() / 1000) * 3.2; L.armL.rotation.x = -2.2 + 0.7 * Math.sin(h); L.armR.rotation.x = -2.2 + 0.7 * Math.sin(h + Math.PI); f.position.y += 0.03 * Math.abs(Math.sin(h));
+      }
       if (last && moving) { const dx = m.pos.y - last.y, dz = -(m.pos.x - last.x); if (Math.abs(dx) + Math.abs(dz) > 1e-5) f.rotation.y = Math.atan2(dx, dz); }
     }
   }

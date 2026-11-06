@@ -17951,6 +17951,9 @@ function updateCrewFigures(obj, playerDeck = null) {
     const L = f.userData.limbs; if (L) { // walking swing while the hand is moving (same idea as the game's villagers)
       const last = f.userData.last, moving = last && (Math.abs(last.x - m.pos.x) + Math.abs(last.y - m.pos.y) > 1e-4 || last.deck !== m.pos.deck); f.userData.last = { x: m.pos.x, y: m.pos.y, deck: m.pos.deck };
       const ph = (performance.now() / 1000) * 5.5, sw = moving ? Math.sin(ph) * 0.7 : 0; L.legL.rotation.x = -sw; L.legR.rotation.x = sw; L.armL.rotation.x = sw; L.armR.rotation.x = -sw;
+      if (!moving && m.task === 'sail' && obj.sailsMoving) { // hauling on the braces / sheets: both arms reach up and pull down in turn
+        const h = (performance.now() / 1000) * 3.2; L.armL.rotation.x = -2.2 + 0.7 * Math.sin(h); L.armR.rotation.x = -2.2 + 0.7 * Math.sin(h + Math.PI); f.position.y += 0.03 * Math.abs(Math.sin(h));
+      }
       if (last && moving) { const dx = m.pos.y - last.y, dz = -(m.pos.x - last.x); if (Math.abs(dx) + Math.abs(dz) > 1e-5) f.rotation.y = Math.atan2(dx, dz); }
     }
   }
@@ -18064,14 +18067,14 @@ function addPintaStructure(T, obj, design, vessel) {
     const H = s.mastHeight, base = P3(T, s.x, 0, 0.55), top = DECK_Z + H;
     const mast = new T.Mesh(new T.CylinderGeometry(0.1, 0.2, top - 0.55, 8), mat(T, 0x5a432a)); mast.position.copy(P3(T, s.x, 0, (top + 0.55) / 2)); inner.add(mast); obj.masts.push(mast);
     const pivot = new T.Group(); obj.masts.push(pivot); // masts list is hidden in cutaway view
-    let leftEnd, rightEnd;
+    let leftEnd, rightEnd, lateenCloth = null;
     if (s.shape === 'square') {
       const yardZ = DECK_Z + H * 0.82, w = s.yard * 0.92, h = s.areaM2 / w;
       pivot.position.copy(P3(T, s.x, 0, yardZ));
       const yard = new T.Mesh(new T.CylinderGeometry(0.06, 0.06, s.yard, 6), mat(T, 0x5a432a)); yard.rotation.x = Math.PI / 2; pivot.add(yard);
       const sg = new T.PlaneGeometry(w, h, 8, 5); sg.rotateY(Math.PI / 2); sg.translate(0, -h / 2 - 0.05, 0);
-      const pos = sg.attributes.position; for (let i = 0; i < pos.count; i++) { const zz = pos.getZ(i) / (w / 2), yy = (pos.getY(i) + 0.05) / h; pos.setX(i, 0.35 * (1 - zz * zz) * (-yy) * 0.6); } sg.computeVertexNormals();
-      const sail = new T.Mesh(sg, cloth); pivot.add(sail); obj.sails.push({ sail: s, pivot });
+      const pos = sg.attributes.position, zzA = new Float32Array(pos.count), yyA = new Float32Array(pos.count); for (let i = 0; i < pos.count; i++) { const zz = pos.getZ(i) / (w / 2), yy = (pos.getY(i) + 0.05) / h; zzA[i] = zz; yyA[i] = yy; pos.setX(i, 0.35 * (1 - zz * zz) * (-yy) * 0.6); } sg.computeVertexNormals();
+      const sail = new T.Mesh(sg, cloth); pivot.add(sail); obj.sails.push({ sail: s, pivot, cloth: { geo: sg, kind: 'square', zz: zzA, yy: yyA } });
       leftEnd = new T.Vector3(0, 0, s.yard / 2); rightEnd = new T.Vector3(0, 0, -s.yard / 2);
     } else { // lateen: long yard slanting up and aft, triangular sail; scaled to the parameter area
       const tack = new T.Vector3(0, 0, 0), head = new T.Vector3(0, 1, 1.9), clew = new T.Vector3(0, 0, 2.2);
@@ -18079,12 +18082,16 @@ function addPintaStructure(T, obj, design, vessel) {
       const f = s.yard / len; // keep the research-style yard length: stretch the triangle so the yard is `yard` long, then rescale the area back
       const sx = Math.min(1.3, Math.max(0.7, f));
       const A = new T.Vector3(0, 0, -0.33 * k * 2.9 * sx), B = new T.Vector3(0, 3.2 * k * 0.72 * sx, 1.9 * k * 1.2 * sx), C = new T.Vector3(0, 0, 2.2 * k * 1.2 * sx);
-      const g = new T.BufferGeometry(); g.setAttribute('position', new T.BufferAttribute(new Float32Array([A.x, A.y, A.z, B.x, B.y, B.z, C.x, C.y, C.z]), 3)); g.setIndex([0, 1, 2]); g.computeVertexNormals();
+      // the triangle is subdivided so the cloth can belly and flutter: vertex (i, j) = A + (B-A) i/n + (C-A) j/n, i + j <= n
+      const NS = 6, verts = [], bary = [], idx = [], at = new Map();
+      for (let i = 0; i <= NS; i++) for (let j = 0; i + j <= NS; j++) { at.set(i * 100 + j, verts.length / 3); const q = A.clone().addScaledVector(B.clone().sub(A), i / NS).addScaledVector(C.clone().sub(A), j / NS); verts.push(q.x, q.y, q.z); bary.push(1 - (i + j) / NS, i / NS, j / NS); }
+      for (let i = 0; i < NS; i++) for (let j = 0; i + j < NS; j++) { idx.push(at.get(i * 100 + j), at.get((i + 1) * 100 + j), at.get(i * 100 + j + 1)); if (i + j + 1 < NS) idx.push(at.get((i + 1) * 100 + j), at.get((i + 1) * 100 + j + 1), at.get(i * 100 + j + 1)); }
+      const g = new T.BufferGeometry(); g.setAttribute('position', new T.BufferAttribute(new Float32Array(verts), 3)); g.setIndex(idx); g.computeVertexNormals();
       pivot.position.copy(P3(T, s.x, 0, DECK_Z + 1.0));
-      pivot.add(new T.Mesh(g, cloth));
+      pivot.add(new T.Mesh(g, cloth)); lateenCloth = { geo: g, kind: 'lateen', bary: new Float32Array(bary) };
       const yardLen = A.distanceTo(B), yard = new T.Mesh(new T.CylinderGeometry(0.06, 0.05, yardLen, 6), mat(T, 0x5a432a));
       yard.position.copy(A.clone().add(B).multiplyScalar(0.5)); yard.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), B.clone().sub(A).normalize()); pivot.add(yard);
-      obj.sails.push({ sail: s, pivot }); leftEnd = B; rightEnd = A;
+      obj.sails.push({ sail: s, pivot, cloth: lateenCloth }); leftEnd = B; rightEnd = A;
     }
     inner.add(pivot);
     // Standing rigging (level D): shrouds from the masthead to the hull side, stays fore and aft. Running rigging: halyard and braces/sheets.
@@ -18102,7 +18109,23 @@ function addPintaStructure(T, obj, design, vessel) {
     for (const r of obj.rigDynamic) { for (const [end, deck] of [[r.a, r.deckL], [r.b, r.deckR]]) { tmp.copy(end).applyEuler(r.pivot.rotation).multiply(r.pivot.scale).add(r.pivot.position); a[o++] = tmp.x; a[o++] = tmp.y; a[o++] = tmp.z; a[o++] = deck.x; a[o++] = deck.y; a[o++] = deck.z; } }
     dyn.geometry.attributes.position.needsUpdate = true;
     if (obj.rudder) obj.rudder.rotation.y = vessel.state.rudderDeg * DEG;
-    const lee = hint.leeSign ?? 1; for (const { pivot } of obj.sails) pivot.scale.x = lee; // sail bellies toward the lee side
+    const lee = hint.leeSign ?? 1, t = hint.time ?? performance.now() / 1000, aw = hint.aw;
+    for (const { sail, pivot, cloth: cl } of obj.sails) {
+      pivot.scale.x = lee; // sail bellies toward the lee side
+      if (!cl) continue;
+      // Billow and flutter from the apparent wind (level D): full cloth belly in proportion to the sail force, flapping (luffing) when the wind lies along the sail
+      let fill = 0.6, luff = 0, gust = 0.5;
+      if (aw) {
+        const sp = Math.hypot(aw.x, aw.y);
+        if (sp > 1e-6) { const th = sail.trimDeg * DEG, n = [Math.sin(th), Math.cos(th)], sN = (aw.x * n[0] + aw.y * n[1]) / sp; fill = Math.abs(Math.tanh(sail.cnSlope * sN / sail.cnMax)); luff = 1 - Math.min(1, Math.abs(sN) / 0.22); gust = Math.min(1, 0.25 + sp / 10); } else { fill = 0; luff = 0.2; gust = 0.2; }
+      }
+      if (sail.deployed < 0.05) continue;
+      const belly = (0.2 + 0.8 * fill) * (1 - 0.6 * luff), flap = luff * (0.3 + 0.7 * gust) + 0.04 * gust, ph = t * (7 + 3 * gust);
+      const pos = cl.geo.attributes.position;
+      if (cl.kind === 'square') for (let i = 0; i < pos.count; i++) { const zz = cl.zz[i], yy = cl.yy[i]; pos.setX(i, 1.0 * belly * 0.35 * (1 - zz * zz) * (-yy) + flap * 0.26 * Math.sin(ph + yy * 9 + zz * 5) * (-yy) * (0.4 + 0.6 * Math.abs(zz))); }
+      else for (let i = 0; i < pos.count; i++) { const u = cl.bary[i * 3], v = cl.bary[i * 3 + 1], w2 = cl.bary[i * 3 + 2], bump = 27 * u * v * w2, edge = 1 - u; pos.setX(i, 1.4 * belly * bump + flap * 0.22 * Math.sin(ph + v * 8 + w2 * 6) * (0.3 + 0.7 * edge) * (v + w2)); }
+      pos.needsUpdate = true; cl.geo.computeVertexNormals();
+    }
   });
   // Scale references: a barrel by the hatch (the person figure is added by the host page).
   { const barrel = new T.Mesh(new T.CylinderGeometry(0.28, 0.28, 0.9, 12), mat(T, 0x7a5a32)); barrel.position.copy(P3(T, 9.6, -1.1, DECK_Z + 0.45)); structure.add(barrel); }
@@ -18549,7 +18572,9 @@ const Ship = Object.assign({}, M_sea_state, M_hull_geometry, M_mass, M_hydrostat
       m.sea = { ...sea, ...wm }; // for the HUD
       m.group.rotation.set(wm.pitchDeg * DEG, -st.psi, (-st.heelDeg + wm.rollDeg) * DEG); m.group.position.y += wm.heaveM;
       if (m.furn && m.loadRef !== (rec.massItems ?? null)) { m.loadRef = rec.massItems ?? null; m.furn(); Ship.updateFurnishingsVisibility(m); } // stores follow the real load
-      Ship.updateShipObject(m, { leeSign: Math.sign(rec.vessel.apparentWind(env).y) || 1 }); syncFigures(m, rec); if (m.crewFigs?.length) Ship.updateCrewFigures(m, null); if (m.setDetail) m.setDetail(THREE_ && cp.camera.position.distanceTo(m.group.position) > 400 ? 2 : cp.camera.position.distanceTo(m.group.position) > 120 ? 1 : 0);
+      { const aw = rec.vessel.apparentWind(env), sl = rec.vessel.sails, dep = sl.map((x) => x.deployed).join(','); if (m.lastDep !== undefined && m.lastDep !== dep) m.reefUntil = performance.now() + 1500; m.lastDep = dep;
+        m.sailsMoving = sl.some((x) => x.targetTrimDeg !== undefined && Math.abs(x.targetTrimDeg - x.trimDeg) > 0.4) || performance.now() < (m.reefUntil || 0); // hands are working the sails
+        Ship.updateShipObject(m, { leeSign: Math.sign(aw.y) || 1, aw, time: simT + performance.now() / 1000 }); } syncFigures(m, rec); if (m.crewFigs?.length) Ship.updateCrewFigures(m, null); if (m.setDetail) m.setDetail(THREE_ && cp.camera.position.distanceTo(m.group.position) > 400 ? 2 : cp.camera.position.distanceTo(m.group.position) > 120 ? 1 : 0);
     }
     for (const id of [...meshes.keys()]) if (!fleet.has(id)) { disposeMesh(meshes.get(id)); meshes.delete(id); }
   }
