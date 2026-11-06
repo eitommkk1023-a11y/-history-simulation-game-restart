@@ -1,0 +1,8 @@
+{
+  "version": 4,
+  "htmlSha256": "631aaa6347a870e2a6e4cfbdc1a393e0a0d1cc600fa4ba2ecd7a94456ba615ab",
+  "htmlBytes": 1255348,
+  "unitTests": 114,
+  "browserChecks": 30,
+  "iOSHardwareTestedByAgent": false
+}
