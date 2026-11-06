@@ -8,5 +8,5 @@ export const HORSE_COATS=Object.freeze([
  {name:'河原毛',body:[.59,.48,.29],dark:[.09,.075,.055]},
  {name:'濃い栗毛',body:[.34,.13,.075],dark:[.20,.073,.032]},
 ]);
-export function horseRandom(id,seed,channel){let h=(seed>>>0)^Math.imul(channel,1597334677);for(const c of String(id))h=Math.imul(h^c.charCodeAt(0),16777619);h=Math.imul(h^(h>>>13),1274126177);return ((h^(h>>>16))>>>0)/4294967295;}
+export function horseRandom(id,seed,channel){let h=(seed>>>0)^Math.imul(channel,1597334677);for(const c of String(id))h=Math.imul(h^c.charCodeAt(0),16777619);h=Math.imul(h^(h>>>13),1274126177);return ((h^(h>>>16))>>>0)/4294967296;}
 export function horseIdentity(id,seed=71031){const r=c=>horseRandom(id,seed,c),coatIndex=Math.floor(r(1)*HORSE_COATS.length),athletic=r(20),endurance=r(21);return {id:String(id),seed,coatIndex,coat:HORSE_COATS[coatIndex],blaze:r(2)>.57,socks:Math.floor(r(3)*16),scale:.96+r(4)*.08,stats:{speed:6.8+athletic*3.4,acceleration:1.25+r(22)*1.25,endurance:80+endurance*60,agility:.8+r(23)*.55},appearance:coatIndex+(r(2)>.57?8:0)+Math.floor(r(3)*16)*16};}

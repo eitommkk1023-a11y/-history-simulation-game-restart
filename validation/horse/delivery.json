@@ -1,0 +1,11 @@
+{
+  "html": {
+    "bytes": 1249643,
+    "sha256": "e80f3f325b00817e0111f4986bd515c1126f77acb22b03e77965c58c596d8dee"
+  },
+  "unitsPassed": 106,
+  "browserChecksPassed": 23,
+  "formalFilesChanged": false,
+  "standaloneNoExternalRequests": true,
+  "iOSHardwareTested": false
+}

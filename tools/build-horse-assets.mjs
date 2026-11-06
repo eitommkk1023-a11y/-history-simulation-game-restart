@@ -1,0 +1,7 @@
+import fs from 'node:fs';import {buildHorseModel} from '../prototypes/horse/model.mjs';import {horsePose,HORSE_BONES,HORSE_GAITS} from '../prototypes/horse/motion.mjs';
+const destination='assets/horse-source';fs.mkdirSync(destination,{recursive:true});const lods=[0,1,2].map(buildHorseModel),frames=48,width=64,height=256,data=new Float32Array(width*height*4),modes=['idle','walk','trot','canter'];
+for(let c=0;c<4;c++){for(let f=0;f<frames;f++){const p=horsePose(f/frames,modes[c]);data.set(p.matrices,(c*frames+f)*width*4);}}
+const asset={version:1,name:'woh-original-horse-v1',coordinates:'meters, X right, Y up, Z forward',license:'LicenseRef-World-of-History-Original',bones:HORSE_BONES,lods,animation:{width,height,frames,modes,data:Buffer.from(data.buffer).toString('base64')}};
+fs.writeFileSync(destination+'/horse.render.json',JSON.stringify(asset));
+const validation=lods.map(l=>{if(!l.positions.every(Number.isFinite)||!l.normals.every(Number.isFinite)||l.skin.some((v,i)=>i%4===2&&(v<0||v>1))||l.indices.some(v=>v<0||v>=l.vertices))throw Error('Invalid model');const bounds=[0,1,2].map(k=>[Math.min(...l.positions.filter((_,i)=>i%3===k)),Math.max(...l.positions.filter((_,i)=>i%3===k))]);return {lod:l.lod,triangles:l.triangles,vertices:l.vertices,bounds};});
+fs.writeFileSync('validation/horse/geometry.json',JSON.stringify({bones:HORSE_BONES.length,animationBytes:data.byteLength,lods:validation},null,2));console.log(JSON.stringify(validation));

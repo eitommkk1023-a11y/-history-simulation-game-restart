@@ -1,0 +1,399 @@
+{
+  "checks": [
+    "mount button mounts nearby horse",
+    "accelerates from trot to canter and brakes to stop",
+    "dismount places rider safely beside horse",
+    "blocked dismount keeps rider mounted",
+    "turning is bounded instead of instant reversal",
+    "gentle ramp tracks rendered ground and steep ramp stops horse",
+    "rendered terrain and collision sampler agree",
+    "GPU skinning matches CPU geometry for all four gaits",
+    "two fingers preserve movement while rotating camera",
+    "releasing joystick clears movement",
+    "hiding UI retains joystick and action buttons",
+    "controls fit without overlap at 667x375",
+    "controls fit without overlap at 844x390",
+    "controls fit without overlap at 1180x820",
+    "selected horse identity persists across reload",
+    "overview cannot move controlled horse",
+    "1 placed horses are submitted, not silently capped",
+    "100 placed horses are submitted, not silently capped",
+    "1000 placed horses are submitted, not silently capped",
+    "5000 placed horses are submitted, not silently capped",
+    "10000 placed horses are submitted, not silently capped",
+    "offscreen horses are removed from draw batches",
+    "no browser or shader errors"
+  ],
+  "layouts": [
+    {
+      "width": 667,
+      "height": 375,
+      "rects": {
+        "top": {
+          "x": 12,
+          "y": 7,
+          "right": 655,
+          "bottom": 43,
+          "width": 643,
+          "height": 36
+        },
+        "card": {
+          "x": 12,
+          "y": 55,
+          "right": 204,
+          "bottom": 143,
+          "width": 192,
+          "height": 88
+        },
+        "stick": {
+          "x": 26,
+          "y": 255,
+          "right": 134,
+          "bottom": 363,
+          "width": 108,
+          "height": 108
+        },
+        "pace": {
+          "x": 443,
+          "y": 305,
+          "right": 503,
+          "bottom": 361,
+          "width": 60,
+          "height": 56
+        },
+        "canter": {
+          "x": 513,
+          "y": 305,
+          "right": 573,
+          "bottom": 361,
+          "width": 60,
+          "height": 56
+        },
+        "mount": {
+          "x": 583,
+          "y": 297,
+          "right": 647,
+          "bottom": 361,
+          "width": 64,
+          "height": 64
+        }
+      }
+    },
+    {
+      "width": 844,
+      "height": 390,
+      "rects": {
+        "top": {
+          "x": 12,
+          "y": 7,
+          "right": 832,
+          "bottom": 43,
+          "width": 820,
+          "height": 36
+        },
+        "card": {
+          "x": 12,
+          "y": 55,
+          "right": 204,
+          "bottom": 143,
+          "width": 192,
+          "height": 88
+        },
+        "stick": {
+          "x": 26,
+          "y": 270,
+          "right": 134,
+          "bottom": 378,
+          "width": 108,
+          "height": 108
+        },
+        "pace": {
+          "x": 620,
+          "y": 320,
+          "right": 680,
+          "bottom": 376,
+          "width": 60,
+          "height": 56
+        },
+        "canter": {
+          "x": 690,
+          "y": 320,
+          "right": 750,
+          "bottom": 376,
+          "width": 60,
+          "height": 56
+        },
+        "mount": {
+          "x": 760,
+          "y": 312,
+          "right": 824,
+          "bottom": 376,
+          "width": 64,
+          "height": 64
+        }
+      }
+    },
+    {
+      "width": 1180,
+      "height": 820,
+      "rects": {
+        "top": {
+          "x": 12,
+          "y": 10,
+          "right": 1168,
+          "bottom": 52,
+          "width": 1156,
+          "height": 42
+        },
+        "card": {
+          "x": 12,
+          "y": 65,
+          "right": 234,
+          "bottom": 164,
+          "width": 222,
+          "height": 99
+        },
+        "stick": {
+          "x": 26,
+          "y": 678,
+          "right": 148,
+          "bottom": 800,
+          "width": 122,
+          "height": 122
+        },
+        "pace": {
+          "x": 932,
+          "y": 736,
+          "right": 998,
+          "bottom": 798,
+          "width": 66,
+          "height": 62
+        },
+        "canter": {
+          "x": 1010,
+          "y": 736,
+          "right": 1076,
+          "bottom": 798,
+          "width": 66,
+          "height": 62
+        },
+        "mount": {
+          "x": 1088,
+          "y": 726,
+          "right": 1160,
+          "bottom": 798,
+          "width": 72,
+          "height": 72
+        }
+      }
+    }
+  ],
+  "skinComparison": [
+    {
+      "mode": "idle",
+      "xor": 0,
+      "union": 8279,
+      "fraction": 0
+    },
+    {
+      "mode": "walk",
+      "xor": 0,
+      "union": 8127,
+      "fraction": 0
+    },
+    {
+      "mode": "trot",
+      "xor": 0,
+      "union": 8243,
+      "fraction": 0
+    },
+    {
+      "mode": "canter",
+      "xor": 0,
+      "union": 8561,
+      "fraction": 0
+    }
+  ],
+  "benchmark": [
+    {
+      "count": 1,
+      "durationMs": 5067.199999999255,
+      "frames": 170,
+      "fps": 33.66403295114755,
+      "p50FrameMs": 16.700000000000728,
+      "p95FrameMs": 66.60000000000036,
+      "metrics": {
+        "placed": 1,
+        "submitted": 1,
+        "culled": 0,
+        "lods": [
+          1,
+          0,
+          0
+        ],
+        "triangles": 2132,
+        "horseDrawCalls": 1
+      },
+      "totalRender": {
+        "frame": 215,
+        "calls": 27,
+        "triangles": 13342,
+        "points": 0,
+        "lines": 14
+      },
+      "bufferEstimateBytes": 2663232,
+      "heapBytes": 16798327,
+      "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    },
+    {
+      "count": 100,
+      "durationMs": 5173.5,
+      "frames": 31,
+      "fps": 6.0589476975998755,
+      "p50FrameMs": 166.60000000000036,
+      "p95FrameMs": 316.6999999999989,
+      "metrics": {
+        "placed": 100,
+        "submitted": 100,
+        "culled": 0,
+        "lods": [
+          1,
+          99,
+          0
+        ],
+        "triangles": 107468,
+        "horseDrawCalls": 2
+      },
+      "totalRender": {
+        "frame": 259,
+        "calls": 28,
+        "triangles": 118678,
+        "points": 0,
+        "lines": 14
+      },
+      "bufferEstimateBytes": 2663232,
+      "heapBytes": 18350620,
+      "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    },
+    {
+      "count": 1000,
+      "durationMs": 5009.899999999441,
+      "frames": 20,
+      "fps": 4.081715953386802,
+      "p50FrameMs": 250.10000000000218,
+      "p95FrameMs": 550,
+      "metrics": {
+        "placed": 1000,
+        "submitted": 1000,
+        "culled": 0,
+        "lods": [
+          1,
+          0,
+          999
+        ],
+        "triangles": 175958,
+        "horseDrawCalls": 2
+      },
+      "totalRender": {
+        "frame": 287,
+        "calls": 29,
+        "triangles": 187180,
+        "points": 0,
+        "lines": 14
+      },
+      "bufferEstimateBytes": 2663232,
+      "heapBytes": 12090968,
+      "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    },
+    {
+      "count": 5000,
+      "durationMs": 5845.9000000003725,
+      "frames": 4,
+      "fps": 0.8989168052496743,
+      "p50FrameMs": 1116.6000000000022,
+      "p95FrameMs": 1133.2999999999993,
+      "metrics": {
+        "placed": 5000,
+        "submitted": 5000,
+        "culled": 0,
+        "lods": [
+          1,
+          0,
+          4999
+        ],
+        "triangles": 871958,
+        "horseDrawCalls": 2
+      },
+      "totalRender": {
+        "frame": 297,
+        "calls": 30,
+        "triangles": 883192,
+        "points": 0,
+        "lines": 14
+      },
+      "bufferEstimateBytes": 2663232,
+      "heapBytes": 11443515,
+      "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    },
+    {
+      "count": 10000,
+      "durationMs": 8103.399999999441,
+      "frames": 3,
+      "fps": 0.4009087264466123,
+      "p50FrameMs": 2133.300000000003,
+      "p95FrameMs": 4266.5,
+      "metrics": {
+        "placed": 10000,
+        "submitted": 10000,
+        "culled": 0,
+        "lods": [
+          1,
+          0,
+          9999
+        ],
+        "triangles": 1741958,
+        "horseDrawCalls": 2
+      },
+      "totalRender": {
+        "frame": 307,
+        "calls": 30,
+        "triangles": 1753192,
+        "points": 0,
+        "lines": 14
+      },
+      "bufferEstimateBytes": 2663232,
+      "heapBytes": 12095096,
+      "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+    }
+  ],
+  "errors": [],
+  "travel": {
+    "trot": {
+      "z": 14.351006006093082,
+      "speed": 4.691653182500507,
+      "mode": "trot"
+    },
+    "run": {
+      "z": 58.64156442502024,
+      "speed": 9.982240813830867,
+      "stamina": 74.6542877312153,
+      "mode": "canter"
+    },
+    "stopped": 0,
+    "active": false
+  },
+  "slope": {
+    "east": {
+      "x": 94.55706357843621,
+      "y": 2.183559536765414,
+      "ground": 2.183559536765414,
+      "blocked": false
+    },
+    "west": {
+      "x": -94.26529895822704,
+      "blocked": true
+    }
+  },
+  "groundError": 5.635347477550567e-7,
+  "environment": "Chromium / SwiftShader software renderer; not iPhone/iPad performance"
+}

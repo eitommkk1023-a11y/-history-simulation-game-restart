@@ -1,0 +1,43 @@
+{
+  "name": "woh-original-horse-v1",
+  "version": 1,
+  "owner": "World of History project",
+  "rights": "Original generated project asset. No third-party model or texture; project owner determines redistribution license.",
+  "license": "LicenseRef-World-of-History-Original",
+  "unit": "meter",
+  "up": "Y",
+  "forward": "Z",
+  "bones": 20,
+  "clips": [
+    "idle",
+    "walk",
+    "trot",
+    "canter"
+  ],
+  "lodTriangles": [
+    2132,
+    1064,
+    174
+  ],
+  "source": [
+    "prototypes/horse/model.mjs",
+    "prototypes/horse/motion.mjs",
+    "tools/build-horse-assets.mjs",
+    "tools/export-horse-glb.mjs"
+  ],
+  "export": "Direct GLB 2.0 exporter from the same runtime geometry and poses",
+  "blender": "4.3.2 mesh construction worked; evaluation/save stalled or crashed. No Blender export/source file is claimed.",
+  "validation": "Own structural/pose tests plus actual GPU-vs-CPU raster comparison, not external glTF Validator or game-dev CLI certification.",
+  "files": [
+    {
+      "path": "woh-horse.glb",
+      "bytes": 287880,
+      "sha256": "200ab431ad96fe763e71fe04d9cb7d373b235ddc8811136f09f447c1575911c9"
+    },
+    {
+      "path": "horse.render.json",
+      "bytes": 600887,
+      "sha256": "84f55818947fe2c5a4257f9b973b08eaa5c9d17d66d50773a9dac7defa41da03"
+    }
+  ]
+}
