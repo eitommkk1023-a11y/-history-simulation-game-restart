@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "htmlBytes": 1249643,
+  "htmlSha256": "525db0662c2eaaceaeebc2cddd0ea87dc4605dae2b959de1ab420b7aeb62909a",
+  "directionChecks": 64,
+  "touchChecks": 4,
+  "relatedUnitTests": 7,
+  "iOSHardwareTestedByAgent": false
+}

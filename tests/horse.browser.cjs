@@ -1,5 +1,5 @@
 const {chromium}=require('playwright'),fs=require('fs'),assert=require('node:assert/strict');
-const root=require('node:path').resolve(__dirname,'..'),output=root+'/validation/horse',html=fs.readFileSync(root+'/exports/World-of-History-horse-prototype-v1.html');
+const root=require('node:path').resolve(__dirname,'..'),output=root+'/validation/horse',html=fs.readFileSync(root+'/exports/World-of-History-horse-prototype-v2.html');
 (async()=>{const browser=await chromium.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox','--use-angle=swiftshader','--enable-unsafe-swiftshader']});const context=await browser.newContext({viewport:{width:844,height:390},deviceScaleFactor:1,hasTouch:true,isMobile:true}),page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});await page.route('http://woh.test/**',r=>r.fulfill({body:html,contentType:'text/html'}));await page.goto('http://woh.test/horse');await page.waitForFunction(()=>!!window.__horsePrototype);await page.evaluate(()=>__horsePrototype.pause());
 const results={checks:[],layouts:[],skinComparison:[],benchmark:[],errors};function ok(name,v){assert.ok(v,name);results.checks.push(name);}
 // Real controls, then deterministic simulation to avoid tying motion to headless frame rate.

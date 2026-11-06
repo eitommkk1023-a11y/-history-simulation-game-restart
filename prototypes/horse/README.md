@@ -1,4 +1,4 @@
-# World of History — 馬の試作01
+# World of History — 馬の試作02
 
 本作への統合前に、造形・乗降・歩法・大量表示を試す独立HTMLです。元のワールド、セーブDB、mainは変更しません。
 
@@ -13,9 +13,10 @@ node tools/build-horse-prototype.mjs
 node --test --test-isolation=none --test-reporter=spec tests/*.test.mjs
 node tests/horse.browser.cjs
 node tests/horse-visual.browser.cjs
+node tests/horse-input.browser.cjs
 ```
 
-開くファイル: `exports/World-of-History-horse-prototype-v1.html`。
+開くファイル: `exports/World-of-History-horse-prototype-v2.html`。
 ブラウザ試験はローカルHTMLをPlaywrightのHTTPルートから返す方式です。`/usr/bin/chromium` を使用します。
 
 ## 操作
@@ -51,7 +52,7 @@ Blender 4.3.2ではメッシュ構築後の評価・保存が停止／異常終�
 
 ## 検証結果と残る確認
 
-106件の単体テストと23項目のブラウザ検証が通過。GPUで変形した馬とCPU基準モデルは、停止・常歩・速歩・駈歩それぞれの固定ポーズで256×256のシルエット差分0画素でした。全フレーム・全機種の一致を保証する試験ではありません。
+試作01の初回検証では106件の単体テストと23項目のブラウザ検証が通過。GPUで変形した馬とCPU基準モデルは、停止・常歩・速歩・駈歩それぞれの固定ポーズで256×256のシルエット差分0画素でした。全フレーム・全機種の一致を保証する試験ではありません。
 
 乗降、塞がった場所の降車拒否、加減速、旋回制限、緩い坂・急斜面、地面の一致、複数指の独立入力、UI非表示時の操作維持、個体再読込、667×375・844×390・1180×820での配置、頭数・描画数・画面外除外を確認しました。実際の画像は `validation/horse/` に保存します。
 
@@ -62,3 +63,6 @@ Blender 4.3.2ではメッシュ構築後の評価・保存が停止／異常終�
 歩法・造形・騎乗姿勢はまだ試作です。実馬のモーションキャプチャは使用せず、手続き的な簡略動作です。歩法の切替は0.16秒で混ぜており、切替中・急旋回中の厳密な足固定は対象外です。
 
 参考資料: [Horse movement](https://horses.extension.org/horse-movement-and-way-of-going/)、[Canter](https://horses.extension.org/horse-canter/)、[USDF gait overview](https://www.usdf.org/EduDocs/The-Horse/HowManyGaitsAreThere_2007_Jan.pdf)、[British Dressage paces](https://www.britishdressage.co.uk/our-sport/all-about-dressage/paces-and-movements/basic-paces-walk-trot-and-canter/)。足順の設計参考に用い、モデル・画像は転載していません。
+
+## 試作02の修正
+カメラを基準にした左右方向が反転していたため、入力から進行方位への変換の符号を修正しました。徒歩・騎乗、カメラ4方位、スティック・WASD、前後左右64ケースと、ブラウザへのタッチ入力4ケースで実際の移動先を確認しました。関連単体テスト7件も通過しています。iPadで軽快だったとのユーザー報告はありますが、機種・FPSは未計測、iPhone 17も実機未確認です。初回のソフトウェア描画の測定を実機速度へ換算しません。

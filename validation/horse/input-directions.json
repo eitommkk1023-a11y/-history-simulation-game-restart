@@ -1,0 +1,476 @@
+{
+  "artifact": "exports/World-of-History-horse-prototype-v2.html",
+  "cases": [
+    {
+      "mounted": false,
+      "yaw": 0,
+      "type": "stick",
+      "direction": "left",
+      "alignedDistance": 6.3999999999999835
+    },
+    {
+      "mounted": false,
+      "yaw": 0,
+      "type": "stick",
+      "direction": "right",
+      "alignedDistance": 6.3999999999999835
+    },
+    {
+      "mounted": false,
+      "yaw": 0,
+      "type": "stick",
+      "direction": "forward",
+      "alignedDistance": 6.399999999994179
+    },
+    {
+      "mounted": false,
+      "yaw": 0,
+      "type": "stick",
+      "direction": "backward",
+      "alignedDistance": 6.399999999994179
+    },
+    {
+      "mounted": false,
+      "yaw": 0,
+      "type": "keyboard",
+      "direction": "left",
+      "alignedDistance": 6.3999999999999835
+    },
+    {
+      "mounted": false,
+      "yaw": 0,
+      "type": "keyboard",
+      "direction": "right",
+      "alignedDistance": 6.3999999999999835
+    },
+    {
+      "mounted": false,
+      "yaw": 0,
+      "type": "keyboard",
+      "direction": "forward",
+      "alignedDistance": 6.399999999994179
+    },
+    {
+      "mounted": false,
+      "yaw": 0,
+      "type": "keyboard",
+      "direction": "backward",
+      "alignedDistance": 6.399999999994179
+    },
+    {
+      "mounted": false,
+      "yaw": 1.5707963267948966,
+      "type": "stick",
+      "direction": "left",
+      "alignedDistance": 6.399999999994178
+    },
+    {
+      "mounted": false,
+      "yaw": 1.5707963267948966,
+      "type": "stick",
+      "direction": "right",
+      "alignedDistance": 6.399999999994178
+    },
+    {
+      "mounted": false,
+      "yaw": 1.5707963267948966,
+      "type": "stick",
+      "direction": "forward",
+      "alignedDistance": 6.399999999999984
+    },
+    {
+      "mounted": false,
+      "yaw": 1.5707963267948966,
+      "type": "stick",
+      "direction": "backward",
+      "alignedDistance": 6.399999999999984
+    },
+    {
+      "mounted": false,
+      "yaw": 1.5707963267948966,
+      "type": "keyboard",
+      "direction": "left",
+      "alignedDistance": 6.399999999994178
+    },
+    {
+      "mounted": false,
+      "yaw": 1.5707963267948966,
+      "type": "keyboard",
+      "direction": "right",
+      "alignedDistance": 6.399999999994178
+    },
+    {
+      "mounted": false,
+      "yaw": 1.5707963267948966,
+      "type": "keyboard",
+      "direction": "forward",
+      "alignedDistance": 6.399999999999984
+    },
+    {
+      "mounted": false,
+      "yaw": 1.5707963267948966,
+      "type": "keyboard",
+      "direction": "backward",
+      "alignedDistance": 6.399999999999984
+    },
+    {
+      "mounted": false,
+      "yaw": 3.141592653589793,
+      "type": "stick",
+      "direction": "left",
+      "alignedDistance": 6.399999999999985
+    },
+    {
+      "mounted": false,
+      "yaw": 3.141592653589793,
+      "type": "stick",
+      "direction": "right",
+      "alignedDistance": 6.399999999999985
+    },
+    {
+      "mounted": false,
+      "yaw": 3.141592653589793,
+      "type": "stick",
+      "direction": "forward",
+      "alignedDistance": 6.399999999994179
+    },
+    {
+      "mounted": false,
+      "yaw": 3.141592653589793,
+      "type": "stick",
+      "direction": "backward",
+      "alignedDistance": 6.399999999994179
+    },
+    {
+      "mounted": false,
+      "yaw": 3.141592653589793,
+      "type": "keyboard",
+      "direction": "left",
+      "alignedDistance": 6.399999999999985
+    },
+    {
+      "mounted": false,
+      "yaw": 3.141592653589793,
+      "type": "keyboard",
+      "direction": "right",
+      "alignedDistance": 6.399999999999985
+    },
+    {
+      "mounted": false,
+      "yaw": 3.141592653589793,
+      "type": "keyboard",
+      "direction": "forward",
+      "alignedDistance": 6.399999999994179
+    },
+    {
+      "mounted": false,
+      "yaw": 3.141592653589793,
+      "type": "keyboard",
+      "direction": "backward",
+      "alignedDistance": 6.399999999994179
+    },
+    {
+      "mounted": false,
+      "yaw": -1.5707963267948966,
+      "type": "stick",
+      "direction": "left",
+      "alignedDistance": 6.399999999994178
+    },
+    {
+      "mounted": false,
+      "yaw": -1.5707963267948966,
+      "type": "stick",
+      "direction": "right",
+      "alignedDistance": 6.399999999994178
+    },
+    {
+      "mounted": false,
+      "yaw": -1.5707963267948966,
+      "type": "stick",
+      "direction": "forward",
+      "alignedDistance": 6.399999999999984
+    },
+    {
+      "mounted": false,
+      "yaw": -1.5707963267948966,
+      "type": "stick",
+      "direction": "backward",
+      "alignedDistance": 6.399999999999984
+    },
+    {
+      "mounted": false,
+      "yaw": -1.5707963267948966,
+      "type": "keyboard",
+      "direction": "left",
+      "alignedDistance": 6.399999999994178
+    },
+    {
+      "mounted": false,
+      "yaw": -1.5707963267948966,
+      "type": "keyboard",
+      "direction": "right",
+      "alignedDistance": 6.399999999994178
+    },
+    {
+      "mounted": false,
+      "yaw": -1.5707963267948966,
+      "type": "keyboard",
+      "direction": "forward",
+      "alignedDistance": 6.399999999999984
+    },
+    {
+      "mounted": false,
+      "yaw": -1.5707963267948966,
+      "type": "keyboard",
+      "direction": "backward",
+      "alignedDistance": 6.399999999999984
+    },
+    {
+      "mounted": true,
+      "yaw": 0,
+      "type": "stick",
+      "direction": "left",
+      "alignedDistance": 5.444389664226591
+    },
+    {
+      "mounted": true,
+      "yaw": 0,
+      "type": "stick",
+      "direction": "right",
+      "alignedDistance": 5.444389664226591
+    },
+    {
+      "mounted": true,
+      "yaw": 0,
+      "type": "stick",
+      "direction": "forward",
+      "alignedDistance": 5.5570635784283695
+    },
+    {
+      "mounted": true,
+      "yaw": 0,
+      "type": "stick",
+      "direction": "backward",
+      "alignedDistance": 4.127261827451264
+    },
+    {
+      "mounted": true,
+      "yaw": 0,
+      "type": "keyboard",
+      "direction": "left",
+      "alignedDistance": 5.444389664226591
+    },
+    {
+      "mounted": true,
+      "yaw": 0,
+      "type": "keyboard",
+      "direction": "right",
+      "alignedDistance": 5.444389664226591
+    },
+    {
+      "mounted": true,
+      "yaw": 0,
+      "type": "keyboard",
+      "direction": "forward",
+      "alignedDistance": 5.5570635784283695
+    },
+    {
+      "mounted": true,
+      "yaw": 0,
+      "type": "keyboard",
+      "direction": "backward",
+      "alignedDistance": 4.127261827451264
+    },
+    {
+      "mounted": true,
+      "yaw": 1.5707963267948966,
+      "type": "stick",
+      "direction": "left",
+      "alignedDistance": 5.444389664222171
+    },
+    {
+      "mounted": true,
+      "yaw": 1.5707963267948966,
+      "type": "stick",
+      "direction": "right",
+      "alignedDistance": 5.444389664222171
+    },
+    {
+      "mounted": true,
+      "yaw": 1.5707963267948966,
+      "type": "stick",
+      "direction": "forward",
+      "alignedDistance": 5.557063578433019
+    },
+    {
+      "mounted": true,
+      "yaw": 1.5707963267948966,
+      "type": "stick",
+      "direction": "backward",
+      "alignedDistance": 4.127261827454543
+    },
+    {
+      "mounted": true,
+      "yaw": 1.5707963267948966,
+      "type": "keyboard",
+      "direction": "left",
+      "alignedDistance": 5.444389664222171
+    },
+    {
+      "mounted": true,
+      "yaw": 1.5707963267948966,
+      "type": "keyboard",
+      "direction": "right",
+      "alignedDistance": 5.444389664222171
+    },
+    {
+      "mounted": true,
+      "yaw": 1.5707963267948966,
+      "type": "keyboard",
+      "direction": "forward",
+      "alignedDistance": 5.557063578433019
+    },
+    {
+      "mounted": true,
+      "yaw": 1.5707963267948966,
+      "type": "keyboard",
+      "direction": "backward",
+      "alignedDistance": 4.127261827454543
+    },
+    {
+      "mounted": true,
+      "yaw": 3.141592653589793,
+      "type": "stick",
+      "direction": "left",
+      "alignedDistance": 5.444389664226593
+    },
+    {
+      "mounted": true,
+      "yaw": 3.141592653589793,
+      "type": "stick",
+      "direction": "right",
+      "alignedDistance": 5.444389664226593
+    },
+    {
+      "mounted": true,
+      "yaw": 3.141592653589793,
+      "type": "stick",
+      "direction": "forward",
+      "alignedDistance": 5.5570635784283695
+    },
+    {
+      "mounted": true,
+      "yaw": 3.141592653589793,
+      "type": "stick",
+      "direction": "backward",
+      "alignedDistance": 4.127261827451264
+    },
+    {
+      "mounted": true,
+      "yaw": 3.141592653589793,
+      "type": "keyboard",
+      "direction": "left",
+      "alignedDistance": 5.444389664226593
+    },
+    {
+      "mounted": true,
+      "yaw": 3.141592653589793,
+      "type": "keyboard",
+      "direction": "right",
+      "alignedDistance": 5.444389664226593
+    },
+    {
+      "mounted": true,
+      "yaw": 3.141592653589793,
+      "type": "keyboard",
+      "direction": "forward",
+      "alignedDistance": 5.5570635784283695
+    },
+    {
+      "mounted": true,
+      "yaw": 3.141592653589793,
+      "type": "keyboard",
+      "direction": "backward",
+      "alignedDistance": 4.127261827451264
+    },
+    {
+      "mounted": true,
+      "yaw": -1.5707963267948966,
+      "type": "stick",
+      "direction": "left",
+      "alignedDistance": 5.444389664222171
+    },
+    {
+      "mounted": true,
+      "yaw": -1.5707963267948966,
+      "type": "stick",
+      "direction": "right",
+      "alignedDistance": 5.444389664222171
+    },
+    {
+      "mounted": true,
+      "yaw": -1.5707963267948966,
+      "type": "stick",
+      "direction": "forward",
+      "alignedDistance": 5.557063578433019
+    },
+    {
+      "mounted": true,
+      "yaw": -1.5707963267948966,
+      "type": "stick",
+      "direction": "backward",
+      "alignedDistance": 4.127261827454544
+    },
+    {
+      "mounted": true,
+      "yaw": -1.5707963267948966,
+      "type": "keyboard",
+      "direction": "left",
+      "alignedDistance": 5.444389664222171
+    },
+    {
+      "mounted": true,
+      "yaw": -1.5707963267948966,
+      "type": "keyboard",
+      "direction": "right",
+      "alignedDistance": 5.444389664222171
+    },
+    {
+      "mounted": true,
+      "yaw": -1.5707963267948966,
+      "type": "keyboard",
+      "direction": "forward",
+      "alignedDistance": 5.557063578433019
+    },
+    {
+      "mounted": true,
+      "yaw": -1.5707963267948966,
+      "type": "keyboard",
+      "direction": "backward",
+      "alignedDistance": 4.127261827454544
+    }
+  ],
+  "touchCases": [
+    {
+      "mounted": false,
+      "direction": -1,
+      "alignedDistance": 5.555555555555557
+    },
+    {
+      "mounted": false,
+      "direction": 1,
+      "alignedDistance": 5.555555555555557
+    },
+    {
+      "mounted": true,
+      "direction": -1,
+      "alignedDistance": 4.764215119761244
+    },
+    {
+      "mounted": true,
+      "direction": 1,
+      "alignedDistance": 4.764215119761244
+    }
+  ],
+  "errors": []
+}
