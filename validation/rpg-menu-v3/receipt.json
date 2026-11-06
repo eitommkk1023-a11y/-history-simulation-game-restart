@@ -1,0 +1,36 @@
+{
+  "date": "2026-11-06",
+  "branch": "codex/prototype-rpg-menu-v1",
+  "baseCommit": "2f5491406e7026d85d886ab42e6ec04a9c31a4a0",
+  "modelCommit": "bc87d33f86994045d487e81f9e7b3e8f5eae540f",
+  "html": "exports/World-of-History-menu-prototype-v3.html",
+  "bytes": 1247543,
+  "sha256": "c85d2429498ac37fba615896a31554448d5f2fb7c2d5ae9dd65d44a93bc9b74b",
+  "protectedLocalFiles": {
+    "自然地理生成器.html": "8bfd03483d1a57f0780958232f282ed1a77c0298619f2ee1d45a0f671d57eb16",
+    "exports/World-of-History-development.html": "50a6f786eef5b641d0ec235f2111712d7acabd29e87542a75d802b2d993dd348",
+    "exports/World-of-History-menu-prototype-v2.html": "0b15ee619457068566530695c1327280bab60d3b355ec228714bd7d01e8d19b6"
+  },
+  "focusedModelTests": 5,
+  "browserChecks": 36,
+  "viewports": [
+    [
+      667,
+      375
+    ],
+    [
+      844,
+      390
+    ],
+    [
+      1180,
+      820
+    ]
+  ],
+  "browser": "Chromium 154.0.8037.57 / Linux / SwiftShader",
+  "node": "24.19.0",
+  "pageOrShaderErrors": [],
+  "officialDbCreated": false,
+  "actualIPhoneIPadSafari": "not tested",
+  "formalIntegration": false
+}

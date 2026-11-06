@@ -102,3 +102,23 @@
 }
 
 .rpg-missions .rpg-primary{margin-top:6px}
+
+/* Prototype03: visible equipment, large owned-item grid and direct sort choice. */
+#rpgPage-inventory>.rpg-meta{grid-template-columns:minmax(0,1fr) 108px auto auto}
+.rpg-sort{display:flex;min-width:0;height:44px}
+#rpgSort{width:100%;height:44px;min-height:44px;border:1px solid #526362;border-radius:5px;background:#1d3035;color:#ddd8c8;padding:0 6px;font:16px system-ui;touch-action:manipulation}
+.rpg-bag{gap:8px}
+.rpg-equipment{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;flex-shrink:0}
+.rpg-equip-slot{display:flex;align-items:center;gap:10px;min-height:70px;min-width:0;padding:9px 12px;border:1px solid #536964;border-radius:7px;background:#203339;color:#dddaca;text-align:left}
+.rpg-equip-slot.vacant{border-style:dashed;background:#17292f;color:#aabcb6}
+.rpg-equip-slot[aria-pressed=true]{border-color:#d2b47a;box-shadow:inset 0 0 0 1px #d2b47a66;background:#a98c4520}
+.rpg-equip-slot>svg{width:30px;height:30px;flex-shrink:0;color:#c9b887}
+.rpg-equip-copy{display:flex;flex-direction:column;min-width:0;gap:2px;flex:1}
+.rpg-equip-copy small{font-size:11px;color:#aab9b2}
+.rpg-equip-copy strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;font-weight:550}
+.rpg-equip-open{font-size:11px;color:#b5c2ba;flex-shrink:0}
+.rpg-equip-state{margin:0 0 8px;color:#d4bb87;font-size:12px;line-height:1.5}
+.rpg-item-grid{position:relative;align-content:stretch;grid-auto-rows:minmax(112px,1fr);flex:1;min-height:0}
+@media(max-height:500px){.rpg-equip-slot{min-height:62px;padding:7px 9px;gap:8px}.rpg-equip-slot>svg{width:26px;height:26px}.rpg-equip-copy strong{font-size:14px}.rpg-item-grid{grid-auto-rows:88px;align-content:start}.rpg-equip-state{margin-bottom:6px;font-size:11px}}
+@media(max-width:720px){#rpgPage-inventory>.rpg-meta{grid-template-columns:minmax(0,1fr) 104px auto}.rpg-equip-open{display:none}.rpg-equipment{gap:6px}}
+@media(orientation:portrait) and (max-width:590px){#rpgPage-inventory>.rpg-meta{grid-template-columns:minmax(0,1fr) 104px}#rpgWeight{display:none}.rpg-bag{min-height:290px}}

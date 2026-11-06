@@ -1,0 +1,377 @@
+{
+  "checks": [
+    "menu starts open and game is paused",
+    "two real equipment slots show body item and empty weapon",
+    "fullscreen 667x375 inventory",
+    "inventory 667 keeps large main grid and visible equipment/actions",
+    "fullscreen 667x375 map",
+    "map 667 keeps primary canvas",
+    "fullscreen 667x375 missions",
+    "fullscreen 844x390 inventory",
+    "inventory 844 keeps large main grid and visible equipment/actions",
+    "fullscreen 844x390 map",
+    "map 844 keeps primary canvas",
+    "fullscreen 844x390 missions",
+    "fullscreen 1180x820 inventory",
+    "inventory 1180 keeps large main grid and visible equipment/actions",
+    "fullscreen 1180x820 map",
+    "map 1180 keeps primary canvas",
+    "fullscreen 1180x820 missions",
+    "equipped slot opens its item across inventory category without auto unequipping",
+    "empty slot selects owned weapon without auto equip",
+    "equip synchronizes slot grid badge details and unchanged weight",
+    "unequip clears slot and grid badge while retaining owned item",
+    "total-weight choice sorts owned stacks without losing selection",
+    "name sort retains same owned item set",
+    "use updates owned count detail and total weight",
+    "mission tracking still updates prototype state",
+    "completed mission cannot be tracked",
+    "map uses loaded real generated world",
+    "world map pan and zoom still work",
+    "closing menu restores player movement",
+    "open menu freezes movement and jump",
+    "closing resumes interrupted jump",
+    "keyboard can reopen map page",
+    "official save database remains untouched",
+    "equipment count tracking and sort persist across reload",
+    "sort control reflects saved preference",
+    "no page or shader errors"
+  ],
+  "layouts": [
+    {
+      "width": 667,
+      "height": 375,
+      "inventory": {
+        "grid": {
+          "x": 8,
+          "y": 179,
+          "right": 477,
+          "bottom": 367,
+          "w": 469,
+          "h": 188,
+          "scroll": 469,
+          "client": 469
+        },
+        "equip": {
+          "x": 8,
+          "y": 109,
+          "right": 477,
+          "bottom": 171,
+          "w": 469,
+          "h": 62,
+          "scroll": 469,
+          "client": 469
+        },
+        "detail": {
+          "x": 487,
+          "y": 109,
+          "right": 659,
+          "bottom": 367,
+          "w": 172,
+          "h": 258,
+          "scroll": 171,
+          "client": 171
+        },
+        "action": {
+          "x": 496,
+          "y": 288,
+          "right": 651,
+          "bottom": 332,
+          "w": 155,
+          "h": 44,
+          "scroll": 153,
+          "client": 153
+        },
+        "sort": {
+          "x": 462.40625,
+          "y": 57,
+          "right": 566.40625,
+          "bottom": 101,
+          "w": 104,
+          "h": 44,
+          "scroll": 102,
+          "client": 102
+        },
+        "inventory": {
+          "w": 651
+        },
+        "bag": {
+          "w": 469
+        },
+        "equipment": [
+          {
+            "x": 8,
+            "y": 109,
+            "right": 239.5,
+            "bottom": 171,
+            "w": 231.5,
+            "h": 62
+          },
+          {
+            "x": 245.5,
+            "y": 109,
+            "right": 477,
+            "bottom": 171,
+            "w": 231.5,
+            "h": 62
+          }
+        ],
+        "items": [
+          {
+            "w": 110.5,
+            "h": 88
+          },
+          {
+            "w": 110.5,
+            "h": 88
+          },
+          {
+            "w": 110.5,
+            "h": 88
+          },
+          {
+            "w": 110.5,
+            "h": 88
+          }
+        ]
+      }
+    },
+    {
+      "width": 844,
+      "height": 390,
+      "inventory": {
+        "grid": {
+          "x": 8,
+          "y": 179,
+          "right": 594.171875,
+          "bottom": 382,
+          "w": 586.171875,
+          "h": 203,
+          "scroll": 586,
+          "client": 586
+        },
+        "equip": {
+          "x": 8,
+          "y": 109,
+          "right": 594.171875,
+          "bottom": 171,
+          "w": 586.171875,
+          "h": 62,
+          "scroll": 586,
+          "client": 586
+        },
+        "detail": {
+          "x": 604.171875,
+          "y": 109,
+          "right": 836,
+          "bottom": 382,
+          "w": 231.828125,
+          "h": 273,
+          "scroll": 231,
+          "client": 231
+        },
+        "action": {
+          "x": 613.171875,
+          "y": 288,
+          "right": 828,
+          "bottom": 332,
+          "w": 214.828125,
+          "h": 44,
+          "scroll": 213,
+          "client": 213
+        },
+        "sort": {
+          "x": 552,
+          "y": 57,
+          "right": 660,
+          "bottom": 101,
+          "w": 108,
+          "h": 44,
+          "scroll": 106,
+          "client": 106
+        },
+        "inventory": {
+          "w": 828
+        },
+        "bag": {
+          "w": 586.171875
+        },
+        "equipment": [
+          {
+            "x": 8,
+            "y": 109,
+            "right": 297.078125,
+            "bottom": 171,
+            "w": 289.078125,
+            "h": 62
+          },
+          {
+            "x": 305.078125,
+            "y": 109,
+            "right": 594.171875,
+            "bottom": 171,
+            "w": 289.09375,
+            "h": 62
+          }
+        ],
+        "items": [
+          {
+            "w": 139.78125,
+            "h": 88
+          },
+          {
+            "w": 139.796875,
+            "h": 88
+          },
+          {
+            "w": 139.796875,
+            "h": 88
+          },
+          {
+            "w": 139.796875,
+            "h": 88
+          }
+        ]
+      }
+    },
+    {
+      "width": 1180,
+      "height": 820,
+      "inventory": {
+        "grid": {
+          "x": 8,
+          "y": 187,
+          "right": 836.09375,
+          "bottom": 812,
+          "w": 828.09375,
+          "h": 625,
+          "scroll": 828,
+          "client": 828
+        },
+        "equip": {
+          "x": 8,
+          "y": 109,
+          "right": 836.09375,
+          "bottom": 179,
+          "w": 828.09375,
+          "h": 70,
+          "scroll": 828,
+          "client": 828
+        },
+        "detail": {
+          "x": 846.09375,
+          "y": 109,
+          "right": 1172,
+          "bottom": 812,
+          "w": 325.90625,
+          "h": 703,
+          "scroll": 325,
+          "client": 325
+        },
+        "action": {
+          "x": 859.09375,
+          "y": 310.5,
+          "right": 1160,
+          "bottom": 354.5,
+          "w": 300.90625,
+          "h": 44,
+          "scroll": 299,
+          "client": 299
+        },
+        "sort": {
+          "x": 888,
+          "y": 57,
+          "right": 996,
+          "bottom": 101,
+          "w": 108,
+          "h": 44,
+          "scroll": 106,
+          "client": 106
+        },
+        "inventory": {
+          "w": 1164
+        },
+        "bag": {
+          "w": 828.09375
+        },
+        "equipment": [
+          {
+            "x": 8,
+            "y": 109,
+            "right": 418.046875,
+            "bottom": 179,
+            "w": 410.046875,
+            "h": 70
+          },
+          {
+            "x": 426.046875,
+            "y": 109,
+            "right": 836.09375,
+            "bottom": 179,
+            "w": 410.046875,
+            "h": 70
+          }
+        ],
+        "items": [
+          {
+            "w": 158.609375,
+            "h": 150.25
+          },
+          {
+            "w": 158.625,
+            "h": 150.25
+          },
+          {
+            "w": 158.609375,
+            "h": 150.25
+          },
+          {
+            "w": 158.625,
+            "h": 150.25
+          }
+        ]
+      }
+    }
+  ],
+  "sorted": [
+    "wood",
+    "stone",
+    "ore",
+    "bread",
+    "water",
+    "tunic",
+    "knife",
+    "leather",
+    "rope",
+    "flint",
+    "bandage",
+    "herb"
+  ],
+  "persisted": {
+    "version": 1,
+    "counts": {
+      "knife": 1,
+      "tunic": 1,
+      "bread": 4,
+      "water": 2,
+      "bandage": 3,
+      "wood": 6,
+      "stone": 4,
+      "flint": 2,
+      "rope": 1,
+      "herb": 4,
+      "ore": 2,
+      "leather": 3
+    },
+    "equipment": {
+      "weapon": "knife",
+      "body": "tunic"
+    },
+    "tracked": "river",
+    "sortOrder": "name"
+  },
+  "databases": [
+    "geo-world-saves-prototype-rpg-menu-v1"
+  ],
+  "errors": []
+}
