@@ -19,3 +19,4 @@ export { createCrew, pintaRoster, pintaStations, WATCH_SECONDS } from './crew.mj
 export { CARGO_KINDS, cargoItem, withCargo } from './cargo.mjs';
 export { createAugust1492, SCENARIO } from './pinta-1492-scenario.mjs';
 export { planFurnishings, addFurnishings, updateFurnishingsVisibility } from './pinta-furnishings.mjs';
+export { createWindField, WIND_PARAMS, beaufort } from './wind-field.mjs';

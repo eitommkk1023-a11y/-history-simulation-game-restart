@@ -5,7 +5,7 @@
   'use strict';
   const DEG = Math.PI / 180, KEY_PREFIX = 'woh-ships-';
   const EVT = { captain_route_planned: '航路を決めた', captain_no_route: '', captain_tack: '帆の向きを替えた', captain_reef: '帆を絞った', captain_arriving: '目的地に近づいた', captain_arrived: '到着した', captain_replan: '浅瀬を避けて航路を引き直した', captain_cancelled: '航海をやめた', grounded: '座礁した', refloated: '離礁した', anchor_dropped: '錨を下ろした', anchor_raised: '錨を上げた', anchor_dragging: '錨が走っている', anchor_parted: '錨索が切れた' };
-  const dbg = {}; let savedShips = null, pendingBoard = null, pendingSince = 0, lastPlaced = null, uiHidden = false, dwell = 0, renderError = null, ladderSig = '', pickMode = false, destMarker = null, routeLine = null, cp, nat, THREE_, S = null, fleet = null, env = null, ref = null, ctl = {}, meshes = new Map(), boarded = null, speedX = 1, lastT = null, saveAcc = 0, trimAcc = 0, lastSeed = null;
+  const dbg = {}; let simT = 0, windField = null, savedShips = null, pendingBoard = null, pendingSince = 0, lastPlaced = null, uiHidden = false, dwell = 0, renderError = null, ladderSig = '', pickMode = false, destMarker = null, routeLine = null, cp, nat, THREE_, S = null, fleet = null, env = null, ref = null, ctl = {}, meshes = new Map(), boarded = null, speedX = 1, lastT = null, saveAcc = 0, trimAcc = 0, lastSeed = null;
   const REASON = { destination_too_shallow: 'そこは浅くて行けない', blocked: '回り込む道がない', search_limit: '遠すぎて航路を決められない' };
   const ui = {};
   const $ = (tag, props = {}, kids = []) => { const e = Object.assign(document.createElement(tag), props); for (const k of kids) e.append(k); return e; };
@@ -13,7 +13,7 @@
   const boot = setInterval(() => { cp = globalThis.__chunkPreview; nat = globalThis.__wohNative; THREE_ = globalThis.THREE; if (cp && nat?.scene && THREE_ && typeof Ship !== 'undefined') { clearInterval(boot); nat.renderer.localClippingEnabled = true; installSaveBridge(); buildHud(); patchRender(); patchWalker(); requestAnimationFrame(frame); } }, 500);
 
   // Read-only handles for tests and debugging.
-  globalThis.__wohShips = { dbg, get renderError() { return renderError && String(renderError.stack || renderError).slice(0, 400); }, mesh: (id) => meshes.get(id), Ship, get lastSeed() { return lastSeed; }, get fleet() { return fleet; }, get env() { return env; }, get ref() { return ref; }, get boarded() { return boarded; }, spawn: (d) => spawn(d), board: (id) => board(id), disembark: () => disembark() };
+  globalThis.__wohShips = { dbg, streaksObj: () => streaks, windInfo: (X, Y) => windField?.info(X, Y, 0), setSimT: (t) => { simT = t; }, get renderError() { return renderError && String(renderError.stack || renderError).slice(0, 400); }, mesh: (id) => meshes.get(id), Ship, get lastSeed() { return lastSeed; }, get fleet() { return fleet; }, get env() { return env; }, get ref() { return ref; }, get boarded() { return boarded; }, spawn: (d) => spawn(d), board: (id) => board(id), disembark: () => disembark() };
 
   /** The game renders inside its own frame, so ship meshes and the boarded player are placed right before each render. */
   function patchRender() {
@@ -21,8 +21,34 @@
     rd.render = function (sc, cam) { try { if (fleet && env && S === cp.state) { if (cp.view.overview) { if (sc === nat.scene) { syncOverview(); if (boarded) updateRoute(boarded); } } else if (sc === gameScene()) preRender(cam); } } catch (e) { renderError = e; /* never break the game's render */ } return orig(sc, cam); };
   }
   /** Just before every render: update the ships, and while aboard put the player on the deck and the orbit camera around the player. */
+  // ---------- wind made visible: foam streaks on the sea, drifting with the wind (more and longer as it freshens) ----------
+  const STREAKS = 300, SPAN = 55; let streaks = null, streakT = 0;
+  function updateStreaks() {
+    const now = performance.now(), dt = Math.min(0.1, (now - (streakT || now)) / 1000); streakT = now;
+    let focus = boarded && meshes.get(boarded), rec = boarded && fleet.get(boarded);
+    if (!focus) { let best = 300; for (const r of fleet.list()) { const q = meshes.get(r.id); if (!q) continue; const d = q.group.position.distanceTo(cp.camera.position); if (d < best) { best = d; focus = q; rec = fleet.get(r.id); } } }
+    if (!focus || !rec || focus.cutaway) { if (streaks) streaks.visible = false; return; }
+    if (!streaks) {
+      const geo = new THREE_.BufferGeometry(), pos = new Float32Array(STREAKS * 12), idx = [], off = new Float32Array(STREAKS * 2);
+      for (let i = 0; i < STREAKS; i++) { off[i * 2] = (Math.random() - 0.5) * SPAN * 2; off[i * 2 + 1] = (Math.random() - 0.5) * SPAN * 2; }
+      for (let i = 0; i < STREAKS; i++) idx.push(i * 4, i * 4 + 1, i * 4 + 2, i * 4 + 1, i * 4 + 3, i * 4 + 2);
+      geo.setAttribute('position', new THREE_.BufferAttribute(pos, 3)); geo.setIndex(idx); geo.userData.off = off;
+      streaks = new THREE_.Mesh(geo, new THREE_.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthWrite: false, side: 2 })); streaks.frustumCulled = false; streaks.renderOrder = 5; gameScene().add(streaks);
+    }
+    const w = windField.info(rec.vessel.state.X, rec.vessel.state.Y, 0), sp = w.speed;
+    if (w.beaufort < 2) { streaks.visible = false; return; }
+    const dx = w.x / (sp || 1), dz = -w.y / (sp || 1), len = Math.min(12, Math.max(1.5, sp * 0.7)), shown = Math.floor(STREAKS * Math.min(1, (w.beaufort - 1) / 6)), off = streaks.geometry.userData.off, pos = streaks.geometry.attributes.position.array, g = focus.group.position;
+    for (let i = 0; i < STREAKS; i++) {
+      off[i * 2] += dx * sp * 0.45 * dt; off[i * 2 + 1] += dz * sp * 0.45 * dt;
+      if (off[i * 2] > SPAN) off[i * 2] -= SPAN * 2; else if (off[i * 2] < -SPAN) off[i * 2] += SPAN * 2; if (off[i * 2 + 1] > SPAN) off[i * 2 + 1] -= SPAN * 2; else if (off[i * 2 + 1] < -SPAN) off[i * 2 + 1] += SPAN * 2;
+      const x = g.x + off[i * 2], z = g.z + off[i * 2 + 1], y = g.y + 0.35, k = i * 12, hw = 0.18 + len * 0.025, px = -dz * hw, pz = dx * hw;
+      pos[k] = x - px; pos[k + 1] = y; pos[k + 2] = z - pz; pos[k + 3] = x + px; pos[k + 4] = y; pos[k + 5] = z + pz;
+      pos[k + 6] = x + dx * len - px; pos[k + 7] = y; pos[k + 8] = z + dz * len - pz; pos[k + 9] = x + dx * len + px; pos[k + 10] = y; pos[k + 11] = z + dz * len + pz;
+    }
+    streaks.geometry.setDrawRange(0, shown * 6); streaks.geometry.attributes.position.needsUpdate = true; streaks.visible = shown > 0;
+  }
   function preRender(cam) {
-    syncMeshes();
+    syncMeshes(); try { updateStreaks(); } catch (_) { /* decoration only */ }
     if (!boarded || !fleet.has(boarded) || !meshes.has(boarded)) return;
     const mk = cp.character, w = deckPoint(meshes.get(boarded)), v = cp.view;
     mk.position.copy(w);
@@ -54,7 +80,7 @@
     window.__wohPlayerSave = () => {
       const p = orig ? orig() : null;
       if (!p || !fleet || !ref) return p;
-      try { return { ...p, ships: { fleet: fleet.serialize(), ref, ctl, boarded, seed: lastSeed } }; } catch (_) { return p; }
+      try { return { ...p, ships: { fleet: fleet.serialize(), ref, ctl, boarded, seed: lastSeed, simT } }; } catch (_) { return p; }
     };
     let held = nat.pendingPlayer;
     Object.defineProperty(nat, 'pendingPlayer', { configurable: true, enumerable: true, get: () => held, set: (v) => { held = v; if (v && typeof v === 'object') savedShips = { ships: v.ships ?? null }; } });
@@ -73,16 +99,20 @@
       let data;
       if (savedShips) { data = savedShips.ships && String(savedShips.ships.seed ?? lastSeed) === lastSeed ? savedShips.ships : null; savedShips = null; } // the game's own save was loaded: its ships (or none) win
       else { const raw = localStorage.getItem(KEY_PREFIX + lastSeed); data = raw && JSON.parse(raw); }
-      if (data?.fleet && data.ref) { const r = fleet.restore(data.fleet, { current: Ship.sampleDesigns }); ref = data.ref; ctl = data.ctl ?? {}; pendingBoard = data.boarded ?? null; pendingSince = performance.now(); makeEnv(); toast(`船 ${r.restored} 隻を読み込んだ` + (r.skipped.length ? `（古い船 ${r.skipped.length} 隻は読み込めず外した）` : '')); }
+      if (data?.fleet && data.ref) { const r = fleet.restore(data.fleet, { current: Ship.sampleDesigns }); ref = data.ref; ctl = data.ctl ?? {}; simT = data.simT ?? 0; pendingBoard = data.boarded ?? null; pendingSince = performance.now(); makeEnv(); toast(`船 ${r.restored} 隻を読み込んだ` + (r.skipped.length ? `（古い船 ${r.skipped.length} 隻は読み込めず外した）` : '')); }
     } catch (e) { console.warn('ship restore failed:', e && e.message); fleet = Ship.createFleet(); for (const [id, d] of Object.entries(Ship.sampleDesigns)) fleet.registerDesign(id, d); ref = null; }
     refreshList();
   }
   function makeEnv() {
     const T = S.terrain, mpc = T.metersPerCell ?? 33.3;
     const base = Ship.createWorldEnvironment(S.world, { origin: { x: ref.xM / mpc, y: ref.yM / mpc }, blockM: mpc, dayAt: () => globalThis.__geo?.clock?.day ?? 0 });
-    const cache = new Map();
+    const cache = new Map(), ecache = new Map();
+    const elevAt = (X, Y) => { const xM = ref.xM + X, yM = ref.yM - Y, k = Math.round(xM / 20) + ',' + Math.round(yM / 20); let e = ecache.get(k); if (e !== undefined) return e; e = -1; if (xM >= 0 && yM >= 0 && xM <= T.widthM && yM <= T.heightM) { try { e = T.sampleBase(xM, yM).baseElevationM; } catch (_) { e = -1; } } if (ecache.size > 20000) ecache.clear(); ecache.set(k, e); return e; };
+    let seedN = 1; for (const ch of String(lastSeed)) seedN = (Math.imul(seedN, 31) + ch.charCodeAt(0)) | 0;
+    windField = Ship.createWindField({ baseWind: base.wind, elev: elevAt, seed: seedN, toWorld: (X, Y) => ({ x: ref.xM + X, y: ref.yM - Y }),
+      dayAt: () => (globalThis.__geo?.clock?.day ?? 0) + 0.3 + simT / 86400 }); // D: a ship-time day cycle (86400 s); the game has no time of day yet
     env = {
-      wind: base.wind, current: base.current, seabed: base.seabed,
+      wind: (X, Y, t) => windField.wind(X, Y, t), current: base.current, seabed: base.seabed,
       depth(X, Y) {
         const xM = ref.xM + X, yM = ref.yM - Y, k = Math.round(xM / 3) + ',' + Math.round(yM / 3);
         if (cache.has(k)) return cache.get(k);
@@ -231,7 +261,7 @@
 
   function save() {
     if (!fleet || !ref) return;
-    try { localStorage.setItem(KEY_PREFIX + lastSeed, JSON.stringify({ fleet: fleet.serialize(), ref, ctl, boarded })); } catch (_) { /* storage unavailable */ }
+    try { localStorage.setItem(KEY_PREFIX + lastSeed, JSON.stringify({ fleet: fleet.serialize(), ref, ctl, boarded, simT })); } catch (_) { /* storage unavailable */ }
   }
 
   // ---------- frame loop ----------
@@ -249,7 +279,7 @@
       if (v.oars.length) v.setAllOarEffort(c.oar);
     }
     trimAcc += dt; if (trimAcc > 1) { trimAcc = 0; for (const rec of fleet.list()) if (ctl[rec.id]?.auto && !captainActive(rec)) rec.vessel.autoTrim(env); }
-    if (dt > 0) fleet.step(dt * speedX, env, focus);
+    if (dt > 0) { simT += dt * speedX; fleet.step(dt * speedX, env, focus); }
     for (const e of fleet.takeEvents()) { if (e.type === 'captain_no_route') toast('船長：' + (REASON[e.reason] ?? '行けない')); else if (EVT[e.type]) toast(`${e.shipId}：${EVT[e.type]}`); }
     syncMeshes();
     if (pendingBoard) { // the player was aboard when this was saved: step back on if the loaded player stands by the ship
@@ -434,13 +464,25 @@ html.shipUiHidden #shipEye{left:calc(8px + env(safe-area-inset-left));opacity:.4
     if (active) ui.ctrl.append($('button', { textContent: '中止', onclick: () => { fleet.cancelDestination(boarded); updateRoute(null); v.setHeadingTarget(null); ctl[boarded].heading = v.snapshot().headingDeg; refreshList(); } }));
     ui.ctrl.append($('button', { textContent: '降りる', onclick: () => disembark() }), $('button', { textContent: `×${speedX}`, onclick: (e) => { speedX = speedX === 1 ? 4 : speedX === 4 ? 10 : 1; e.target.textContent = `×${speedX}`; } }));
   }
+  /** Nearest storm or calm within 20 km (checked once a second): where it is, for the HUD. */
+  let wxAt = 0, wxLast = null;
+  function weatherNear(X, Y) {
+    const now = performance.now(); if (now - wxAt < 1000) return wxLast; wxAt = now; wxLast = null;
+    for (const km of [4, 8, 12, 16, 20]) for (let a = 0; a < 8; a++) {
+      const ang = a * Math.PI / 4, q = windField.weather(X + Math.cos(ang) * km * 1000, Y + Math.sin(ang) * km * 1000, 0), kind = q.storm > 0.25 ? 'storm' : q.calm > 0.35 ? 'calm' : null;
+      if (kind && (!wxLast || kind === 'storm' && wxLast.kind !== 'storm')) wxLast = { kind, km, dir: ['東', '北東', '北', '北西', '西', '南西', '南', '南東'][a] };
+    }
+    return wxLast;
+  }
   function updateHud() {
     if (!ui.info) return;
     if (!boarded || !fleet?.has(boarded)) { ui.info.textContent = ''; return; }
     const v = fleet.get(boarded).vessel, s = v.snapshot(), f = v.forces(env), c = ctl[boarded];
-    const w = env.wind(v.state.X, v.state.Y, 0), wf = (Math.atan2(-w.x, -w.y) / DEG + 360) % 360;
+    const wi = windField.info(v.state.X, v.state.Y, 0), w = wi, wf = wi.fromDeg, arrow = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'][Math.round(((wf + 180) % 360) / 45) % 8];
+    const tag = wi.storm > 0.3 ? '／嵐の中' : wi.calm > 0.3 ? '／凪' : wi.shelter < 0.8 ? '／陸の風下で風が弱い' : '';
+    const wx = weatherNear(v.state.X, v.state.Y); const wxTxt = wx && !tag ? `／${wx.kind === 'storm' ? '嵐' : '凪'}が${wx.dir}約${Math.round(wx.km)}km` : '';
     const cap = fleet.get(boarded).captain, dd = cap?.destination && Math.hypot(cap.destination.X - v.state.X, cap.destination.Y - v.state.Y), eta = dd ? Math.round(dd / Math.max(0.8, s.speedOverGround) / 60) : 0;
     const capTxt = cap && ['sailing', 'arriving'].includes(cap.mode) ? `／航海中 残り${dd > 1000 ? (dd / 1000).toFixed(1) + 'km' : Math.round(dd) + 'm'}（約${eta}分）${cap.reef < 1 ? '／帆を絞っている' : ''}` : cap?.mode === 'arrived' ? '／到着' : '';
-    ui.info.textContent = `速度 ${(s.speedOverGround * 1.9438).toFixed(1)} kt／方位 ${s.headingDeg.toFixed(0)}°（目標 ${c.heading.toFixed(0)}°）／風 ${Math.hypot(w.x, w.y).toFixed(1)} m/s・${wf.toFixed(0)}°から／傾斜 ${s.heelDeg.toFixed(1)}°／水深余裕 ${f.clearanceM.toFixed(1)} m${s.aground ? '／座礁中' : ''}${s.anchored ? (s.anchorDragging ? '／走錨中' : '／錨泊中') : ''}${capTxt}`;
+    ui.info.textContent = `速度 ${(s.speedOverGround * 1.9438).toFixed(1)} kt／方位 ${s.headingDeg.toFixed(0)}°（目標 ${c.heading.toFixed(0)}°）／風 ${arrow}風力${wi.beaufort}（${wi.speed.toFixed(1)} m/s・${wf.toFixed(0)}°から）${tag}${wxTxt}／傾斜 ${s.heelDeg.toFixed(1)}°／水深余裕 ${f.clearanceM.toFixed(1)} m${s.aground ? '／座礁中' : ''}${s.anchored ? (s.anchorDragging ? '／走錨中' : '／錨泊中') : ''}${capTxt}`;
   }
 })();
