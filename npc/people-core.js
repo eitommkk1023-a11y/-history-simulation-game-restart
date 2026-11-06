@@ -1091,6 +1091,17 @@ function peFarmEnv(S, world, ctx, g, month, grass, farmSince) {
   const yrs = farmSince >= 0 ? Math.max(0, (ctx.nationYear || 0) - farmSince) : 0;
   return { sf: sfOf(T), sfAvg: avg, q: 0.3 + 0.9 * peClamp01(f / 0.5), know: 0.35 + 0.65 * peClamp01(yrs / PE.FARM_LEARN_YEARS), grass: grass || 0, T };
 }
+// 畑の季節（見た目用）：0耕土 1芽 2伸長 3実り 4刈り跡。成長期（気温）が来ると芽吹き、積もった成長で伸びて実り、成長期が終わると刈り跡になる
+function peCropCycle(g, sf, farm) {
+  if (!farm) { g.cropStage = undefined; return; }
+  if (sf < 0.05) {
+    if (g.cropGrow > 0) { g.cropStage = 4; g.cropProg = 0; g.cropGrow = 0; g.cropOff = 0; }
+    else { g.cropOff = (g.cropOff || 0) + 1; if (g.cropOff >= 2) g.cropStage = 0; else if (g.cropStage === undefined) g.cropStage = 0; g.cropProg = Math.min(1, (g.cropOff || 0) / 4); }
+  } else {
+    g.cropGrow = (g.cropGrow || 0) + sf; const x = g.cropGrow;
+    if (x < 1) { g.cropStage = 1; g.cropProg = x; } else if (x < 3) { g.cropStage = 2; g.cropProg = (x - 1) / 2; } else { g.cropStage = 3; g.cropProg = Math.min(1, (x - 3) / 2); }
+  }
+}
 // 家畜：牧草地で支えられる頭数に向かって増える。技術を得た最初の月に、小さな群れを持つ
 function peHerdStep(g, pl, pop) {
   const fq = pl.fq, cap = (PE.HERD_CAP[0] + PE.HERD_CAP[1] * peClamp01(fq.grass * 1.5)) * (1 + 0.4 * peFacil(g).pen);
@@ -1191,6 +1202,7 @@ function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
   g.lastFood.farm = gotFarm; g.lastFood.herd = gotHerd; g.labor.farm = labA; g.labor.herd = labP;
   { const lv = Math.min(4, Math.floor(Math.log2(1 + labA / 4))); if (lv !== (g.fieldLv || 0)) { g.fieldLv = lv; if ((g.settle || 0) >= 1) g.layout = null; } }   // 畑の広がりの段階が変わったら、集落の配置を作り直す
   if (pl.tech.herd) peHerdStep(g, pl, pop);
+  peCropCycle(g, pl.fq.sf, pl.tech.farm);
   peBuildStep(people, g, ev, rel);
   // ---- 消費・保存
   const have = g.food + got;
