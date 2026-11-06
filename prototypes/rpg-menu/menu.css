@@ -122,3 +122,13 @@
 @media(max-height:500px){.rpg-equip-slot{min-height:62px;padding:7px 9px;gap:8px}.rpg-equip-slot>svg{width:26px;height:26px}.rpg-equip-copy strong{font-size:14px}.rpg-item-grid{grid-auto-rows:88px;align-content:start}.rpg-equip-state{margin-bottom:6px;font-size:11px}}
 @media(max-width:720px){#rpgPage-inventory>.rpg-meta{grid-template-columns:minmax(0,1fr) 104px auto}.rpg-equip-open{display:none}.rpg-equipment{gap:6px}}
 @media(orientation:portrait) and (max-width:590px){#rpgPage-inventory>.rpg-meta{grid-template-columns:minmax(0,1fr) 104px}#rpgWeight{display:none}.rpg-bag{min-height:290px}}
+
+/* Prototype04: put item categories in the left rail indicated in the feedback. */
+#rpgPage-inventory{display:grid;grid-template-columns:80px minmax(0,1fr);grid-template-rows:44px minmax(0,1fr);column-gap:10px;row-gap:8px}
+#rpgCategories{grid-column:1;grid-row:1/-1;display:flex;flex-direction:column;align-items:stretch;min-height:0;overflow-x:hidden;overflow-y:auto;gap:6px;touch-action:pan-y;scrollbar-width:thin}
+#rpgCategories .rpg-filter{flex:0 0 auto;min-height:52px;width:100%;padding:0 6px}
+#rpgPage-inventory>.rpg-meta{grid-column:2;grid-row:1;grid-template-columns:minmax(0,1fr) auto auto}
+#rpgPage-inventory>.rpg-meta>.rpg-sort{width:108px;justify-self:end}
+#rpgPage-inventory>.rpg-inventory{grid-column:2;grid-row:2;min-width:0}
+@media(max-width:720px){#rpgPage-inventory{grid-template-columns:68px minmax(0,1fr);column-gap:8px}#rpgPage-inventory>.rpg-meta{grid-template-columns:minmax(0,1fr) auto}#rpgPage-inventory>.rpg-meta>.rpg-sort{width:104px}}
+@media(max-height:360px){#rpgCategories{gap:4px}#rpgCategories .rpg-filter{min-height:44px}}
