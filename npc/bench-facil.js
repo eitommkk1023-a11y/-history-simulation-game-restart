@@ -17,19 +17,21 @@ function run(cfg, seed) {
   const sel = { grain: [], fresh: [] };
   for (const g of people.groups) { if (!g.alive || (g.settle || 0) < 1 || g.pop < 40 || !g.lastFood) continue; const lf = g.lastFood, fi = (lf.hunt || 0) + (lf.fish || 0) + (lf.herd || 0) + (lf.gather || 0) * 0.45, di = (lf.farm || 0) + (lf.gather || 0) * 0.55, sh = fi / Math.max(1, fi + di); if (sh >= 0.6) sel.fresh.push(g.id); else if (sh <= 0.4) sel.grain.push(g.id); }
   for (const k in sel) for (const id of sel[k]) { const g = people.groups[id - 1]; g.settle = Math.max(g.settle, 2); g.facil = Object.assign({ granary: 0, well: 0, pen: 0, field: 0, pit: 0, rack: 0, hearth: 0, kiln: 0 }, cfg); }
-  const acc = {}; for (const k in sel) acc[k] = { n: sel[k].length, stock: 0, spoil: 0, hungry: 0, fed: 0, deaths: 0, m: 0, dried: 0 };
+  const acc = {}; for (const k in sel) acc[k] = { n: sel[k].length, stock: 0, spoil: 0, hungry: 0, fed: 0, deaths: 0, m: 0, dried: 0, pop: 0 };
+  const d0 = {}; for (const k in sel) d0[k] = sel[k].reduce((a, id) => a + people.groups[id - 1].died.starvation, 0);
   for (let i = 36; i < 60; i++) {
     if (STRESS) for (const k in sel) for (const id of sel[k]) people.groups[id - 1].hardship = i >= 38 && i < 46 ? 0.8 : 0;
     step(i);
-    for (const k in sel) for (const id of sel[k]) { const g = people.groups[id - 1]; if (!g.alive || !g.lastFood || !g.lastFood.need) continue; const a = acc[k]; a.m++; a.stock += g.food / g.lastFood.need * 30; const sp = g.lastFood.spoil || {}; a.spoil += (sp.dur || 0) + (sp.fresh || 0) + (sp.dried || 0); a.hungry += g.hunger > 0 ? 1 : 0; a.fed += g.fed; a.dried += g.dried || 0; }
+    for (const k in sel) for (const id of sel[k]) { const g = people.groups[id - 1]; if (!g.alive || !g.lastFood || !g.lastFood.need) continue; const a = acc[k]; a.m++; a.stock += g.food / g.lastFood.need * 30; const sp = g.lastFood.spoil || {}; a.spoil += (sp.dur || 0) + (sp.fresh || 0) + (sp.dried || 0); a.hungry += g.hunger > 0 ? 1 : 0; a.fed += g.fed; a.dried += g.dried || 0; a.pop += g.pop; }
   }
+  for (const k in sel) acc[k].deaths = sel[k].reduce((a, id) => a + people.groups[id - 1].died.starvation, 0) - d0[k];
   return acc;
 }
 const results = {}; const seeds = [42, 7];
-for (const [name, cfg] of CONFIGS) { results[name] = {}; for (const seed of seeds) { const a = run(cfg, seed); for (const k in a) { const r = results[name][k] || (results[name][k] = { n: 0, stock: 0, spoil: 0, hungry: 0, fed: 0, m: 0, dried: 0 }); for (const f in r) r[f] += a[k][f]; } } }
+for (const [name, cfg] of CONFIGS) { results[name] = {}; for (const seed of seeds) { const a = run(cfg, seed); for (const k in a) { const r = results[name][k] || (results[name][k] = { n: 0, stock: 0, spoil: 0, hungry: 0, fed: 0, m: 0, dried: 0, deaths: 0, pop: 0 }); for (const f in r) r[f] += a[k][f]; } } }
 for (const k of ['grain', 'fresh']) {
   console.log(`\n## ${k === 'grain' ? '穀物・根が主な村' : '生鮮（肉・魚・乳）が主な村'}（${results['施設なし'][k].n}村・2つの乱数・24か月）`);
-  console.log('施設 | 蓄え(日分) | 傷みで失う(1村・月kg) | 食料不足の月の割合 | 食料の充足');
+  console.log('施設 | 蓄え(日分) | 傷みで失う(1村・月kg) | 食料不足の月の割合 | 食料の充足 | 飢えで亡くなる人（人口1000人あたり・年）');
   const base = results['施設なし'][k];
-  for (const [name] of CONFIGS) { const r = results[name][k], m = Math.max(1, r.m); console.log(`${name} | ${(r.stock / m).toFixed(1)} | ${(r.spoil / m).toFixed(0)} | ${(100 * r.hungry / m).toFixed(1)}% | ${(r.fed / m).toFixed(3)}`); }
+  for (const [name] of CONFIGS) { const r = results[name][k], m = Math.max(1, r.m); console.log(`${name} | ${(r.stock / m).toFixed(1)} | ${(r.spoil / m).toFixed(0)} | ${(100 * r.hungry / m).toFixed(1)}% | ${(r.fed / m).toFixed(3)} | ${(12000 * r.deaths / Math.max(1, r.pop)).toFixed(1)}`); }
 }
