@@ -1,6 +1,6 @@
 # 馬・荷馬車の戦場用追加分 — 試作06
 
-最新は [試作08：停止旋回・転倒・落馬](README-v8.md)。操作・速度は [試作07](README-v7.md)。以下は試作06の資産・APIの記録です。共通ビルダーの現在の出力は08です。
+最新は [試作09：静かな側方落馬・スティック発進](README-v9.md)。操作・速度は [試作07](README-v7.md)。以下は試作06の資産・APIの記録です。共通ビルダーの現在の出力は09です。
 
 依頼元：[docs/codex-horse-request-v2.md](https://github.com/eitommkk1023-a11y/-history-simulation-game-restart/blob/44ce6fca88b98834e9eb1d2ebf5881e10d389d5e/docs/codex-horse-request-v2.md)。保存先は `codex/prototype-horse-v1`。main、battle.js、本作のワールド・セーブには変更していません。
 
