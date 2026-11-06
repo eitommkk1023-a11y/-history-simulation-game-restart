@@ -398,6 +398,12 @@ body.woh-ship-on #shipInst{display:flex;flex-wrap:wrap;align-items:flex-start}
 #shipStat{flex:1 0 100%;display:flex;flex-wrap:wrap;gap:3px;min-height:0}
 #shipStat span{padding:1px 7px;border-radius:9px;font-size:10.5px;background:#2a4a66;white-space:nowrap}
 #shipStat .w{background:#7a5a16}#shipStat .d{background:#8a2a2a}
+#shipInst.compact #shipGauges{grid-template-columns:1fr!important;gap:1px}
+#shipInst.compact .g:nth-child(n+3){display:none}
+#shipInst.compact #shipStat span:nth-child(n+2){display:none}
+#shipInst.compact #shipDial{width:42px;height:42px}
+#shipInst.compact{padding:4px 6px;flex-wrap:wrap}
+#shipInst .more{position:absolute;right:6px;top:2px;font-size:10px;color:#9db8cc}
 #shipEye{position:fixed;z-index:121;display:none;width:34px;height:30px;padding:0;border-radius:10px;font-size:15px}
 body.woh-ship-on #shipEye{display:block}
 #shipBar{position:fixed;z-index:119;display:none;padding:5px 6px}
@@ -434,7 +440,8 @@ html.shipUiHidden #shipEye{opacity:.5}
     ui.gauges = $('div', { id: 'shipGauges' }); ui.g = {};
     for (const [id, label] of GAUGES) { const v = $('div', { className: 'v', textContent: '—' }), sub = $('div', { className: 's', textContent: label }); ui.g[id] = v; ui.g[id + 'S'] = sub; sub.dataset.label = label; ui.gauges.append($('div', { className: 'g' }, [v, sub])); }
     ui.stat = $('div', { id: 'shipStat' });
-    ui.inst = $('div', { id: 'shipInst', className: 'shipui shipcard onboard' }, [ui.dial, ui.gauges, ui.stat]);
+    ui.inst = $('div', { id: 'shipInst', className: 'shipui shipcard onboard compact', title: 'タップで詳細' }, [ui.dial, ui.gauges, ui.stat, $('span', { className: 'more', textContent: '詳細' })]);
+    ui.inst.addEventListener('click', () => { ui.inst.classList.toggle('compact'); layoutShipUi(); });
     ui.eye = $('button', { id: 'shipEye', className: 'shipui shipbtn onboard', textContent: '👁', title: '船のUIの表示／非表示', onclick: () => setUiHidden(!uiHidden) });
     // controls (bottom bar)
     ui.tabs = $('div', { id: 'shipTabs' }); ui.ctrl = $('div', { id: 'shipBody' });
@@ -476,18 +483,20 @@ html.shipUiHidden #shipEye{opacity:.5}
     const R = (id) => { const e = document.getElementById(id); if (!e) return null; const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden') return null; const b = e.getBoundingClientRect(); return b.width ? b : null; };
     const hud = ['hudGoal', 'hudTL'].map(R).filter(Boolean), compass = R('hudCompass'), hot = R('hudHot'), joy = R('joystick'), stat = R('hudStatus'), btns = R('hudBtns');
     const ch = ['sprint', 'jump', 'crouch', 'hudTalk', 'hudMode'].map(R).filter(Boolean), topY = (compass ? compass.bottom : 48) + 5;
-    // instruments: top edge, between the left HUD block and the right-hand buttons
-    const hmode = R('hudMode'), estH = ui.inst.offsetHeight || 100;
-    const iL = Math.max(8, ...hud.map((b) => b.right)) + 10, iR = Math.min((btns ? btns.left : innerWidth - 8), hmode && topY + estH > hmode.top - 2 ? hmode.left : 1e9) - 10, iW = Math.max(176, Math.min(320, iR - iL - 40));
-    const cols = iW >= 250 ? 3 : 2; ui.gauges.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
-    Object.assign(ui.inst.style, { top: topY + 'px', left: iL + 'px', width: iW + 'px' });
-    const hh = ui.inst.offsetHeight || 80, room = iL + iW + 6 + 34 <= (btns ? btns.left : innerWidth) - 4;
-    Object.assign(ui.eye.style, uiHidden ? { top: topY + 'px', left: iL + 'px' } : room ? { top: topY + 'px', left: (iL + iW + 6) + 'px' } : { top: (topY + hh + 4) + 'px', left: iL + 'px' });
+    // instruments: a compact card in the free spot under the game's button row, left of the mini-map's zoom buttons (tap for the full card)
+    const mz = R('miniZoom'), mm = R('miniMap'), compact = ui.inst.classList.contains('compact');
+    const rR = Math.min(mz ? mz.left : 1e9, mm ? mm.left : 1e9, innerWidth - 8) - 6, rTop = (btns ? btns.bottom : topY) + 5, iL0 = Math.max(8, ...hud.map((b) => b.right)) + 10;
+    const iW = compact ? Math.max(124, Math.min(190, rR - (btns ? btns.left : rR - 170))) : Math.max(180, Math.min(320, rR - iL0 - 40));
+    const iL = Math.max(8, rR - iW);
+    ui.gauges.style.gridTemplateColumns = compact ? '1fr' : `repeat(${iW >= 250 ? 3 : 2}, minmax(0, 1fr))`;
+    Object.assign(ui.inst.style, { top: rTop + 'px', left: iL + 'px', width: iW + 'px' });
+    const hh = ui.inst.offsetHeight || 70;
+    Object.assign(ui.eye.style, iL - 38 >= 4 ? { top: rTop + 'px', left: (iL - 38) + 'px' } : { top: (rTop + hh + 4) + 'px', left: iL + 'px' });
     // controls: bottom edge, above the hotbar, between the joystick/status and the action buttons
     const barBottom = hot ? innerHeight - hot.top + 5 : 8, bL = Math.max(joy ? joy.right + 8 : 128, stat ? stat.right + 8 : 0), bR = ch.length ? innerWidth - Math.min(...ch.map((b) => b.left)) + 6 : 226;
     Object.assign(ui.bar.style, { bottom: barBottom + 'px', left: bL + 'px', right: bR + 'px' });
     Object.assign(ui.ladders.style, { left: bL + 'px', bottom: (barBottom + (ui.bar.offsetHeight || 80) + 6) + 'px' });
-    Object.assign(ui.toast.style, { top: (topY + (uiHidden ? 36 : hh) + 8) + 'px', left: iL + 'px', transform: 'none', maxWidth: (iW - 30) + 'px', textAlign: 'left' });
+    Object.assign(ui.toast.style, { top: topY + 'px', left: iL0 + 'px', transform: 'none', maxWidth: Math.max(160, Math.min(300, iL - iL0 - 50)) + 'px', textAlign: 'left' });
   }
   /** Performance check for real devices: samples ~6 s of frames in whatever view is current and reports it as text (copyable). */
   function benchmark() {
