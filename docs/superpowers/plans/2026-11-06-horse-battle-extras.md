@@ -13,8 +13,8 @@ No original gait/model/control edits, main or battle.js writes. Existing05 froze
 - [x] Core/tests: extra rigid pose math, one-shot state resolution, turn stepping, harness model, cart model/kinematics; observe test failures then implement.
 - [x] Assets:337 rows/10 clips, preserve original240 rows, general GLB export and cart export/manifest; validate readback and budgets; coherent prototype commit.
 - [x] Renderer/API/host: packed state flags, per-state timing and attachments, saddle-linked rider, cargo/wheels/team; action test UI06 and handoff README.
-- [ ] Verify browser screenshots, GPU comparisons, non-loop transitions,5000 mixed states/drawcalls, landscape and legacy05 invariants; package and final prototype commit.
+- [x] Verify browser screenshots, GPU comparisons, non-loop transitions,5000 mixed states/drawcalls, landscape and legacy05 invariants; package and final prototype commit.
 
-Verification completed locally (129 unit tests / 25 browser checks). GitHub delivery is finalized in the follow-up commit.
+Verification completed locally (129 unit tests / 25 browser checks). Core asset commit: a04864196158b70458264124df0c2f15c000b43a. The follow-up delivery commit contains the renderer, host, evidence and standalone06.
 
 User-added covered wagon: canvas part7 and three seats, instanced human companion, optional0..2 passengers, player driver boarding/control/exit, GLB18 scenes; validate live seat matrices, moving-exit rejection and real canopy pixel changes.

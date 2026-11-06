@@ -1,0 +1,50 @@
+{
+  "branch": "codex/prototype-horse-v1",
+  "baseCommit": "36f59229f1328a7236b44309240b43c46b8c1f7e",
+  "coreCommit": "a04864196158b70458264124df0c2f15c000b43a",
+  "requestCommit": "44ce6fca88b98834e9eb1d2ebf5881e10d389d5e",
+  "formalGameTouched": false,
+  "mainWritten": false,
+  "unit": {
+    "tests": 129,
+    "pass": 129,
+    "fail": 0
+  },
+  "browser": {
+    "checks": 25,
+    "errors": [],
+    "environment": "Chromium SwiftShader; no iOS hardware measurement"
+  },
+  "files": [
+    {
+      "path": "exports/World-of-History-horse-prototype-v6.html",
+      "bytes": 2084060,
+      "sha256": "2aa140909870e46fcc08ced72b80dccb2eb62c3a0aa084fed20018acf22ab720",
+      "gitBlobSha": "dd07611295edbe564cacb3ecc86cac2128d8e2fb"
+    },
+    {
+      "path": "assets/horse-source/woh-horse.glb",
+      "bytes": 508764,
+      "sha256": "246d0d3fa7a523a6057fd48a3f47e44519b4601fbeea5836b4b5ee55f3178885",
+      "gitBlobSha": "a8be7c1ec4328ed842cd0e709905e406e2f294b4"
+    },
+    {
+      "path": "assets/cart-source/woh-wagon.glb",
+      "bytes": 224360,
+      "sha256": "f9285ffbbd97fe581c830e0f431a1b2882febc5eecb1fc8fce7e6b80354f3ab2",
+      "gitBlobSha": "70ef14449541d9b61371cc40a31e50766f71ad81"
+    },
+    {
+      "path": "assets/horse-source/horse.render.json",
+      "bytes": 1043958,
+      "sha256": "8d918fa1dd9caa3e8587d72bbf0b1fb24d8e42a94fc9c6cf08f5af10cdb1a18d",
+      "gitBlobSha": "a4c8cc1f01e16d684c79570b5740f571b8dbb435"
+    },
+    {
+      "path": "assets/cart-source/wagon.render.json",
+      "bytes": 333199,
+      "sha256": "9915cf5870986091df4c2a1610de28a25d47b5b749aa769dbbda96e56ac59ba1",
+      "gitBlobSha": "e24cc79af5ebb2305e3b678432d5863e97eba6fe"
+    }
+  ]
+}
