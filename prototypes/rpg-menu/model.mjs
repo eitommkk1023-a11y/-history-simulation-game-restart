@@ -18,8 +18,17 @@ export const MENU_MISSIONS=[
  {id:'river',name:'川沿いの道',type:'探索',status:'active',place:'川辺',description:'川の流れに沿って進めば、人が暮らす場所へたどり着くかもしれない。地図で周囲を確かめよう。',objectives:[['川辺の情報を集める',0,1],['安全な道を見つける',0,1]],reward:'探索の手がかり'},
  {id:'first',name:'旅のはじまり',type:'物語',status:'done',place:'出発地点',description:'身支度を整え、新しい土地へと歩き始めた。これから先の道は、自分で選んでいく。',objectives:[['旅の支度をする',1,1]],reward:'受取済み'},
 ];
-export function freshMenuState(){return {version:1,counts:Object.fromEntries(MENU_ITEMS.map(i=>[i.id,i.count])),equipment:{weapon:null,body:'tunic'},tracked:'camp'};}
-export function restoreMenuState(raw){const state=freshMenuState();if(!raw||raw.version!==1)return state;for(const item of MENU_ITEMS){const q=raw.counts?.[item.id];if(Number.isInteger(q)&&q>=0&&q<=999)state.counts[item.id]=q;}for(const slot of ['weapon','body']){const id=raw.equipment?.[slot];if(id===null||MENU_ITEMS.some(i=>i.id===id&&i.slot===slot&&state.counts[id]>0))state.equipment[slot]=id;}for(const slot of ['weapon','body'])if(state.equipment[slot]&&state.counts[state.equipment[slot]]<1)state.equipment[slot]=null;if(raw.tracked===null||MENU_MISSIONS.some(m=>m.id===raw.tracked&&m.status==='active'))state.tracked=raw.tracked;return state;}
+export function freshMenuState(){return {version:1,counts:Object.fromEntries(MENU_ITEMS.map(i=>[i.id,i.count])),equipment:{weapon:null,body:'tunic'},tracked:'camp',sortOrder:'category'};}
+export function restoreMenuState(raw){const state=freshMenuState();if(!raw||raw.version!==1)return state;for(const item of MENU_ITEMS){const q=raw.counts?.[item.id];if(Number.isInteger(q)&&q>=0&&q<=999)state.counts[item.id]=q;}for(const slot of ['weapon','body']){const id=raw.equipment?.[slot];if(id===null||MENU_ITEMS.some(i=>i.id===id&&i.slot===slot&&state.counts[id]>0))state.equipment[slot]=id;}for(const slot of ['weapon','body'])if(state.equipment[slot]&&state.counts[state.equipment[slot]]<1)state.equipment[slot]=null;if(['category','name','weight'].includes(raw.sortOrder))state.sortOrder=raw.sortOrder;if(raw.tracked===null||MENU_MISSIONS.some(m=>m.id===raw.tracked&&m.status==='active'))state.tracked=raw.tracked;return state;}
 export function menuWeight(state){return MENU_ITEMS.reduce((sum,i)=>sum+i.weight*state.counts[i.id],0);}
 export function useMenuItem(state,id){const item=MENU_ITEMS.find(i=>i.id===id);if(!item?.consumable||state.counts[id]<1)return false;state.counts[id]--;return true;}
 export function equipMenuItem(state,id){const item=MENU_ITEMS.find(i=>i.id===id);if(!item?.slot||state.counts[id]<1)return false;state.equipment[item.slot]=state.equipment[item.slot]===id?null:id;return true;}
+
+export const MENU_EQUIPMENT_SLOTS=Object.freeze([{id:'weapon',label:'武器',icon:'sword'},{id:'body',label:'胴防具',icon:'shirt'}]);
+export function sortedMenuItems(state,{category='all',order=state.sortOrder??'category'}={}){
+ const categories=['gear','food','tools','materials'],positions=new Map(MENU_ITEMS.map((i,n)=>[i.id,n]));
+ return MENU_ITEMS.filter(i=>(state.counts[i.id]??0)>0&&(category==='all'||i.category===category)).sort((a,b)=>{
+  const difference=order==='name'?a.name.localeCompare(b.name,'ja'):order==='weight'?b.weight*state.counts[b.id]-a.weight*state.counts[a.id]:categories.indexOf(a.category)-categories.indexOf(b.category);
+  return difference||positions.get(a.id)-positions.get(b.id);
+ });
+}
