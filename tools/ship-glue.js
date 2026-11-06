@@ -5,7 +5,7 @@
   'use strict';
   const DEG = Math.PI / 180, KEY_PREFIX = 'woh-ships-';
   const EVT = { captain_route_planned: '航路を決めた', captain_no_route: '', captain_tack: '帆の向きを替えた', captain_reef: '帆を絞った', captain_arriving: '目的地に近づいた', captain_arrived: '到着した', captain_replan: '浅瀬を避けて航路を引き直した', captain_cancelled: '航海をやめた', grounded: '座礁した', refloated: '離礁した', anchor_dropped: '錨を下ろした', anchor_raised: '錨を上げた', anchor_dragging: '錨が走っている', anchor_parted: '錨索が切れた' };
-  const dbg = {}; let simT = 0, windField = null, savedShips = null, pendingBoard = null, pendingSince = 0, lastPlaced = null, uiHidden = false, dwell = 0, renderError = null, ladderSig = '', pickMode = false, destMarker = null, routeLine = null, cp, nat, THREE_, S = null, fleet = null, env = null, ref = null, ctl = {}, meshes = new Map(), boarded = null, speedX = 1, lastT = null, saveAcc = 0, trimAcc = 0, lastSeed = null;
+  const dbg = {}; let simT = 0, windField = null, seaState = null, savedShips = null, pendingBoard = null, pendingSince = 0, lastPlaced = null, uiHidden = false, dwell = 0, renderError = null, ladderSig = '', pickMode = false, destMarker = null, routeLine = null, cp, nat, THREE_, S = null, fleet = null, env = null, ref = null, ctl = {}, meshes = new Map(), boarded = null, speedX = 1, lastT = null, saveAcc = 0, trimAcc = 0, lastSeed = null;
   const REASON = { destination_too_shallow: 'そこは浅くて行けない', blocked: '回り込む道がない', search_limit: '遠すぎて航路を決められない' };
   const ui = {};
   const $ = (tag, props = {}, kids = []) => { const e = Object.assign(document.createElement(tag), props); for (const k of kids) e.append(k); return e; };
@@ -117,8 +117,9 @@
         const storm = kind === 4 ? 0.6 + 0.4 * Math.min(1, sim.storm?.[c] ?? 0) : kind === 2 || kind === 3 ? Math.min(0.3, (sim.P[c] ?? 0) / 60 * 0.3) : 0;
         return { storm, rain: kind === 2 || kind === 3 || kind === 4 ? 1 : 0, label: ['晴れ', 'くもり', '雨', '雪', '嵐'][kind] };
       } }); // D: a ship-time day cycle (86400 s); the game has no time of day yet
+    seaState = Ship.createSeaState({ windField, elev: elevAt });
     env = {
-      wind: (X, Y, t) => windField.wind(X, Y, t), current: base.current, seabed: base.seabed,
+      wind: (X, Y, t) => windField.wind(X, Y, t), sea: (X, Y, t) => seaState.info(X, Y, t), current: base.current, seabed: base.seabed,
       depth(X, Y) {
         const xM = ref.xM + X, yM = ref.yM - Y, k = Math.round(xM / 3) + ',' + Math.round(yM / 3);
         if (cache.has(k)) return cache.get(k);
@@ -182,7 +183,10 @@
       if (!m) { try { m = makeMesh(rec); } catch (e) { console.warn('ship display failed, removing', rec.id, e && e.message); fleet.removeShip(rec.id); continue; } meshes.set(rec.id, m); }
       const st = rec.vessel.state, xM = ref.xM + st.X, yM = ref.yM - st.Y;
       try { const q = T.toLocal(xM, yM, 0, S.origin); m.group.position.set(q.x, q.y, q.z); m.group.visible = true; } catch (_) { m.group.visible = false; continue; }
-      m.group.rotation.set(0, -st.psi, -st.heelDeg * DEG);
+      m.group.rotation.order = 'YXZ'; // yaw, then pitch about the beam axis, then roll about the keel axis
+      const sea = seaState.info(st.X, st.Y, 0), wm = Ship.waveMotion(sea, { psi: st.psi, u: st.u, lengthM: m.L ?? 21, beamM: 6.4, rollPeriodS: 5 }, simT);
+      m.sea = { ...sea, ...wm }; // for the HUD
+      m.group.rotation.set(wm.pitchDeg * DEG, -st.psi, (-st.heelDeg + wm.rollDeg) * DEG); m.group.position.y += wm.heaveM;
       if (m.furn && m.loadRef !== (rec.massItems ?? null)) { m.loadRef = rec.massItems ?? null; m.furn(); Ship.updateFurnishingsVisibility(m); } // stores follow the real load
       Ship.updateShipObject(m, { leeSign: Math.sign(rec.vessel.apparentWind(env).y) || 1 }); syncFigures(m, rec); if (m.crewFigs?.length) Ship.updateCrewFigures(m, null); if (m.setDetail) m.setDetail(THREE_ && cp.camera.position.distanceTo(m.group.position) > 400 ? 2 : cp.camera.position.distanceTo(m.group.position) > 120 ? 1 : 0);
     }
@@ -486,10 +490,11 @@ html.shipUiHidden #shipEye{left:calc(8px + env(safe-area-inset-left));opacity:.4
     if (!boarded || !fleet?.has(boarded)) { ui.info.textContent = ''; return; }
     const v = fleet.get(boarded).vessel, s = v.snapshot(), f = v.forces(env), c = ctl[boarded];
     const wi = windField.info(v.state.X, v.state.Y, 0), w = wi, wf = wi.fromDeg, arrow = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'][Math.round(((wf + 180) % 360) / 45) % 8];
+    const sm = meshes.get(boarded)?.sea, seaTxt = sm ? `／波${sm.hs < 0.5 ? '穏やか' : sm.hs < 1.25 ? '小さい' : sm.hs < 2.5 ? 'やや高い' : sm.hs < 4 ? '荒い' : sm.hs < 6 ? '非常に荒い' : '猛烈'}（${sm.hs.toFixed(1)}m・周期${sm.tp.toFixed(0)}秒${v.forces(env).waveResistanceFactor > 1.1 ? '・向かい波で減速' : ''}）` : '';
     const tag = wi.storm > 0.5 ? `／${wi.label === '嵐' ? '嵐' : '荒天'}の中` : wi.storm > 0.3 ? '／荒れ模様' : wi.calm > 0.3 ? '／凪' : wi.shelter < 0.8 ? '／陸の風下で風が弱い' : '';
     const wx = weatherNear(v.state.X, v.state.Y); const wxTxt = wx && !tag ? `／${wx.kind === 'storm' ? '嵐' : '凪'}が${wx.dir}約${Math.round(wx.km)}km` : '';
     const cap = fleet.get(boarded).captain, dd = cap?.destination && Math.hypot(cap.destination.X - v.state.X, cap.destination.Y - v.state.Y), eta = dd ? Math.round(dd / Math.max(0.8, s.speedOverGround) / 60) : 0;
     const capTxt = cap && ['sailing', 'arriving'].includes(cap.mode) ? `／航海中 残り${dd > 1000 ? (dd / 1000).toFixed(1) + 'km' : Math.round(dd) + 'm'}（約${eta}分）${cap.reef < 1 ? '／帆を絞っている' : ''}` : cap?.mode === 'arrived' ? '／到着' : '';
-    ui.info.textContent = `速度 ${(s.speedOverGround * 1.9438).toFixed(1)} kt／方位 ${s.headingDeg.toFixed(0)}°（目標 ${c.heading.toFixed(0)}°）／風 ${arrow}風力${wi.beaufort}（${wi.speed.toFixed(1)} m/s・${wf.toFixed(0)}°から）${tag}${wxTxt}／傾斜 ${s.heelDeg.toFixed(1)}°／水深余裕 ${f.clearanceM.toFixed(1)} m${s.aground ? '／座礁中' : ''}${s.anchored ? (s.anchorDragging ? '／走錨中' : '／錨泊中') : ''}${capTxt}`;
+    ui.info.textContent = `速度 ${(s.speedOverGround * 1.9438).toFixed(1)} kt／方位 ${s.headingDeg.toFixed(0)}°（目標 ${c.heading.toFixed(0)}°）／風 ${arrow}風力${wi.beaufort}（${wi.speed.toFixed(1)} m/s・${wf.toFixed(0)}°から）${tag}${wxTxt}${seaTxt}／傾斜 ${s.heelDeg.toFixed(1)}°／水深余裕 ${f.clearanceM.toFixed(1)} m${s.aground ? '／座礁中' : ''}${s.anchored ? (s.anchorDragging ? '／走錨中' : '／錨泊中') : ''}${capTxt}`;
   }
 })();

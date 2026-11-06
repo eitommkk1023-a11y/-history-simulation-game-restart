@@ -13,6 +13,7 @@
  * Not modelled yet: roll/pitch/heave dynamics, waves, mooring lines/berthing, tides generation, hull damage effects.
  */
 import { deriveHullParams } from './hull-params.mjs';
+import { addedResistanceFactor } from './sea-state.mjs';
 import { analyzeHydrostatics, WATER_DENSITY } from './hydrostatics.mjs';
 
 const DEG = Math.PI / 180, G_ACC = 9.80665, NU_SEA = 1.2e-6;
@@ -146,7 +147,9 @@ export function createVessel({ ship, analysis, hullParams, sails = [], rudder, o
     if (U > 1e-9) {
       const Re = Math.max(U * L / NU_SEA, 1e5), Cf = 0.075 / (Math.log10(Re) - 2) ** 2;
       const Fr = U / Math.sqrt(G_ACC * L), Cw = Math.min(0.0005 + waveK * 0.003 * (Fr / 0.35) ** 4, 0.05);
-      const Rhull = q * U * U * hp.wettedAreaM2 * ((Cf + roughnessCf) * (1 + form) + Cw);
+      const sea = typeof env?.sea === 'function' ? env.sea(st.X, st.Y, st.time) : null; // waves slow the ship (added resistance, D)
+      const waveF = sea ? addedResistanceFactor(sea.hs, L, st.psi, sea.dirToRad) : 1; out.waveResistanceFactor = waveF;
+      const Rhull = q * U * U * hp.wettedAreaM2 * ((Cf + roughnessCf) * (1 + form) + Cw) * waveF;
       X -= Rhull * uw / U; Y -= Rhull * vw / U;
       out.hullResistanceN = Rhull;
     }
