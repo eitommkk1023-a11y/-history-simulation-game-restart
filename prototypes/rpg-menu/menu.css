@@ -132,3 +132,19 @@
 #rpgPage-inventory>.rpg-inventory{grid-column:2;grid-row:2;min-width:0}
 @media(max-width:720px){#rpgPage-inventory{grid-template-columns:68px minmax(0,1fr);column-gap:8px}#rpgPage-inventory>.rpg-meta{grid-template-columns:minmax(0,1fr) auto}#rpgPage-inventory>.rpg-meta>.rpg-sort{width:104px}}
 @media(max-height:360px){#rpgCategories{gap:4px}#rpgCategories .rpg-filter{min-height:44px}}
+
+/* Prototype05: equipment and sorting share one compact row above the items. */
+#rpgPage-inventory>.rpg-meta{grid-template-columns:minmax(0,1fr) minmax(172px,28%);gap:10px}
+.rpg-inventory-tools{display:grid;grid-template-columns:minmax(0,1fr) 104px;align-items:center;gap:8px;min-width:0;height:44px}
+.rpg-inventory-tools .rpg-equipment{min-width:0;height:44px;gap:6px}
+.rpg-inventory-tools .rpg-equip-slot{height:44px;min-height:44px;padding:3px 6px;gap:5px}
+.rpg-inventory-tools .rpg-equip-slot>svg{width:20px;height:20px}
+.rpg-inventory-tools .rpg-equip-copy{gap:0}
+.rpg-inventory-tools .rpg-equip-copy small{font-size:10px;line-height:14px}
+.rpg-inventory-tools .rpg-equip-copy strong{font-size:12px;line-height:18px}
+.rpg-inventory-tools .rpg-equip-open{display:none}
+.rpg-wallet{display:flex;flex-wrap:wrap;justify-content:flex-end;align-content:center;align-items:center;column-gap:10px;min-width:0;height:44px;line-height:18px}
+.rpg-wallet>span{white-space:nowrap}
+#rpgPage-inventory .rpg-bag{gap:0}
+@media(max-width:720px){#rpgPage-inventory>.rpg-meta{grid-template-columns:minmax(0,1fr) 172px}}
+@media(orientation:portrait) and (max-width:590px){#rpgPage-inventory>.rpg-meta{grid-template-columns:minmax(0,1fr)}.rpg-wallet{display:none}.rpg-inventory-tools{grid-template-columns:minmax(0,1fr) 96px}.rpg-inventory-tools .rpg-equip-slot>svg{display:none}}
