@@ -259,7 +259,7 @@ t('不毛地は全部ほぼ0', Object.values(F.availability(desert)).every(v => 
 {
   const fixed = (v) => () => v;
   const G = F.newState();
-  let g = F.goals(G); t('最初の目標は食べ物集め', !g.all && g.id === 'food' && g.have === 0 && g.need === 5 && g.done === 0 && g.total === 17, JSON.stringify(g));
+  let g = F.goals(G); t('最初の目標は食べ物集め', !g.all && g.id === 'food' && g.have === 0 && g.need === 5 && g.done === 0 && g.total === 22, JSON.stringify(g));
   G.total = { nut: 3, fish: 1 }; g = F.goals(G); t('進み具合が数えられる', g.id === 'food' && g.have === 4);
   G.total = { nut: 3, fish: 2, firewood: 4 }; g = F.goals(G); t('食べ物が済むと次は水', g.id === 'drink' && g.done === 1); G.n = { drink: 1 }; g = F.goals(G); t('水が済むと次は薪', g.id === 'wood' && g.have === 4 && g.done === 2);
   G.total = { nut: 9, firewood: 12 }; g = F.goals(G); t('薪が済むと火', g.id === 'fire' && g.done === 3);
@@ -274,8 +274,8 @@ t('不毛地は全部ほぼ0', Object.values(F.availability(desert)).every(v => 
   const H = F.newState(); H.inv = { firewood: 10, fiber: 12, rope: 2, clay: 4 }; F.buildHome(H, 0, 0, 0, 1, 1, true); t('家を建てると数える', H.n.home === 1);
   F.sleep(H, 0, 0, 1); t('建築中は家で眠った数に入らない', !H.n.sleepHome); F.sleep(H, 0, 0, 5); t('家で眠ると数える', H.n.sleepHome === 1);
   // 全部達成
-  const A = F.newState(); A.total = { nut: 5, firewood: 10, rope: 1, clay: 4, pot: 1, nutL: 1, stew: 1 }; A.n = { drink: 1, fire: 1, cooked: 1, home: 1, sleepHome: 1, talk: 1, share: 1, commonCook: 1, give: 1, learn: 1 };
-  g = F.goals(A); t('全部達成', g.all && g.done === 17 && /身につけた/.test(g.text), JSON.stringify(g));
+  const A = F.newState(); A.total = { nut: 5, firewood: 10, rope: 1, clay: 4, pot: 1, nutL: 1, stew: 1, bow: 1, fur: 1 }; A.n = { drink: 1, fire: 1, cooked: 1, home: 1, sleepHome: 1, talk: 1, share: 1, commonCook: 1, give: 1, learn: 1, hunt: 1, dry: 1, fill: 1 };
+  g = F.goals(A); t('全部達成', g.all && g.done === 22 && /身につけた/.test(g.text), JSON.stringify(g));
   // 保存
   const L = F.load(JSON.parse(JSON.stringify(F.save(A)))); t('カウンターも保存', JSON.stringify(L.n) === JSON.stringify(A.n) && F.goals(L).all);
   t('古い保存でも目標は動く', F.goals(F.load({ inv: {} })).id === 'food');
@@ -364,7 +364,7 @@ t('不毛地は全部ほぼ0', Object.values(F.availability(desert)).every(v => 
   const H2 = F.newState(); H2.kcal = 0; H2.water = 100; F.tick(H2, 0.5); H2.t = 0; H2.kcal = 0; H2.water = 100; H2.hp = 100; F.tick(H2, 1); t('飢えると体力が減る', H2.hp < 100, H2.hp);
   const H3 = F.newState(); H3.hp = 50; H3.kcal = 3000; H3.water = 100; F.tick(H3, 1); t('満たされていれば体力が戻る', H3.hp > 50, H3.hp);
   const H4 = F.newState(); H4.hp = 50; H4.kcal = 100; H4.water = 100; F.tick(H4, 1); t('飢えていると戻らない', H4.hp <= 50);
-  const H5 = F.newState(); H5.hp = 5; H5.kcal = 0; H5.water = 0; F.tick(H5, 20); t('体力は1未満にならない（死なない）', H5.hp === 1, H5.hp);
+  const H5 = F.newState(); H5.mortal = false; H5.hp = 5; H5.kcal = 0; H5.water = 0; F.tick(H5, 20); t('「死なない」設定では体力は1で止まる', H5.hp === 1 && !H5.dead && H5.dyingDays === 0, JSON.stringify([H5.hp, H5.dead]));
   const H6 = F.newState(); H6.kcal = 3000; H6.water = 100; F.setEnv(H6, { temp: -10, sheltered: false }); F.tick(H6, 1); t('寒い外では体力が減る', H6.hp < 100, H6.hp);
   const H7 = F.newState(); H7.kcal = 3000; H7.water = 100; H7.hp = 80; F.setEnv(H7, { temp: -10, sheltered: true }); F.tick(H7, 1); t('屋根や火のそばなら寒さを防げる', H7.hp > 80, H7.hp);
   const H8 = F.newState(); H8.kcal = 3000; H8.water = 100; H8.hp = 80; F.setEnv(H8, { temp: 20, sheltered: false }); F.tick(H8, 1); t('暖かい日は影響なし', H8.hp > 80);
@@ -396,6 +396,123 @@ t('不毛地は全部ほぼ0', Object.values(F.availability(desert)).every(v => 
   const V = F.newState(); V.hp = 33; V.sp = 12; V.water = 7; V.exhausted = true; const L = F.load(JSON.parse(JSON.stringify(F.save(V)))); t('体力・スタミナ・水分・疲れ切りを保存', L.hp === 33 && L.sp === 12 && L.water === 7 && L.exhausted === true);
   const B = F.load({ hp: 'x', sp: -5, water: 'y' }); t('壊れた保存でも既定値', B.hp === 100 && B.sp === 0 && B.water === 80);
   const O = F.load({ inv: {} }); t('古い保存（体力なし）', O.hp === 100 && O.sp === 100 && O.water === 80 && !O.exhausted);
+}
+
+// ---------------------------------------------------------------- 死と猶予
+{
+  const fixed = (v) => () => v;
+  const mk = (o) => Object.assign(F.newState(), o);
+  // 体力0 → 瀕死 → 3日で死亡
+  const A = mk({ hp: 10, kcal: 3000, water: 0 }); F.tick(A, 1); t('渇きで体力0になる（死ぬ前）', A.hp === 0 && A.dyingDays === 1 && !A.dead && F.dyingLeft(A) === 2, JSON.stringify([A.hp, A.dyingDays]));
+  F.tick(A, 2); t('2日目：まだ生きている', !A.dead && F.dyingLeft(A) === 1);
+  F.tick(A, 3); t('3日目で亡くなる（渇き）', A.dead === 'thirst' && A.hp === 0, JSON.stringify([A.dead, A.dyingDays]));
+  t('死因を一度だけ受け取れる', F.takeDeath(A) === 'thirst' && F.takeDeath(A) === null);
+  // 長く時間を飛ばしても、猶予の日数が効く
+  const B = mk({ hp: 100, kcal: 3000, water: 0 }); F.tick(B, 30); t('長く飛ばすと死ぬ（水なし）', B.dead === 'thirst', JSON.stringify([B.hp, B.dead]));
+  const B2 = mk({ hp: 100, kcal: 3000, water: 80 }); F.tick(B2, 3); t('3日くらいでは死なない', !B2.dead && B2.hp > 0, B2.hp);
+  // 原因：飢え・寒さ・病気
+  const C = mk({ hp: 5, kcal: 0, water: 100 }); F.tick(C, 5); t('飢えで亡くなる', C.dead === 'hunger', JSON.stringify([C.dead, C.hp]));
+  const C2 = mk({ hp: 5, kcal: 3000, water: 100 }); F.setEnv(C2, { temp: -25, sheltered: false }); F.tick(C2, 6); t('寒さで亡くなる', C2.dead === 'cold', JSON.stringify([C2.dead, C2.hp]));
+  const C3 = mk({ hp: 2, kcal: 3000, water: 100, sickUntil: 99 }); F.tick(C3, 3); t('病気は-3/日。体力2なら1日で0、そのあとも病気のまま', C3.hp === 0 || C3.dyingDays >= 0, JSON.stringify([C3.hp, C3.dyingDays]));
+  // 助かる：飲む・食べる・眠る・配給
+  const D = mk({ hp: 0, kcal: 3000, water: 0 }); D.dyingDays = 2; let r = F.drink(D, true); t('瀕死の人が水を飲むと体力が少し戻る', r.ok && D.hp === 6, D.hp);
+  F.drink(D, true); F.drink(D, true); t('飲み続けても水が満ちれば止まる', D.water > 0); D.water = 10; F.drink(D, true); D.water = 10; F.drink(D, true); t('体力15以上で猶予がリセット', D.hp >= 15 && D.dyingDays === 0, JSON.stringify([D.hp, D.dyingDays]));
+  const D2 = mk({ hp: 0, kcal: 100, water: 100 }); D2.dyingDays = 2; D2.inv = { stew: 3 }; F.eat(D2, 'stew', fixed(0.9), 0); t('食べると体力が戻る（空腹時）', D2.hp === 6, D2.hp);
+  const D3 = mk({ hp: 0, kcal: 3000, water: 100 }); D3.dyingDays = 2; D3.home = { bx: 0, by: 0, xM: 0, yM: 0, ready: 0 }; F.sleep(D3, 0, 0, 5); t('家で眠ると助かる（+25）', D3.hp === 25 && D3.dyingDays === 0);
+  const D4 = mk({ hp: 0, kcal: 300, water: 100, standing: 20 }); D4.dyingDays = 1; r = F.ration(D4, { food: 9 }, { bx: 0, by: 0 }, 5, 0, 0); t('配給で体力も戻る', r.ok && D4.hp === 6);
+  // 健康なら応急は効かない
+  const D5 = mk({ hp: 80, kcal: 100, water: 20 }); D5.inv = { stew: 1 }; F.eat(D5, 'stew', fixed(0.9), 0); t('元気なら応急の上乗せなし', D5.hp === 80);
+  // 助かったあとの再発
+  const E = mk({ hp: 0, kcal: 3000, water: 0 }); E.dyingDays = 2; F.firstAid(E, 6); t('応急だけでは15に届かず猶予は残る', E.hp === 6 && E.dyingDays === 2);
+  F.tick(E, 1); t('渇いたままだと次の日にまた0（猶予が尽きる）', E.dead === 'thirst' || E.dyingDays >= 3 || E.hp === 0, JSON.stringify([E.hp, E.dead]));
+  // 設定：死なない
+  const G = mk({ hp: 3, kcal: 0, water: 0, mortal: false }); F.tick(G, 10); t('死なない設定：体力1・死亡なし', G.hp === 1 && !G.dead && F.dyingLeft(G) === null);
+  // 継承
+  const I = mk({ hp: 0, kcal: 10, water: 0, standing: 40, given: 900 }); I.home = { bx: 4, by: 5, xM: 1, yM: 2, ready: 0 }; I.store = { stew: 3 }; I.inv = { fish: 5, rope: 2 }; I.fire = { bx: 0, by: 0, until: 9 }; I.soak = { bx: 0, by: 0, n: 3, ready: 5 }; I.n = { fire: 2, talk: 3 }; I.total = { nut: 20 }; I.lessons = { 4: 1 }; I.t = 12; I.dead = 'thirst'; I.sickUntil = 99;
+  F.inherit(I); t('継承：家・貯蔵庫・目標の進みは残る', I.home.bx === 4 && I.store.stew === 3 && I.n.fire === 2 && I.total.nut === 20 && I.t === 12, JSON.stringify(I));
+  t('継承：持ち物・火・水さらし・体調・教わった記録は消える', Object.keys(I.inv).length === 0 && I.fire === null && I.soak === null && I.hp === 100 && I.water === 80 && I.kcal > 2000 && I.sickUntil === 0 && Object.keys(I.lessons).length === 0 && !I.dead && I.dyingDays === 0);
+  t('継承：評判は半分', I.standing === 20 && I.given === 900);
+  const J = mk({ standing: 40 }); J.home = { bx: 1, by: 1, xM: 0, yM: 0, ready: 0 }; J.store = { stew: 1 }; J.n = { fire: 1 }; F.inherit(J, true);
+  t('別の一族として続けるときは、家・貯蔵庫・評判を引き継がない（目標の進みは残る）', J.home === null && Object.keys(J.store).length === 0 && J.standing === 0 && J.n.fire === 1, JSON.stringify(J));
+  // 保存
+  const V = mk({ hp: 0, mortal: false, dyingDays: 2 }); const L = F.load(JSON.parse(JSON.stringify(F.save(V)))); t('設定と猶予の日数を保存', L.mortal === false && L.dyingDays === 2 && L.hp === 0);
+  t('古い保存は「死ぬ」設定で読み込む', F.load({ inv: {} }).mortal === true);
+}
+
+// ---------------------------------------------------------------- 狩り・怪我・衣服・保存食・水の持ち運び
+{
+  const fixed = (v) => () => v;
+  const mk = (o) => Object.assign(F.newState(), o);
+  // 作る
+  const A = mk({ inv: { firewood: 5, rope: 12, stone: 2, hide: 6, fiber: 20 } });
+  t('弓を作る', F.craft(A, 'bow', 0.5, fixed(0), 0, 0, 0).ok && A.inv.bow === 1 && A.inv.rope === 10);
+  t('槍を作る', F.craft(A, 'spear', 0.5, fixed(0), 0, 0, 0).ok && A.inv.spear === 1 && A.inv.stone === 1);
+  t('水袋を作る', F.craft(A, 'skin', 0.5, fixed(0), 0, 0, 0).ok && A.inv.skin === 1 && A.inv.hide === 5);
+  t('毛皮の衣を作る', F.craft(A, 'fur', 0.5, fixed(0), 0, 0, 0).ok && A.inv.fur === 1 && A.inv.hide === 1);
+  t('草の外套を作る', F.craft(A, 'cloak', 0.5, fixed(0), 0, 0, 0).ok && A.inv.cloak === 1);
+  t('武器の選択：弓が優先', F.bestWeapon(A) === 'bow'); t('武器がなければ null', F.bestWeapon(mk({ inv: { stone: 1 } })) === null);
+  // 狩りの結果
+  const H = mk({ inv: { bow: 1 } });
+  let r = F.applyHunt(H, { kills: 1, meat: 30, hide: 1, bone: 2, antler: 1 }, 'deer', 'bow', 5, fixed(0.99));
+  t('鹿1頭：肉14（持てる上限）・毛皮・骨・角', r.kills === 1 && H.inv.meat === 14 && H.inv.hide === 1 && H.inv.bone === 2 && H.inv.antler === 1 && !r.hurt && H.n.hunt === 1, JSON.stringify(H.inv));
+  t('弓は使うと傷む', H.wear.bow === 1);
+  const H2 = mk({ inv: { spear: 1, stone: 190 } }); r = F.applyHunt(H2, { kills: 2, meat: 100, hide: 2, bone: 3, antler: 0 }, 'boar', 'spear', 5, fixed(0.99));
+  t('持ち物がいっぱいなら残す', r.left > 0 && F.slotsUsed(H2) <= F.SLOTS, JSON.stringify([r, F.slotsUsed(H2)]));
+  const H3 = mk({ inv: { spear: 1 } }); r = F.applyHunt(H3, { kills: 1, meat: 200, hide: 1, bone: 1, antler: 0 }, 'aurochs', 'spear', 5, fixed(0.0));
+  t('危険な獲物を槍で狩ると怪我をする', r.hurt && F.injured(H3, 5) && H3.hp === 92, JSON.stringify([r.hurt, H3.hp, H3.injuredUntil]));
+  const H4 = mk({ inv: { bow: 1 } }); r = F.applyHunt(H4, { kills: 1, meat: 30, hide: 1, bone: 1, antler: 0 }, 'deer', 'bow', 5, fixed(0.1)); t('鹿を弓で狩ると怪我はまれ（確率4%×0.7）', !r.hurt);
+  const H5 = mk({ inv: { bow: 1 } }); r = F.applyHunt(H5, { kills: 0, meat: 0, hide: 0, bone: 0, antler: 0 }, 'deer', 'bow', 5, fixed(0.5)); t('獲物なしでも武器は傷む', r.kills === 0 && H5.wear.bow === 1 && !r.hurt);
+  const H6 = mk({ inv: { bow: 1 } }); H6.wear.bow = 29; r = F.applyHunt(H6, { kills: 0 }, 'deer', 'bow', 5, fixed(0.9)); t('弓は30回で壊れる', r.broke === '弓' && !H6.inv.bow);
+  // 怪我：体力が減り続け、手当てで止まる
+  const I = mk({ kcal: 3000, water: 100, hp: 100 }); F.hurt(I, 0, 6, 8); I.t = 0; F.tick(I, 1); t('怪我の間は体力が減る（-4/日）', I.hp === 92 - 4, I.hp);
+  const I2 = mk({ hp: 50, injuredUntil: 6, inv: { herb: 3 } }); t('薬草が足りないと手当てできない', !F.treat(mk({ injuredUntil: 6, inv: { herb: 1 } }), 0).ok);
+  r = F.treat(I2, 0); t('薬草2つで手当て：怪我が止まり体力が戻る', r.ok && !F.injured(I2, 0) && I2.inv.herb === 1 && I2.hp === 54 && I2.n.treat === 1, JSON.stringify(I2));
+  t('怪我が無いと手当て不要', !F.treat(mk({ inv: { herb: 3 } }), 0).ok);
+  const I3 = mk({ hp: 1, kcal: 3000, water: 100, injuredUntil: 99 }); I3.dyingDays = 2; F.tick(I3, 1); t('怪我だけで亡くなることもある（死因：怪我）', I3.dead === 'injury', JSON.stringify([I3.dead, I3.hp]));
+  // 衣服
+  const C = mk({ hp: 100, kcal: 3000, water: 100 }); F.setEnv(C, { temp: -20, sheltered: false }); F.tick(C, 1); const noCloth = C.hp;
+  const C2 = mk({ hp: 100, kcal: 3000, water: 100, inv: { fur: 1 } }); F.setEnv(C2, { temp: -20, sheltered: false }); F.tick(C2, 1); t('毛皮の衣は寒さを8割防ぐ', C2.hp > noCloth && 100 - C2.hp < (100 - noCloth) * 0.3, JSON.stringify([noCloth, C2.hp]));
+  const C3 = mk({ hp: 100, kcal: 3000, water: 100, inv: { cloak: 1 } }); F.setEnv(C3, { temp: -20, sheltered: false }); F.tick(C3, 1); t('草の外套は4割', C3.hp > noCloth && C3.hp < C2.hp);
+  t('衣服の優先：毛皮', F.clothOf(mk({ inv: { fur: 1, cloak: 1 } })) === 'fur');
+  const C4 = mk({ kcal: 3000, water: 100, inv: { cloak: 1 } }); C4.clothWear.cloak = 79; F.tick(C4, 1); t('外套は日がたつと傷んで無くなる', !C4.inv.cloak && F.takeRotted(C4).cloak === 1);
+  // 傷む
+  const R = mk({ kcal: 3000, water: 100, inv: { meat: 10, fish: 4, nut: 20, meatD: 10, stone: 3 } }); F.tick(R, 1);
+  t('生肉は1日で約3割傷む', R.inv.meat === 7, R.inv.meat); t('魚は約1割（4×0.25=1）', R.inv.fish === 3, R.inv.fish); t('木の実・石は傷まない', R.inv.nut === 20 && R.inv.stone === 3); t('干し肉はほぼ傷まない', R.inv.meatD === 10);
+  const rr = F.takeRotted(R); t('傷んだ数を一度だけ知らせる', rr.meat === 3 && rr.fish === 1 && F.takeRotted(R) === null, JSON.stringify(rr));
+  const R2 = mk({ kcal: 3000, water: 100, inv: { fruit: 1 } }); for (let d = 1; d <= 10; d++) F.tick(R2, d); t('端数は積み上がって、いつか傷む（果実1個は10日で消える）', !R2.inv.fruit, JSON.stringify(R2.inv));
+  const R3 = mk({ kcal: 3000, water: 100, store: { meat: 10 } }); F.tick(R3, 1); t('貯蔵庫では傷みが半分（-1.5→1）', R3.store.meat === 9, R3.store.meat);
+  // 干す
+  const D = mk({ inv: { meat: 6, fish: 4, fruit: 5, nut: 2 }, fire: { bx: 0, by: 0, until: 5 } });
+  t('火から離れると干せない', !F.dry(D, 9, 9, 0).ok); r = F.dry(D, 0, 0, 0); t('肉・魚・果実を干す', r.ok && D.inv.meatD === 6 && D.inv.fishD === 4 && D.inv.fruitD === 5 && D.inv.nut === 2 && !D.inv.meat && D.n.dry === 1, JSON.stringify(D.inv));
+  t('干す物がなければ不可', !F.dry(mk({ fire: { bx: 0, by: 0, until: 5 }, inv: { nut: 1 } }), 0, 0, 0).ok);
+  // 食べる：肉
+  const E = mk({ kcal: 100, inv: { meat: 1, meatC: 1, meatD: 1 } }); r = F.eat(E, 'meat', fixed(0.9), 0); t('生肉は7割・当たることがある', r.ok && r.kcal === 700); r = F.eat(E, 'meatC', fixed(0.1), 0); t('焼き肉は1100kcalで安全', r.kcal === 1100 && !r.sick); r = F.eat(E, 'meatD', fixed(0.1), 0); t('干し肉', r.kcal === 800);
+  const E2 = mk({ inv: { meat: 3, fish: 1 }, fire: { bx: 0, by: 0, until: 5 } }); F.roast(E2, 0, 0, 0); t('肉を焼ける', E2.inv.meatC === 3 && E2.inv.fishC === 1);
+  // 水の持ち運び
+  const W = mk({ water: 20 }); t('入れ物がなければ汲めない', !F.fillWater(W, true).ok); W.inv = { skin: 1 };
+  t('水辺でなければ汲めない', !F.fillWater(W, false).ok); r = F.fillWater(W, true); t('水袋に3回分', r.ok && W.carried === 3 && r.cap === 3 && W.n.fill === 1);
+  t('満杯なら汲めない', !F.fillWater(W, true).ok); W.inv.pot = 1; t('土器があれば7回分', F.carryCap(W) === 7);
+  r = F.drinkCarried(W); t('持ち歩いた水を飲む（水辺でなくても）', r.ok && W.water === 65 && W.carried === 2 && r.left === 2, JSON.stringify(W));
+  W.water = 99; t('喉が渇いていなければ飲まない', !F.drinkCarried(W).ok); const W2 = mk({ water: 10, inv: {} }); W2.carried = 3; t('入れ物を失うと水もない', !F.drinkCarried(W2).ok);
+  // 保存
+  const V = mk({ injuredUntil: 7, carried: 2, inv: { skin: 1 } }); V.clothWear = { fur: 12 }; V.rotAcc = { 'i:meat': 0.4 }; const L = F.load(JSON.parse(JSON.stringify(F.save(V))));
+  t('怪我・水・衣の傷み・端数を保存', L.injuredUntil === 7 && L.carried === 2 && L.clothWear.fur === 12 && L.rotAcc['i:meat'] === 0.4 && F.save(V).rotted === undefined);
+  t('古い保存でも動く', F.load({ inv: {} }).injuredUntil === 0 && F.load({ inv: {} }).carried === 0);
+  // 採取：薬草
+  const forest2 = { plant: [0.3, 0.8, 0.5, 0.8, 0.3], forest: 0.9, grass: 0.1, coast: false, water: false, rock: 0 };
+  t('森に薬草がある', F.availability(forest2).herb > 0.2); t('砂漠に薬草はない', F.availability({ plant: [0, 0, 0, 0, 0], forest: 0, grass: 0 }).herb === 0);
+}
+
+// ---------------------------------------------------------------- 開発者モードの「消耗なし」
+{
+  const mk = (o) => Object.assign(F.newState(), o);
+  const G = mk({ god: true, kcal: 100, water: 0, hp: 5, injuredUntil: 99 }); F.tick(G, 30);
+  t('消耗なし：30日たっても、満たされて体力も満タン', G.water === 100 && G.hp === 100 && G.kcal >= 2200 && G.injuredUntil === 0 && !G.dead && G.dyingDays === 0, JSON.stringify([G.kcal, G.water, G.hp]));
+  const G2 = mk({ god: true, hp: 0, dyingDays: 2, kcal: 0, water: 0 }); F.tick(G2, 5); t('消耗なし：瀕死でも死なない', !G2.dead && G2.hp === 100);
+  const G3 = mk({ god: true }); G3.sp = 3; G3.exhausted = true; const o = F.staminaStep(G3, 1, { sprinting: true, moving: true }); t('消耗なし：スタミナは尽きない', G3.sp === 100 && !G3.exhausted && !o.lockSprint && !o.lockJump);
+  const G4 = mk({ god: true, kcal: 3000, water: 100 }); G4.inv = { meat: 10 }; F.setEnv(G4, { temp: -30, sheltered: false }); F.tick(G4, 3); t('消耗なし：寒くても平気。傷む（保存食）は別なので続く', G4.hp === 100 && G4.inv.meat < 10);
+  const R = mk({ kcal: 100, water: 0, hp: 5 }); F.tick(R, 5); t('消耗なしでなければ、いつもどおり消耗する（god未設定）', R.water === 0 && R.hp < 5 || R.dead === 'thirst' || R.dead === 'hunger', JSON.stringify([R.hp, R.dead]));
+  t('消耗なしはセーブに入らない', F.save(G).god === undefined);
 }
 console.log(ng ? 'FAIL ' + ng + ' / ' + (ok + ng) : 'OK ' + ok + ' 件通過');
 process.exit(ng ? 1 : 0);
