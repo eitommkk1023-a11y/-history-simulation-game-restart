@@ -392,7 +392,8 @@ html.shipUiHidden #shipEye{left:calc(8px + env(safe-area-inset-left));opacity:.4
     Object.assign(ui.bar.style, { bottom: barBottom + 'px', left: barLeft + 'px', right: barRight + 'px' });
     const barTop = ui.bar.style.display === 'none' ? innerHeight - barBottom : innerHeight - barBottom - (ui.bar.offsetHeight || 0);
     const pTop = (compass ? compass.bottom : 48) + 6, pLeft = Math.max(...hud.map((b) => b.right), 8) + 8;
-    Object.assign(ui.panel.style, { top: pTop + 'px', left: pLeft + 'px', maxHeight: Math.max(80, barTop - pTop - 8) + 'px' });
+    const rights = ['hudMode', 'miniZoom', 'hudTalk'].map(R).filter((b) => b && b.left > pLeft).map((b) => b.left), pW = Math.max(170, Math.min(250, (rights.length ? Math.min(...rights) : innerWidth) - pLeft - 10));
+    Object.assign(ui.panel.style, { top: pTop + 'px', left: pLeft + 'px', width: pW + 'px', maxHeight: Math.max(80, barTop - pTop - 8) + 'px' });
     Object.assign(ui.ladders.style, { left: barLeft + 'px', bottom: (barBottom + (ui.bar.offsetHeight || 60) + 6) + 'px' });
     ui.toast.style.top = ((compass ? compass.bottom : 48) + 6) + 'px';
   }

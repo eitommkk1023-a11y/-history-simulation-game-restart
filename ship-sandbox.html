@@ -1877,6 +1877,7 @@ function createCrew({ interior, design, size = G.crew.scenarioSize.value, roster
   const st = pintaStations(interior, design), mastIds = Object.keys(st.mastFoot);
   const members = roster.map((p, i) => ({ ...p, watch: i % 2, pos: { ...st.rest, y: st.rest.y + ((i % 5) - 2) * 0.35 }, task: 'rest', target: null, work: 0 }));
   let time = 0, watchOn = 0;
+  const baseCount = roster.length, onShift = (m) => members.length <= 10 || m.watch === watchOn; // D: a very small crew keeps one common watch, all hands work
 
   const deckPath = (from, to) => { // BFS over decks joined by ladders: returns the first ladder to take
     if (from === to) return null;
@@ -1900,8 +1901,8 @@ function createCrew({ interior, design, size = G.crew.scenarioSize.value, roster
 
   /** Assign duties for the current watch (D rules): helm, lookout, sail hands at each mast, the rest idle; captain, maestre, pilot on deck. */
   function assign(needs) {
-    const onWatch = members.filter((m) => m.role === 'seaman' && m.watch === watchOn), free = [...onWatch];
-    for (const m of members) { m.task = m.watch === watchOn || m.role !== 'seaman' ? 'rest' : 'off_watch'; m.target = null; }
+    const onWatch = members.filter((m) => m.role === 'seaman' && onShift(m)), free = [...onWatch];
+    for (const m of members) { m.task = onShift(m) || m.role !== 'seaman' ? 'rest' : 'off_watch'; m.target = null; }
     const take = (task, target) => { const m = free.shift(); if (m) { m.task = task; m.target = target; } };
     if (needs.helm !== false) take('helm', st.helm);
     if (needs.lookout !== false) take('lookout', st.lookout);
@@ -1934,9 +1935,9 @@ function createCrew({ interior, design, size = G.crew.scenarioSize.value, roster
     return effects();
   }
   /** Take on a person from outside (e.g. a villager met on the shore) as an ordinary hand. Not one of the historical named crew (level D rules). */
-  function hire({ id, name, npcRef = null }) {
+  function hire({ id, name, npcRef = null, look = null }) {
     if (members.some((m) => m.id === id)) throw new RangeError(`already aboard: ${id}`);
-    const m = { id, name, role: 'seaman', evidence: 'D', generic: true, hired: true, npcRef, watch: members.length % 2, pos: { ...st.rest, y: st.rest.y + ((members.length % 5) - 2) * 0.35 }, task: 'rest', target: null, work: 0 };
+    const m = { id, name, role: 'seaman', evidence: 'D', generic: true, hired: true, npcRef, look, watch: members.length % 2, pos: { ...st.rest, y: st.rest.y + ((members.length % 5) - 2) * 0.35 }, task: 'rest', target: null, work: 0 };
     members.push(m); assign(lastNeeds); return m;
   }
   /** Put a hired hand ashore. The historical named crew cannot be dismissed. */
@@ -1947,7 +1948,7 @@ function createCrew({ interior, design, size = G.crew.scenarioSize.value, roster
   return {
     hire, dismiss, members, stations: st, interior, update, effects, get watchOn() { return watchOn; }, get time() { return time; },
     repairSeconds: () => Math.max(0, ...members.filter((m) => m.task === 'repair').map((m) => m.work)),
-    serialize: () => JSON.parse(JSON.stringify({ time, watchOn, lastNeeds, hired: members.filter((m) => m.hired).map((m) => ({ id: m.id, name: m.name, npcRef: m.npcRef })), members: members.map((m) => ({ id: m.id, pos: m.pos, task: m.task, target: m.target, watch: m.watch, work: m.work })) })),
+    serialize: () => JSON.parse(JSON.stringify({ time, watchOn, lastNeeds, villagersOnly: baseCount === 0, hired: members.filter((m) => m.hired).map((m) => ({ id: m.id, name: m.name, npcRef: m.npcRef, look: m.look })), members: members.map((m) => ({ id: m.id, pos: m.pos, task: m.task, target: m.target, watch: m.watch, work: m.work })) })),
     restore(d) { for (const h of d.hired ?? []) if (!members.some((x) => x.id === h.id)) hire(h); time = d.time; watchOn = d.watchOn; lastNeeds = d.lastNeeds; for (const r of d.members) { const m = members.find((x) => x.id === r.id); if (m) Object.assign(m, r); } },
   };
 }
@@ -2234,7 +2235,7 @@ function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0.1, far
     const vessel = build(designId);
     Object.assign(vessel.state, { X, Y, psi: headingDeg * Math.PI / 180 });
     const rec = { id: shipId, designId, vessel, captain: null, crew: null, crewNeeds: {}, massItems: null, lod: LOD.near, lifecycle: 'afloat', dormantSeconds: 0, refs: { owner: null, crew: [], cargo: [], ...refs }, history: [{ type: 'ship_created', time }] };
-    if (crew) rec.crew = makeCrew(designId);
+    if (crew) rec.crew = makeCrew(designId, crew === 'empty' ? [] : undefined); // 'empty': no built-in crew, hands are hired
     ships.set(shipId, rec);
     return shipId;
   }
@@ -2247,9 +2248,9 @@ function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0.1, far
   }
   function cancelDestination(id) { get(id).captain?.cancel(); }
 
-  function makeCrew(designId) {
+  function makeCrew(designId, roster) {
     const d = designs.get(designId); if (!d?.interior) throw new RangeError(`design ${designId} has no interior, so it cannot carry a walking crew`);
-    return createCrew({ interior: createInterior(d.interior, { hull: createHull(d.hull) }), design: d });
+    return createCrew({ interior: createInterior(d.interior, { hull: createHull(d.hull) }), design: d, ...(roster ? { roster } : {}) });
   }
   /** Replace the ship's mass items (cargo, water, bilge) and rebuild its physics from them, keeping its motion and state. */
   function setLoad(id, massItems) {
@@ -2322,7 +2323,7 @@ function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0.1, far
         for (const x of r.sails) { const sl = vessel.sails.find((q) => q.id === x.id); if (sl) { sl.trimDeg = x.trimDeg; sl.deployed = x.deployed; } }
         for (const x of r.oars) { const o = vessel.oars.find((q) => q.id === x.id); if (o) { o.effort = x.effort; o.stamina = x.stamina; } }
         let captain = null; if (r.captain) { captain = createCaptain(vessel); captain.restore(r.captain); }
-        let crew = null; if (r.crew) { crew = makeCrew(r.designId); crew.restore(r.crew); }
+        let crew = null; if (r.crew) { crew = makeCrew(r.designId, r.crew.villagersOnly ? [] : undefined); crew.restore(r.crew); }
         ships.set(r.id, { id: r.id, designId: r.designId, vessel, captain, crew, crewNeeds: r.crewNeeds ?? {}, massItems: r.massItems ?? null, lod: LOD.near, lifecycle: r.lifecycle, dormantSeconds: r.dormantSeconds, refs: r.refs, history: r.history });
       } catch (e) { skipped.push({ id: r.id, designId: r.designId, reason: String(e?.message ?? e) }); }
     }
@@ -2530,11 +2531,25 @@ function placePlayer(obj, pos) {
 
 const ROLE_COLOR = { captain: 0xb3262e, maestre: 0x2d5fa8, piloto: 0x2a8a5a, seaman: 0xc9b27a };
 /** One simple 1:1 figure per crew member, children of the ship group (they roll and pitch with the ship). */
+/** A hired villager is drawn like the game's own villagers (head, torso, two arms, two legs; clothes in the ethnicity colour). */
+function villagerFigure(T, m) {
+  const [r, g, b] = m.look?.cloth ?? [160, 160, 160], cloth = new T.Color(r / 255, g / 255, b / 255), dark = cloth.clone().multiplyScalar(0.55), skin = m.look?.skin ?? 0xd9a47a;
+  const mat = (c) => new T.MeshLambertMaterial({ color: c }), f = new T.Group();
+  const add = (geo, color, x, y, z) => { const o = new T.Mesh(geo, mat(color)); o.position.set(x, y, z); f.add(o); return o; };
+  add(new T.SphereGeometry(0.115, 8, 6), skin, 0, 1.58, 0); add(new T.CylinderGeometry(0.17, 0.14, 0.62, 8), cloth, 0, 1.12, 0);
+  const limb = (geo, color, x, y) => { const p = new T.Group(); p.position.set(x, y, 0); const o = new T.Mesh(geo, mat(color)); p.add(o); f.add(p); return p; };
+  const leg = () => new T.CylinderGeometry(0.07, 0.055, 0.82, 6).translate(0, -0.41, 0), arm = () => new T.CylinderGeometry(0.05, 0.04, 0.6, 6).translate(0, -0.3, 0);
+  f.userData.limbs = { armL: limb(arm(), cloth, -0.22, 1.38), armR: limb(arm(), cloth, 0.22, 1.38), legL: limb(leg(), dark, -0.09, 0.82), legR: limb(leg(), dark, 0.09, 0.82) };
+  return f;
+}
+/** One simple 1:1 figure per crew member, children of the ship group (they roll and pitch with the ship). */
 function addCrewFigures(T, obj, crew) {
   obj.crewFigs = [];
   for (const m of crew.members) {
-    const f = new T.Group(), body = new T.Mesh(new T.CylinderGeometry(0.26, 0.26, 1.15, 8), new T.MeshLambertMaterial({ color: ROLE_COLOR[m.role] ?? 0xc9b27a })), head = new T.Mesh(new T.SphereGeometry(0.22, 10, 8), new T.MeshLambertMaterial({ color: 0xe8c79a }));
-    body.position.y = 0.58; head.position.y = 1.42; f.add(body, head); obj.group.add(f); obj.crewFigs.push({ m, f });
+    let f;
+    if (m.hired) f = villagerFigure(T, m);
+    else { f = new T.Group(); const body = new T.Mesh(new T.CylinderGeometry(0.26, 0.26, 1.15, 8), new T.MeshLambertMaterial({ color: ROLE_COLOR[m.role] ?? 0xc9b27a })), head = new T.Mesh(new T.SphereGeometry(0.22, 10, 8), new T.MeshLambertMaterial({ color: 0xe8c79a })); body.position.y = 0.58; head.position.y = 1.42; f.add(body, head); }
+    obj.group.add(f); obj.crewFigs.push({ m, f });
   }
   obj.crewInterior = crew.interior;
 }
@@ -2544,6 +2559,11 @@ function updateCrewFigures(obj, playerDeck = null) {
   for (const { m, f } of obj.crewFigs) {
     f.position.set(m.pos.y, it.deckZ(m.pos.deck) - draft + 0.02, cgX - m.pos.x);
     f.visible = !!it.decks.find((d) => d.id === m.pos.deck)?.exterior || playerDeck === m.pos.deck;
+    const L = f.userData.limbs; if (L) { // walking swing while the hand is moving (same idea as the game's villagers)
+      const last = f.userData.last, moving = last && (Math.abs(last.x - m.pos.x) + Math.abs(last.y - m.pos.y) > 1e-4 || last.deck !== m.pos.deck); f.userData.last = { x: m.pos.x, y: m.pos.y, deck: m.pos.deck };
+      const ph = (performance.now() / 1000) * 5.5, sw = moving ? Math.sin(ph) * 0.7 : 0; L.legL.rotation.x = -sw; L.legR.rotation.x = sw; L.armL.rotation.x = sw; L.armR.rotation.x = -sw;
+      if (last && moving) { const dx = m.pos.y - last.y, dz = -(m.pos.x - last.x); if (Math.abs(dx) + Math.abs(dz) > 1e-5) f.rotation.y = Math.atan2(dx, dz); }
+    }
   }
 }
 
@@ -2702,6 +2722,96 @@ function addPintaStructure(T, obj, design, vessel) {
 
 return { addPintaStructure };
 })();
+const M_wind_field = (() => {
+/**
+ * Local wind on top of the world's monthly-mean wind: sea/land breeze, shelter in the lee of land, and rare weather
+ * (storm and calm cells that drift in game days). Pure functions of (position, game day), so the same place and time
+ * always give the same wind (save/load safe, no hidden state).
+ *
+ * Every number here is a game hypothesis (level D): there is no source model for this world. The structure follows
+ * ordinary seamanship facts: onshore breeze by day / offshore at night near coasts, wind speed reduced behind high
+ * land over a distance of a few times its height, strong gales and calms as localised, short-lived patches.
+ *
+ * Ship frame in/out: X east, Y north, metres, wind vectors point where the air moves TOWARD ({x east, y north}).
+ */
+const WIND_PARAMS = Object.freeze({
+  breezeMax: 2.5,                  // D: m/s of sea/land breeze right at a coast
+  coastRadii: [500, 1500, 3000],   // D: m, where land is looked for
+  shelterRatio: 10,                // D: lee zone length = ratio * obstacle height (m)
+  shelterMin: 0.35,                // D: wind keeps at least this fraction directly behind land
+  shelterSamples: [50, 100, 200, 400, 800],
+  cellKm: 60, eventDays: 2,        // D: weather cells and how long a weather event lasts (game days)
+  stormChance: 0.12, calmChance: 0.15,
+  stormRadiusKm: [8, 18], calmRadiusKm: [15, 30],
+  stormMinSpeed: 18, stormGain: 2.5, // D: m/s (gale force 8), and speed multiplier when stronger
+  calmFactor: 0.15,
+});
+
+const hash = (...a) => { let h = 2166136261 >>> 0; for (const v of a) { h ^= (v | 0) + 0x9e3779b9; h = Math.imul(h ^ (h >>> 15), 2246822519) >>> 0; h ^= h >>> 13; h = Math.imul(h, 3266489917) >>> 0; h ^= h >>> 16; } return (h >>> 0) / 4294967296; };
+const BEAUFORT = [0.3, 1.6, 3.4, 5.5, 8, 10.8, 13.9, 17.2, 20.8, 24.5, 28.5, 32.7];
+const beaufort = (s) => { let b = 0; while (b < BEAUFORT.length && s >= BEAUFORT[b]) b++; return b; };
+
+/**
+ * @param {{ baseWind:(X:number,Y:number,t:number)=>{x:number,y:number}, elev:(X:number,Y:number)=>number,
+ *           dayAt?:(t:number)=>number, toWorld?:(X:number,Y:number)=>{x:number,y:number}, seed?:number, params?:object }} o
+ *  elev: ground height in metres, > 0 on land (negative or 0 = sea). toWorld: stable world metres (so weather cells do not move when the ship frame does).
+ */
+function createWindField({ baseWind, elev, dayAt = () => 0, toWorld = (X, Y) => ({ x: X, y: Y }), seed = 1, params = {} }) {
+  const P = { ...WIND_PARAMS, ...params }, sd = seed | 0, isLand = (X, Y) => elev(X, Y) > 0.5;
+  const coastCache = new Map(), lee = new Map();
+  const key = (X, Y, g) => `${Math.round(X / g)},${Math.round(Y / g)}`;
+
+  /** Share of land around the position and the unit vector pointing toward it (cached on a 100 m grid). */
+  function coast(X, Y) {
+    const k = key(X, Y, 100); let c = coastCache.get(k); if (c) return c;
+    let n = 0, land = 0, vx = 0, vy = 0;
+    for (const r of P.coastRadii) for (let a = 0; a < 8; a++) { const dx = Math.cos(a * Math.PI / 4), dy = Math.sin(a * Math.PI / 4); n++; if (isLand(X + dx * r, Y + dy * r)) { land++; vx += dx; vy += dy; } }
+    const m = Math.hypot(vx, vy); c = { frac: land / n, dx: m > 1e-9 ? vx / m : 0, dy: m > 1e-9 ? vy / m : 0 };
+    if (coastCache.size > 6000) coastCache.clear(); coastCache.set(k, c); return c;
+  }
+  /** Fraction of the wind left after the land upwind of this spot (1 = open water). */
+  function shelter(X, Y, wx, wy) {
+    const sp = Math.hypot(wx, wy); if (sp < 0.05) return 1;
+    const ux = -wx / sp, uy = -wy / sp, ang = Math.round(Math.atan2(uy, ux) / (Math.PI / 8)), k = `${key(X, Y, 40)}|${ang}`; let f = lee.get(k); if (f !== undefined) return f;
+    const cx = Math.cos(ang * Math.PI / 8), cy = Math.sin(ang * Math.PI / 8); f = 1;
+    for (const d of P.shelterSamples) { const h = elev(X + cx * d, Y + cy * d); if (h > 2) { const zone = P.shelterRatio * h, w = 1 - Math.min(1, d / zone); if (w > 0) f = Math.min(f, 1 - (1 - P.shelterMin) * w); } }
+    if (lee.size > 6000) lee.clear(); lee.set(k, f); return f;
+  }
+  /** Storm (+) and calm (+) weights at a place and game day, each 0..1. */
+  function weather(X, Y, day) {
+    const w = toWorld(X, Y), cs = P.cellKm * 1000, k = Math.floor(day / P.eventDays), env = Math.sin(Math.PI * (day / P.eventDays - k)) ** 0.7;
+    const ci = Math.floor(w.x / cs), cj = Math.floor(w.y / cs); let storm = 0, calm = 0;
+    for (let i = ci - 1; i <= ci + 1; i++) for (let j = cj - 1; j <= cj + 1; j++) {
+      const kind = (salt, chance, [r0, r1]) => {
+        if (hash(sd, k, i, j, salt) >= chance) return 0;
+        const px = (i + hash(sd, k, i, j, salt + 1)) * cs, py = (j + hash(sd, k, i, j, salt + 2)) * cs, rad = (r0 + hash(sd, k, i, j, salt + 3) * (r1 - r0)) * 1000, d = Math.hypot(w.x - px, w.y - py);
+        return d >= rad ? 0 : (1 - d / rad) ** 0.8;
+      };
+      storm = Math.max(storm, kind(11, P.stormChance, P.stormRadiusKm)); calm = Math.max(calm, kind(31, P.calmChance, P.calmRadiusKm));
+    }
+    return { storm: storm * env, calm: calm * env };
+  }
+
+  function info(X, Y, t = 0) {
+    const day = dayAt(t), b = baseWind(X, Y, t), c = coast(X, Y);
+    // sea/land breeze: onshore by day (06-18 h), offshore at night; strongest at the coast, fading with distance from land
+    const phase = Math.sin(2 * Math.PI * (day - Math.floor(day) - 0.25)), amp = P.breezeMax * Math.min(1, c.frac * 2) * phase;
+    let x = b.x + c.dx * amp, y = b.y + c.dy * amp; // dx,dy point toward land: daytime air moves toward land
+    const f = shelter(X, Y, x, y); x *= f; y *= f;
+    const { storm, calm } = weather(X, Y, day); let s = Math.hypot(x, y);
+    if (s > 1e-9 || storm > 0) {
+      const ux = s > 1e-9 ? x / s : b.x / (Math.hypot(b.x, b.y) || 1), uy = s > 1e-9 ? y / s : b.y / (Math.hypot(b.x, b.y) || 1);
+      const gale = Math.max(s * P.stormGain, P.stormMinSpeed), s2 = (s * (1 - storm) + gale * storm) * (1 - (1 - P.calmFactor) * calm);
+      x = ux * s2; y = uy * s2; s = s2;
+    }
+    return { x, y, speed: s, fromDeg: ((Math.atan2(-x, -y) * 180 / Math.PI) % 360 + 360) % 360, beaufort: beaufort(s), base: b, breeze: amp, shelter: f, storm, calm };
+  }
+  const wind = (X, Y, t = 0) => { const i = info(X, Y, t); return { x: i.x, y: i.y }; };
+  return { wind, info, weather: (X, Y, t = 0) => weather(X, Y, dayAt(t)), params: P };
+}
+
+return { WIND_PARAMS, beaufort, createWindField };
+})();
 const M_world_environment = (() => {
 /**
  * Read-only adapter: existing world data (window.__geo.world) -> ship environment.
@@ -2788,7 +2898,7 @@ function createWorldEnvironment(world, {
 
 return { createWorldEnvironment };
 })();
-const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_params, M_dynamics, M_flooding, M_ship_model, M_pinta_1492_data, M_pinta_1492_params, M_pinta_design, M_pinta_furnishings, M_interior, M_samples, M_cargo, M_pinta_1492_scenario, M_crew, M_captain, M_fleet, M_hull_mesh, M_ship_render, M_pinta_render, M_world_environment);
+const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_params, M_dynamics, M_flooding, M_ship_model, M_pinta_1492_data, M_pinta_1492_params, M_pinta_design, M_pinta_furnishings, M_interior, M_samples, M_cargo, M_pinta_1492_scenario, M_crew, M_captain, M_fleet, M_hull_mesh, M_ship_render, M_pinta_render, M_wind_field, M_world_environment);
 
 (() => {
 'use strict';
