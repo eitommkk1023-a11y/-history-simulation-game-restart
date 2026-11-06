@@ -18756,7 +18756,7 @@ body.woh-ship-on #shipBar{display:block}
 .shipbtn.on{background:#4cc2ff;color:#04202e;border-color:#4cc2ff}.shipbtn.big{min-width:76px;font-size:15px;font-weight:700}
 .shipbtn:active{filter:brightness(1.25)}
 #shipBody .lab{color:#9db8cc;font-size:11px}
-#shipBody input[type=range]{width:120px}
+#shipBody input[type=range]{width:96px;flex:1;min-width:60px}.shipsel{background:#1d3a57;color:#fff;border:1px solid #7799ae88;border-radius:10px;padding:4px 6px;font:inherit;font-size:13px;min-height:36px}
 #shipLadders{position:fixed;z-index:121}#shipLadders button{background:#4cc2ff;color:#04202e;border:0;border-radius:10px;padding:6px 16px;font-size:14px;font-weight:700;min-height:36px}
 #shipToast{position:fixed;z-index:130;left:50%;max-width:min(420px,56vw);text-align:center;transform:translateX(-50%);background:#000c;color:#fff;padding:6px 12px;border-radius:8px;font:13px sans-serif;opacity:0;transition:opacity .3s;pointer-events:none}
 html.shipUiHidden #shipInst,html.shipUiHidden #shipBar,html.shipUiHidden #shipLadders,html.shipUiHidden #shipToast{display:none!important}
@@ -18882,7 +18882,7 @@ html.shipUiHidden #shipEye{opacity:.5}
     refreshList(); save();
   }
   function dismissHand(shipId, personId) { const rec = fleet.get(shipId); if (rec?.crew?.dismiss(personId)) { toast('乗員を降ろした'); refreshList(); save(); } }
-  let shipTab = 'rudder';
+  let shipTab = 'rudder', sailSel = 'all';
   function renderBar() {
     if (!ui.bar) return; ui.ctrl.replaceChildren(); ui.tabs.replaceChildren();
     if (!boarded || !fleet?.has(boarded)) return;
@@ -18891,7 +18891,22 @@ html.shipUiHidden #shipEye{opacity:.5}
     const hold = (label, dir) => { const b = $('button', { className: 'shipbtn big', textContent: label }); const on = (e) => { e.preventDefault(); c.held = dir; }, off = () => { if (c.held === dir) c.held = 0; }; b.addEventListener('pointerdown', on); ['pointerup', 'pointerleave', 'pointercancel'].forEach((t) => b.addEventListener(t, off)); return b; };
     if (shipTab === 'rudder') { ui.tgt = $('b', { textContent: '—' }); ui.ctrl.append(hold('◀ 左', -1), hold('右 ▶', 1), $('span', { className: 'lab' }, [document.createTextNode('目標方位 '), ui.tgt])); }
     else if (shipTab === 'sail') {
-      if (v.sails.length) ui.ctrl.append($('button', { className: 'shipbtn' + (c.auto ? ' on' : ''), textContent: '帆 自動', onclick: () => { c.auto = true; renderBar(); } }), $('button', { className: 'shipbtn' + (!c.auto ? ' on' : ''), textContent: '帆 固定', onclick: () => { c.auto = false; renderBar(); } }), $('span', { className: 'lab', textContent: c.auto ? '風に合わせて自動で調整' : '帆の向きを固定' }));
+      if (v.sails.length) {
+        ui.ctrl.append($('button', { className: 'shipbtn' + (c.auto ? ' on' : ''), textContent: '自動', onclick: () => { c.auto = true; renderBar(); } }), $('button', { className: 'shipbtn' + (!c.auto ? ' on' : ''), textContent: '手動', onclick: () => { c.auto = false; renderBar(); } }), c.auto ? $('span', { className: 'lab', textContent: '風に合わせて自動で調整' }) : document.createTextNode(''));
+        if (!c.auto) { // manual sail handling: trim angle (which side and how far the yard / boom is braced) and how much sail is set
+          const pick = sailSel === 'all' ? v.sails : v.sails.filter((x) => x.id === sailSel), first = pick[0] ?? v.sails[0];
+          const sel = $('select', { className: 'shipsel' }, [$('option', { value: 'all', textContent: '全部の帆' }), ...v.sails.map((x, i) => $('option', { value: x.id, textContent: `帆${i + 1}` }))]); sel.value = sailSel; sel.onchange = () => { sailSel = sel.value; renderBar(); };
+          const side = (d) => (Math.abs(d) < 1 ? '船首尾線' : `${d > 0 ? '右' : '左'}舷へ${Math.abs(Math.round(d))}°`);
+          const angL = $('span', { className: 'lab', textContent: side(first.trimDeg), style: 'min-width:58px;font-size:10.5px' });
+          const ang = $('input', { type: 'range', min: -90, max: 90, step: 2.5, value: Math.round(first.trimDeg) });
+          ang.oninput = () => { for (const x of pick) { const t = (+ang.value < 0 ? -1 : 1) * Math.min(90, Math.max(x.minTrimDeg, Math.abs(+ang.value))); if (v.state.sailSlewDegS > 0) x.targetTrimDeg = t; else x.trimDeg = t; } angL.textContent = side(+ang.value); };
+          const depL = $('span', { className: 'lab', textContent: `${Math.round(first.deployed * 100)}%`, style: 'min-width:34px' });
+          const dep = $('input', { type: 'range', min: 0, max: 100, step: 5, value: Math.round(first.deployed * 100) });
+          dep.oninput = () => { for (const x of pick) v.setSailDeployed(x.id, +dep.value / 100); depL.textContent = `${dep.value}%`; };
+          ui.ctrl.append(sel, $('button', { className: 'shipbtn', textContent: '最適に合わせる', onclick: () => { v.autoTrim(env); renderBar(); } }),
+            $('div', { className: 'row2', style: 'display:flex;align-items:center;gap:6px;flex:1 0 100%' }, [$('span', { className: 'lab', textContent: '角度' }), ang, angL, $('span', { className: 'lab', textContent: '展開' }), dep, depL]));
+        }
+      }
       if (v.oars.length) { const r = $('input', { type: 'range', min: -100, max: 100, step: 5, value: Math.round(c.oar * 100) }); r.oninput = () => { c.oar = r.value / 100; }; ui.ctrl.append($('span', { className: 'lab', textContent: '櫂' }), r); }
       if (!v.sails.length && !v.oars.length) ui.ctrl.append($('span', { className: 'lab', textContent: '帆も櫂もありません' }));
     } else if (shipTab === 'anchor') {
