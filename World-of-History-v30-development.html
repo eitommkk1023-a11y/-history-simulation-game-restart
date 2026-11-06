@@ -430,6 +430,187 @@
   <div class="sfilter"><button data-hc="all">すべて</button><button data-hc="nature">自然</button><button data-hc="fauna">動物</button><button data-hc="people">人</button><button id="histMajor">大きな出来事だけ</button></div>
   <div id="histList" class="scrollable"></div>
 </div>
+<style id="rpg-menu-css">
+
+
+#rpgScreen{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:calc(12px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));background:#071015c9;color:#eee9de;font:14px/1.5 system-ui;box-sizing:border-box;overscroll-behavior:none}#rpgScreen[hidden]{display:none}#rpgScreen *{box-sizing:border-box}#rpgScreen button{font:inherit;cursor:pointer;touch-action:manipulation}#rpgScreen button:disabled{opacity:.4;cursor:default}#rpgScreen button:focus-visible{outline:2px solid #e1bc70;outline-offset:-3px}#rpgDialog{width:min(1120px,100%);height:min(760px,100%);display:flex;flex-direction:column;min-height:0;background:linear-gradient(115deg,#19262bfa,#111e25fa);border:1px solid #8b7958;border-radius:12px;box-shadow:0 16px 60px #0008;overflow:hidden}
+.rpg-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 22px 12px;border-bottom:1px solid #b79c602b}.rpg-brand{font-size:10px;letter-spacing:.2em;color:#b9ab8c}.rpg-title{margin:0;font-size:23px;font-weight:600;letter-spacing:.12em;color:#f2ead9}.rpg-head-right{display:flex;align-items:center;gap:14px}.rpg-test{font-size:11px;color:#bbae90;border:1px solid #7b705a;border-radius:4px;padding:2px 6px}.rpg-close{min-height:44px;padding:0 15px;background:#28373b;border:1px solid #7e8175;border-radius:6px;color:#eee9de}.rpg-close span{color:#a4b0ae;font-size:11px;margin-left:12px}
+.rpg-tabs{display:flex;gap:3px;padding:0 18px;border-bottom:1px solid #a9a58d29;background:#13202788}.rpg-tab{display:flex;justify-content:center;align-items:center;gap:9px;min-height:48px;flex:1;max-width:250px;border:0;border-bottom:3px solid transparent;background:none;color:#9dacae;font-weight:600!important}.rpg-tab[aria-selected=true]{color:#e4c58b;border-bottom-color:#d1ad68;background:linear-gradient(0deg,#bc9b5520,transparent)}.rpg-tab svg{width:19px;height:19px}.rpg-panel{flex:1;min-height:0;display:flex;flex-direction:column;padding:18px 22px;gap:14px}.rpg-panel[hidden]{display:none!important}.rpg-meta{display:flex;align-items:center;justify-content:space-between;color:#b3bfbc;font-size:12px;gap:10px}.rpg-money{color:#dcc088}.rpg-subtle{color:#99aaa9}.rpg-inventory{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(210px,.57fr);gap:20px}.rpg-bag{min-height:0;display:flex;flex-direction:column;gap:12px}.rpg-filters{display:flex;gap:5px;overflow:auto;flex-shrink:0;touch-action:pan-x}.rpg-filter{flex-shrink:0;min-height:40px;padding:0 13px;border:1px solid #526362;border-radius:5px;background:transparent;color:#acbab7;font-size:12px!important}.rpg-filter[aria-pressed=true]{background:#a3864e25;border-color:#b39860;color:#e5cc97}.rpg-item-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));align-content:start;gap:8px;overflow:auto;min-height:0;padding:2px 6px 4px 2px;touch-action:pan-y}.rpg-item{position:relative;min-height:88px;background:#26363b;border:1px solid #46585b;border-radius:6px;color:#dbe2dc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:8px 2px}.rpg-item.selected{background:#8e794329;border:2px solid #d5b676;padding:7px 1px}.rpg-item svg{width:32px;height:32px;color:#c6ba9e}.rpg-item-name{font-size:12px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rpg-item-qty{position:absolute;right:6px;top:3px;font-size:11px;color:#c2cecb}.rpg-equipped{position:absolute;left:5px;top:3px;color:#dcc17f;font-size:10px}.rpg-empty-slot{min-height:88px;border:1px solid #36464b;border-radius:6px;background:#14222880}.rpg-detail{min-height:0;overflow:auto;padding:16px 20px;border-left:1px solid #69797655;touch-action:pan-y}.rpg-detail-icon{width:72px;height:72px;display:flex;align-items:center;justify-content:center;margin:0 auto 10px;background:#bfa36b0c;border:1px solid #9c885d59;border-radius:8px}.rpg-detail-icon svg{width:46px;height:46px;color:#d2be94}.rpg-kicker{font-size:11px;letter-spacing:.08em;color:#bbaa86}.rpg-detail h2{font-size:21px;color:#eee5d4;margin:5px 0 12px}.rpg-detail p{margin:10px 0;line-height:1.8;color:#b8c4bf;font-size:13px}.rpg-stat-row{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:#a7b7b3;padding:7px 0;border-bottom:1px solid #81918a26}.rpg-stat-row strong{font-weight:500;color:#dbdac8}.rpg-primary{min-height:44px;min-width:150px;margin-top:14px;padding:0 18px;border:1px solid #c0a368;border-radius:5px;background:#9e82472b;color:#ebd3a1}.rpg-no-items{padding:30px 10px;color:#a9b6b3;grid-column:1/-1;text-align:center}
+.rpg-map-layout{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 190px;gap:18px}.rpg-map-box{position:relative;min-height:0;overflow:hidden;border:1px solid #6c796d;border-radius:6px;background:#142831}.rpg-map-box canvas{display:block;width:100%;height:100%;touch-action:none}.rpg-map-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;background:#15262c;color:#c8c8b4}.rpg-map-loading[hidden]{display:none}.rpg-map-side{overflow:auto;min-height:0;touch-action:pan-y}.rpg-map-side h2{margin:0 0 12px;font-size:18px;font-weight:500;color:#ded8c2}.rpg-map-buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px}.rpg-map-buttons button{min-height:44px;border:1px solid #6e7c73;background:#293b3e;border-radius:5px;color:#e4e6db}.rpg-map-buttons .wide{grid-column:1/-1}.rpg-map-key{display:flex;align-items:center;gap:9px;margin:13px 0;font-size:12px;color:#b6c3ba}.rpg-map-key i{width:12px;height:12px;border-radius:50%;background:#d8b45a;border:1px solid #fff4;display:inline-block}.rpg-map-key i.water{background:#42758a}.rpg-map-key i.land{background:#82945d}.rpg-map-help{font-size:12px;color:#9eb1ab;line-height:1.8;margin-top:16px}
+.rpg-missions{flex:1;min-height:0;display:grid;grid-template-columns:280px minmax(0,1fr);gap:22px}.rpg-mission-list-wrap{min-height:0;display:flex;flex-direction:column;gap:10px}.rpg-mission-list{overflow:auto;min-height:0;touch-action:pan-y;display:flex;flex-direction:column;gap:8px;padding:2px}.rpg-mission-card{text-align:left;padding:14px 15px;border:1px solid #4b6060;background:#223238;border-radius:6px;color:#d5e0d6;min-height:82px}.rpg-mission-card.selected{border-color:#cab078;background:#8e794329}.rpg-mission-card b{font-weight:500;display:block;font-size:15px;margin:4px 0}.rpg-mission-card small{color:#aebcaf;font-size:11px}.rpg-mission-card .tag{font-size:10px;color:#c4b183;letter-spacing:.1em}.rpg-objective{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0;padding:9px 0;border-bottom:1px solid #6c807443;color:#d3d9ca;font-size:13px}.rpg-objective .done{color:#8bac95}.rpg-progress{height:4px;background:#2d4143;border-radius:3px;overflow:hidden;margin:8px 0 20px}.rpg-progress>span{display:block;height:100%;background:#c1a46a}.rpg-tracked{color:#d1bb8b;font-size:11px}.rpg-footer{padding:8px 22px;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:34px;border-top:1px solid #81918a26;color:#829b98;font-size:11px;background:#101e2488}.rpg-footer strong{color:#b9b194;font-weight:400}.rpg-toast{position:absolute;bottom:45px;left:50%;transform:translateX(-50%);max-width:85%;padding:10px 16px;border:1px solid #b69c6e;border-radius:6px;background:#23353bf5;color:#f1dfb4;font-size:13px;text-align:center;pointer-events:none}.rpg-toast[hidden]{display:none}
+@media(max-width:850px){.rpg-item-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.rpg-missions{grid-template-columns:220px minmax(0,1fr)}.rpg-head{padding:9px 16px}.rpg-title{font-size:20px}.rpg-panel{padding:12px 16px;gap:10px}.rpg-detail{padding:10px 14px}.rpg-inventory{gap:12px}.rpg-map-layout{grid-template-columns:minmax(0,1fr) 150px;gap:12px}}
+@media(max-height:500px){.rpg-head{padding:6px 14px}.rpg-brand{font-size:9px}.rpg-title{font-size:18px}.rpg-tab{min-height:42px}.rpg-panel{padding:8px 14px;gap:7px}.rpg-item,.rpg-empty-slot{min-height:72px}.rpg-item svg{width:26px;height:26px}.rpg-item-grid{gap:6px}.rpg-detail-icon{display:none}.rpg-detail h2{font-size:18px;margin:3px 0 7px}.rpg-detail p{font-size:12px;margin:7px 0}.rpg-detail{padding:5px 12px}.rpg-filters{gap:4px}.rpg-filter{min-height:36px;padding:0 9px}.rpg-bag{gap:7px}.rpg-footer{min-height:27px;padding:4px 14px;font-size:10px}.rpg-head-right{gap:8px}.rpg-mission-card{min-height:66px;padding:8px 10px}.rpg-map-side h2{font-size:16px;margin:0 0 6px}.rpg-map-key{margin:7px 0}.rpg-map-help{margin-top:8px}.rpg-stat-row{padding:4px 0}}
+@media(max-width:590px){.rpg-inventory,.rpg-missions{grid-template-columns:1fr;overflow:auto}.rpg-bag,.rpg-mission-list-wrap{min-height:180px}.rpg-detail{border-left:0;border-top:1px solid #69797655;overflow:visible}.rpg-map-layout{grid-template-columns:1fr}.rpg-map-side{display:flex;align-items:center;gap:10px;flex-wrap:wrap;overflow:visible}.rpg-map-side h2,.rpg-map-help,.rpg-map-key{display:none}.rpg-map-buttons{display:flex}.rpg-map-buttons button{padding:4px 10px}.rpg-head-right .rpg-test,.rpg-close span{display:none}.rpg-tab{font-size:12px!important;gap:5px}.rpg-tab svg{width:16px}.rpg-footer>span:first-child{display:none}}
+
+/* Prototype 02: fill the browser viewport and give space to each page's primary content. */
+#rpgScreen{padding:0;background:#111e24fa}
+#rpgDialog{width:100%;height:100%;max-width:none;max-height:none;border:0;border-radius:0;box-shadow:none}
+.rpg-head{flex-shrink:0;min-height:calc(48px + env(safe-area-inset-top));gap:8px;padding:env(safe-area-inset-top) calc(8px + env(safe-area-inset-right)) 0 calc(8px + env(safe-area-inset-left))}
+.rpg-head>div:first-child{flex-shrink:0;min-width:58px}
+.rpg-brand{font-size:9px;letter-spacing:.08em;line-height:1.2}
+.rpg-title{font-size:14px;letter-spacing:0;line-height:1.35}
+.rpg-head-right{flex:0 0 auto;gap:0}
+.rpg-test,.rpg-close span,.rpg-footer{display:none}
+.rpg-close{min-height:44px;min-width:64px;padding:0 10px;font-size:14px!important}
+.rpg-tabs{flex:1;min-width:0;align-self:stretch;padding:0;gap:0;border:0;background:none}
+.rpg-tab{min-width:0;max-width:none;min-height:48px;gap:6px;font-size:14px!important;white-space:nowrap;border-bottom-width:2px}
+.rpg-tab svg{width:18px;height:18px;flex-shrink:0}
+.rpg-panel{padding:8px calc(8px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left));gap:8px}
+.rpg-meta{min-height:44px;flex-shrink:0;gap:12px;font-size:12px}
+#rpgPage-inventory>.rpg-meta{display:grid;grid-template-columns:minmax(0,1fr) auto auto}
+#rpgCategories{min-width:0}
+.rpg-filters{gap:4px}
+.rpg-filter{min-height:44px;padding:0 10px;font-size:13px!important}
+.rpg-inventory{grid-template-columns:minmax(0,1fr) minmax(172px,28%);gap:10px}
+.rpg-bag{gap:0}
+.rpg-item-grid{flex:1;grid-template-columns:repeat(5,minmax(0,1fr));grid-auto-rows:minmax(112px,1fr);align-content:stretch;gap:8px;padding:0 3px 0 0}
+.rpg-item,.rpg-empty-slot{min-height:112px}
+.rpg-item{gap:8px;padding:10px 4px}
+.rpg-item.selected{padding:9px 3px}
+.rpg-item svg{width:44px;height:44px}
+.rpg-item-name{font-size:15px}
+.rpg-item-qty,.rpg-equipped{font-size:12px}
+.rpg-detail{padding:8px 12px}
+.rpg-detail-icon{display:none}
+.rpg-kicker{font-size:12px;line-height:1.5}
+.rpg-detail h2{font-size:21px;margin:4px 0 8px}
+.rpg-detail p{font-size:15px;line-height:1.7}
+.rpg-stat-row{font-size:14px;padding:5px 0}
+.rpg-primary{min-height:44px;min-width:0;width:100%;margin-top:10px;font-size:15px!important;padding:0 8px}
+.rpg-about{margin-top:10px;border-top:1px solid #81918a33}
+.rpg-about summary{display:flex;align-items:center;min-height:44px;color:#bdc9c2;font-size:14px;cursor:pointer;touch-action:manipulation;gap:8px}
+.rpg-about summary:before{content:'＋';color:#d2b77e}
+.rpg-about[open] summary:before{content:'−'}
+.rpg-about p{font-size:14px}
+#rpgPage-map>.rpg-meta{display:none}
+.rpg-map-layout{position:relative;display:block;flex:1;min-height:0}
+.rpg-map-box{position:absolute;inset:0;border-radius:3px}
+.rpg-map-side{position:absolute;z-index:1;right:8px;bottom:8px;width:176px;min-height:0;max-height:none;overflow:visible;display:block}
+.rpg-map-side h2,.rpg-map-key,.rpg-map-help{display:none}
+.rpg-map-buttons{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.rpg-map-buttons .wide{grid-column:auto}
+.rpg-map-buttons button{min-height:44px;padding:0 6px;background:#23373bf5;font-size:14px!important}
+.rpg-missions{grid-template-columns:clamp(176px,23%,280px) minmax(0,1fr);gap:12px}
+.rpg-mission-list-wrap{gap:8px}
+.rpg-mission-card{min-height:88px;padding:12px}
+.rpg-mission-card b{font-size:16px}
+.rpg-mission-card small,.rpg-mission-card .tag,.rpg-tracked{font-size:12px}
+.rpg-missions>.rpg-detail p{font-size:16px}
+.rpg-objective{min-height:44px;margin:4px 0;padding:6px 0;font-size:15px}
+.rpg-progress{margin:8px 0 12px}
+.rpg-detail>.rpg-subtle{display:none}
+.rpg-toast{bottom:calc(12px + env(safe-area-inset-bottom))}
+@media(max-height:500px){
+ .rpg-item-grid{grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:88px;align-content:start}
+ .rpg-item,.rpg-empty-slot{min-height:88px}
+ .rpg-item svg{width:36px;height:36px}
+ .rpg-item-name{font-size:14px}
+ .rpg-detail{padding:4px 8px}
+ .rpg-detail h2{font-size:18px}
+ .rpg-stat-row{font-size:13px;padding:4px 0}
+ .rpg-detail p,.rpg-missions>.rpg-detail p{font-size:14px}
+ .rpg-mission-card{min-height:80px;padding:8px 10px}
+ .rpg-missions{grid-template-columns:176px minmax(0,1fr)}
+}
+@media(max-width:720px){
+ .rpg-head{gap:3px}
+ .rpg-head>div:first-child{min-width:50px}
+ .rpg-tab{gap:4px;font-size:12px!important}
+ .rpg-tab svg{width:16px;height:16px}
+ .rpg-close{min-width:54px;font-size:13px!important}
+ .rpg-meta{gap:8px;font-size:11px}
+ .rpg-filter{padding:0 8px;font-size:12px!important}
+ #rpgPage-inventory>.rpg-meta{grid-template-columns:minmax(0,1fr) auto}
+ .rpg-money{display:none}
+ .rpg-inventory{grid-template-columns:minmax(0,1fr) 172px}
+}
+@media(orientation:portrait) and (max-width:590px){
+ .rpg-head>div:first-child{display:none}
+ .rpg-tab svg{display:none}
+ .rpg-inventory,.rpg-missions{grid-template-columns:1fr;overflow:auto}
+ .rpg-item-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+ .rpg-bag{min-height:220px}
+ .rpg-detail{border-left:0;border-top:1px solid #69797655;overflow:visible}
+ .rpg-mission-list-wrap{min-height:180px}
+}
+
+.rpg-missions .rpg-primary{margin-top:6px}
+
+/* Prototype03: visible equipment, large owned-item grid and direct sort choice. */
+#rpgPage-inventory>.rpg-meta{grid-template-columns:minmax(0,1fr) 108px auto auto}
+.rpg-sort{display:flex;min-width:0;height:44px}
+#rpgSort{width:100%;height:44px;min-height:44px;border:1px solid #526362;border-radius:5px;background:#1d3035;color:#ddd8c8;padding:0 6px;font:16px system-ui;touch-action:manipulation}
+.rpg-bag{gap:8px}
+.rpg-equipment{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;flex-shrink:0}
+.rpg-equip-slot{display:flex;align-items:center;gap:10px;min-height:70px;min-width:0;padding:9px 12px;border:1px solid #536964;border-radius:7px;background:#203339;color:#dddaca;text-align:left}
+.rpg-equip-slot.vacant{border-style:dashed;background:#17292f;color:#aabcb6}
+.rpg-equip-slot[aria-pressed=true]{border-color:#d2b47a;box-shadow:inset 0 0 0 1px #d2b47a66;background:#a98c4520}
+.rpg-equip-slot>svg{width:30px;height:30px;flex-shrink:0;color:#c9b887}
+.rpg-equip-copy{display:flex;flex-direction:column;min-width:0;gap:2px;flex:1}
+.rpg-equip-copy small{font-size:11px;color:#aab9b2}
+.rpg-equip-copy strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;font-weight:550}
+.rpg-equip-open{font-size:11px;color:#b5c2ba;flex-shrink:0}
+.rpg-equip-state{margin:0 0 8px;color:#d4bb87;font-size:12px;line-height:1.5}
+.rpg-item-grid{position:relative;align-content:stretch;grid-auto-rows:minmax(112px,1fr);flex:1;min-height:0}
+@media(max-height:500px){.rpg-equip-slot{min-height:62px;padding:7px 9px;gap:8px}.rpg-equip-slot>svg{width:26px;height:26px}.rpg-equip-copy strong{font-size:14px}.rpg-item-grid{grid-auto-rows:88px;align-content:start}.rpg-equip-state{margin-bottom:6px;font-size:11px}}
+@media(max-width:720px){#rpgPage-inventory>.rpg-meta{grid-template-columns:minmax(0,1fr) 104px auto}.rpg-equip-open{display:none}.rpg-equipment{gap:6px}}
+@media(orientation:portrait) and (max-width:590px){#rpgPage-inventory>.rpg-meta{grid-template-columns:minmax(0,1fr) 104px}#rpgWeight{display:none}.rpg-bag{min-height:290px}}
+
+/* Prototype04: put item categories in the left rail indicated in the feedback. */
+#rpgPage-inventory{display:grid;grid-template-columns:80px minmax(0,1fr);grid-template-rows:44px minmax(0,1fr);column-gap:10px;row-gap:8px}
+#rpgCategories{grid-column:1;grid-row:1/-1;display:flex;flex-direction:column;align-items:stretch;min-height:0;overflow-x:hidden;overflow-y:auto;gap:6px;touch-action:pan-y;scrollbar-width:thin}
+#rpgCategories .rpg-filter{flex:0 0 auto;min-height:52px;width:100%;padding:0 6px}
+#rpgPage-inventory>.rpg-meta{grid-column:2;grid-row:1;grid-template-columns:minmax(0,1fr) auto auto}
+#rpgPage-inventory>.rpg-meta>.rpg-sort{width:108px;justify-self:end}
+#rpgPage-inventory>.rpg-inventory{grid-column:2;grid-row:2;min-width:0}
+@media(max-width:720px){#rpgPage-inventory{grid-template-columns:68px minmax(0,1fr);column-gap:8px}#rpgPage-inventory>.rpg-meta{grid-template-columns:minmax(0,1fr) auto}#rpgPage-inventory>.rpg-meta>.rpg-sort{width:104px}}
+@media(max-height:360px){#rpgCategories{gap:4px}#rpgCategories .rpg-filter{min-height:44px}}
+
+/* Prototype05: equipment and sorting share one compact row above the items. */
+#rpgPage-inventory>.rpg-meta{grid-template-columns:minmax(0,1fr) minmax(172px,28%);gap:10px}
+.rpg-inventory-tools{display:grid;grid-template-columns:minmax(0,1fr) 104px;align-items:center;gap:8px;min-width:0;height:44px}
+.rpg-inventory-tools .rpg-equipment{min-width:0;height:44px;gap:6px}
+.rpg-inventory-tools .rpg-equip-slot{height:44px;min-height:44px;padding:3px 6px;gap:5px}
+.rpg-inventory-tools .rpg-equip-slot>svg{width:20px;height:20px}
+.rpg-inventory-tools .rpg-equip-copy{gap:0}
+.rpg-inventory-tools .rpg-equip-copy small{font-size:10px;line-height:14px}
+.rpg-inventory-tools .rpg-equip-copy strong{font-size:12px;line-height:18px}
+.rpg-inventory-tools .rpg-equip-open{display:none}
+.rpg-wallet{display:flex;flex-wrap:wrap;justify-content:flex-end;align-content:center;align-items:center;column-gap:10px;min-width:0;height:44px;line-height:18px}
+.rpg-wallet>span{white-space:nowrap}
+#rpgPage-inventory .rpg-bag{gap:0}
+@media(max-width:720px){#rpgPage-inventory>.rpg-meta{grid-template-columns:minmax(0,1fr) 172px}}
+@media(orientation:portrait) and (max-width:590px){#rpgPage-inventory>.rpg-meta{grid-template-columns:minmax(0,1fr)}.rpg-wallet{display:none}.rpg-inventory-tools{grid-template-columns:minmax(0,1fr) 96px}.rpg-inventory-tools .rpg-equip-slot>svg{display:none}}
+
+/* Prototype06: separate the map and its control area at a 2:1 width ratio. */
+.rpg-map-layout{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:10px}
+.rpg-map-box{position:relative;inset:auto;min-width:0}
+.rpg-map-side{position:relative;inset:auto;z-index:auto;width:auto;min-width:0;max-height:100%;overflow:auto;padding:8px;border-left:1px solid #6c796d;background:#15262c;border-radius:3px;display:block}
+.rpg-map-side .rpg-map-buttons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+@media(orientation:portrait) and (max-width:590px){.rpg-map-side .rpg-map-buttons{grid-template-columns:minmax(0,1fr)}
+}
+/* ---- 本編への組み込み ---- */
+body.rpg-menu-open .hud, body.rpg-menu-open #joystick, body.rpg-menu-open #actions, body.rpg-menu-open #miniMap, body.rpg-menu-open #miniZoom, body.rpg-menu-open #forageBar, body.rpg-menu-open #forageMsg, body.rpg-menu-open #talkPanel, body.rpg-menu-open #uiToggle, body.rpg-menu-open #devBadge, body.rpg-menu-open #movementNotice, body.rpg-menu-open #leftMenu, body.rpg-menu-open #toolbar, body.rpg-menu-open #toasts { display: none !important; }
+#rpgScreen { font-family: system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif; }
+#rpgLifeHost { flex: 1; min-height: 0; overflow: auto; touch-action: pan-y; }
+#rpgScreen #bagPanel, #rpgScreen #bagPanel.show { display: block !important; position: static !important; transform: none !important; width: auto !important; max-width: 760px; max-height: none !important; overflow: visible !important; background: none !important; border: 0 !important; padding: 0 !important; margin: 0 auto; font-size: 13px; }
+#rpgScreen #bagPanel:not(.show) { display: none !important; }
+#rpgScreen #bagPanel button { height: 34px; border-radius: 17px; font-size: 12px; padding: 0 12px; }
+#rpgScreen #bagPanel #bagClose, #rpgScreen #bagPanel .bh:first-child { display: none; }
+#rpgSystem { flex: 1; min-height: 0; overflow: auto; touch-action: pan-y; }
+.rpg-sys-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; margin-top: 8px; }
+.rpg-sys-date { align-self: center; font-weight: 600; font-size: 15px; margin-right: 8px; color: #e4c58b; }
+.rpg-sys { min-height: 48px; padding: 6px 16px; border: 1px solid #6e7c73; border-radius: 6px; background: #293b3e; color: #e4e6db; font-size: 14px; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+.rpg-sys small { font-size: 10px; color: #9fb0ad; }
+.rpg-head-right { margin-left: auto; }
+/* 画面の混雑を減らす：下の6つのボタン・地図/情報ボタン・時間の細かい操作は、メニューへ移した */
+#hudHot, #hbMap, #hbInfo { display: none !important; }
+#hudTL #timebar #tMode, #hudTL #timebar #tSpeed, #hudTL #timebar #tStep { display: none !important; }
+#hudGoal .gt { display: none; }
+#hudGoal { width: auto; max-width: calc(var(--u) * 232); padding-top: calc(var(--u) * 5); padding-bottom: calc(var(--u) * 5); cursor: pointer; }
+#miniZoom #mzIn, #miniZoom #mzOut { display: none !important; }
+
+</style>
 <div id="menu" class="sheet">
   <div class="shead"><b>メニュー</b><button id="menuClose">閉じる</button></div>
   <div class="sfilter"><button id="menuTitle">タイトルへ戻る</button><button id="menuMortal">死亡：あり</button><button id="menuGod" class="dev-only">暮らしの消耗：なし</button><button id="menuBt1" class="dev-only">野戦：敵が攻めてくる</button><button id="menuBt2" class="dev-only">野戦：敵が罠を張る</button><button id="menuBt3" class="dev-only">野戦：敵は守る</button><button id="menuBt4" class="dev-only">野戦：騎兵と荷馬車</button><button id="menuDevBar" class="dev-only">開発ツール（上のボタン列）</button><button id="menuHist">歴史を見る</button><button id="menuExport">ファイルに書き出す</button><button id="menuImport">ファイルから読み込む</button></div>
@@ -7260,6 +7441,8 @@ root.WohHorseView=api;})(typeof globalThis!=="undefined"?globalThis:this);
     { id: 'cloth',  text: '毛皮の衣か草の外套を作る',   need: 1,  have: st => (st.total.fur || 0) + (st.total.cloak || 0) },
     { id: 'skin',   text: '水を汲んで持ち歩く',        need: 1,  have: st => (st.n || {}).fill || 0 },
   ];
+  // 全目標の一覧（メニューの「ミッション」用）。id・text・need・have（need で頭打ち）・done
+  function goalList(st) { return GOALS.map(g => { const h = Math.min(g.need, g.have(st)); return { id: g.id, text: g.text, need: g.need, have: h, done: h >= g.need }; }); }
   // 順番に、最初の未達成の目標を返す。done＝達成した数、all＝全部達成
   function goals(st) {
     let done = 0;
@@ -7388,10 +7571,9 @@ root.WohHorseView=api;})(typeof globalThis!=="undefined"?globalThis:this);
     return function () { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   }
 
-  const api = { clothOf, clothFactor, CLOTH, ROT, rot, takeRotted, dry, DRY, carryCap, fillWater, drinkCarried, injured, hurt, treat, bestWeapon, applyHunt, WEAPON, HUNT_RISK, dyingLeft, takeDeath, firstAid, inherit, DYING_DAYS, RECOVER_HP, setEnv, rest, staminaCap, staminaStep, jumpCost, drink, vitalsInfo, HP_MAX, SP_MAX, WATER_MAX, setCommons, atCommons, ownFireActive, standingInfo, gainStanding, giveToGroup, ration, share, learn, talk, nearCamp, KCAL_PER_KG, goals, GOALS, slotsOf, HOME_NEED, HOME_DAYS, HOME_REACH, STORE_SLOTS, homeStatus, nearHome, homeNeedText, buildHome, demolishHome, storePut, storeTake, storeList, storeRoom, sleep, SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
+  const api = { goalList, clothOf, clothFactor, CLOTH, ROT, rot, takeRotted, dry, DRY, carryCap, fillWater, drinkCarried, injured, hurt, treat, bestWeapon, applyHunt, WEAPON, HUNT_RISK, dyingLeft, takeDeath, firstAid, inherit, DYING_DAYS, RECOVER_HP, setEnv, rest, staminaCap, staminaStep, jumpCost, drink, vitalsInfo, HP_MAX, SP_MAX, WATER_MAX, setCommons, atCommons, ownFireActive, standingInfo, gainStanding, giveToGroup, ration, share, learn, talk, nearCamp, KCAL_PER_KG, goals, GOALS, slotsOf, HOME_NEED, HOME_DAYS, HOME_REACH, STORE_SLOTS, homeStatus, nearHome, homeNeedText, buildHome, demolishHome, storePut, storeTake, storeList, storeRoom, sleep, SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohForage = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
-
 </script>
 <script id="people-core">
 'use strict';
@@ -10537,6 +10719,166 @@ globalThis.__wohForage = { context: forageContext, fauna: () => fauna, FA: () =>
     else if (t.dataset.drop) { WohForage.drop(forageSt, t.dataset.drop); forageBagRender(); }
   });
 })();
+// ================= 新メニュー（インベントリ／マップ／ミッション／暮らし／時間・記録）=================
+// 画面の混雑を減らすため、持ち物・目標・地図・時間操作・記録などをここに集約する。実データ（forageSt・目標・世界地図・時計）に接続。
+(function rpgMenuInit() {
+  const $ = id => document.getElementById(id), F = WohForage;
+  const shapes = { bag: 'M5 7h14l2 14H3L5 7Zm3 0V5a4 4 0 0 1 8 0v2', map: 'm2 5 6-3 8 3 6-3v17l-6 3-8-3-6 3V5Zm6-3v17m8-14v17', scroll: 'M6 3h13v16H6a3 3 0 0 1 0-6h13M6 3a3 3 0 0 0 0 6h3V3M9 8h7m-7 3h7m-7 5h5', sword: 'm14 3 7 0 0 7-9 9-7-7 9-9ZM3 16l5 5m-4-1 5-5m1-7 6 6', shirt: 'm8 3 4 2 4-2 6 5-4 4-2-2v11H8V10l-2 2-4-4 6-5Z', bread: 'M4 12c-4-4 1-9 8-9s12 5 8 9v8H4v-8Zm5-6-2 3m7-3-2 3m6-2-2 3', bottle: 'M9 2h6v5l3 4v10H6V11l3-4V2Zm-3 12h12M9 5h6', wood: 'm3 9 5-6 13 7-5 6-13-7Zm0 0v6l13 7v-6m0 6 5-6v-6M7 9l10 5', stone: 'm3 18 2-10 7-5 8 5 2 10-7 4H8l-5-4Zm2-10 7 4 8-4m-8 4 3 10', spark: 'm12 2-2 8-7 2 7 2 2 8 2-8 7-2-7-2-2-8Zm7 0 1 4m-18 0 3 1', rope: 'M8 4c-7 0-7 8-1 8h10c6 0 6 8-1 8M8 4c7 0 7 8 1 8H7c-6 0-6 8 1 8m1-14 6 12', leaf: 'M21 3C9 2 2 7 4 15c3 8 16 4 17-12ZM4 21 17 7m-6 6v-4m0 4h5', clock: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 4v5l3 2' };
+  const icon = (n, c) => '<svg class="' + (c || '') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + (shapes[n] || shapes.bag) + '"/></svg>';
+  const ICON = { fruit: 'leaf', bud: 'leaf', herb: 'leaf', seed: 'leaf', nut: 'leaf', root: 'leaf', firewood: 'wood', bone: 'wood', antler: 'wood', stone: 'stone', clay: 'stone', pot: 'bottle', skin: 'bottle', rope: 'rope', fiber: 'rope', net: 'rope', knife: 'sword', axe: 'sword', bow: 'sword', spear: 'sword', fur: 'shirt', cloak: 'shirt', hide: 'shirt' };
+  const iconOf = it => ICON[it.id] || (F.ITEMS[F.IDX[it.id]].group === 'food' ? 'bread' : 'bag');
+  const GROUP = { food: '食料', material: '素材', tool: '道具' };
+  const TOOLD = { knife: '切る・削る基本の道具。', axe: '木を切る。薪や家の材料づくりに使う。', net: '水辺で魚を獲る。', pot: '煮炊きや水の持ち運びに使う。炉のそばで煮物が作れる。', bow: '離れた獲物を狩る。持っていれば狩りで自動的に使う。', spear: '獲物を突く。持っていれば狩りで自動的に使う。', skin: '水を汲んで持ち歩ける。', fur: '寒さを大きく防ぐ。持っていれば自動で着る。日がたつと傷む。', cloak: '寒さを少し防ぐ。持っていれば自動で着る。日がたつと傷む。' };
+  const descOf = it => { const d = F.ITEMS[F.IDX[it.id]]; if (d.group === 'food') return (d.raw ? '生のままでは食べにくい。焼く・水にさらすなどするとよい。' : 'そのまま食べられる。') + (d.kcal ? '熱量は1個で約' + d.kcal + ' kcal。' : '') + '傷みやすいものは、日がたつと腐る。'; if (d.group === 'tool') return TOOLD[d.id] || '暮らしに使う道具。'; return '製作や火おこし、家づくりなどに使う素材。'; };
+  const SLOTS_EQ = [{ id: 'weapon', label: '武器', icon: 'sword' }, { id: 'cloth', label: '衣', icon: 'shirt' }];
+  const equippedOf = slot => { const S = forageSt; return slot === 'weapon' ? F.bestWeapon(S) : F.clothOf(S); };
+  const HINT = { food: '野や水辺で食べ物を探して、数をそろえよう。', drink: '川や湖のそばで「水」を選んで飲もう。', wood: '木の近くで素材を探すと薪が集まる。', fire: '薪を持って火を起こそう（暮らしタブ）。', cook: '火で焼くか、土器で煮てから食べよう。', rope: '繊維を集めて縄にする（暮らしタブの製作）。', clay: '水辺で素材を探すと粘土が採れる。', pot: '粘土と火で土器を作ろう。', acorn: '木の実を水にさらして、日をおいてから受け取ろう。', stew: '土器・火・水辺で食材4つを煮よう。', home: '材料をそろえ、水辺以外の場所で家を建てよう。', sleep: '家ができたら、中で眠ろう。', talk: '集団の人に近づいて話しかけよう。', share: '近くの人に食べ物を「分ける」。', hearth: '集団の野営地のみんなの炉で調理しよう。', give: '集団に食べ物や薪を分けよう。', learn: '評判を上げて、集団の人から技を教わろう。', bow: '弓か槍を作ろう。', hunt: '弓か槍を持って狩りに出よう。', dry: '肉や魚を干して、保存食にしよう。', cloth: '毛皮か草で衣を作ろう。', skin: '水袋を作り、川や湖で水を汲もう。' };
+  // 追跡する目標（未選択なら、順番に最初の未達成の目標）
+  const TRK = 'woh-track';
+  const tracked = () => { let id = null; try { id = localStorage.getItem(TRK); } catch (e) { } const L = F.goalList(forageSt), g = L.find(x => x.id === id && !x.done); return g || L.find(x => !x.done) || null; };
+  window.__wohGoalView = () => { const L = F.goalList(forageSt), g = tracked(), done = L.filter(x => x.done).length; return g ? { all: false, done, total: L.length, text: g.text, have: g.have, need: g.need } : { all: true, done, total: L.length, text: '暮らしの基本を身につけた', have: 0, need: 0 }; };
+
+  const screen = document.createElement('div'); screen.id = 'rpgScreen'; screen.hidden = true;
+  screen.innerHTML = '<section id="rpgDialog" role="dialog" aria-modal="true" aria-labelledby="rpgMenuTitle"><header class="rpg-head"><div><div class="rpg-brand">World of History</div><h1 class="rpg-title" id="rpgMenuTitle">メニュー</h1></div><nav class="rpg-tabs" role="tablist" aria-label="メニューのページ">' +
+    [['inventory', 'bag', '持ち物'], ['map', 'map', 'マップ'], ['missions', 'scroll', 'ミッション'], ['life', 'spark', '暮らし'], ['system', 'clock', '時間・記録']].map((t, i) => '<button class="rpg-tab" id="rpgTab-' + t[0] + '" role="tab" aria-controls="rpgPage-' + t[0] + '" aria-selected="' + (i === 0) + '"' + (i ? ' tabindex="-1"' : '') + '>' + icon(t[1]) + t[2] + '</button>').join('') +
+    '</nav><div class="rpg-head-right"><button class="rpg-close" id="rpgClose" aria-label="ゲームに戻る">戻る<span>Esc</span></button></div></header>' +
+    '<section class="rpg-panel" id="rpgPage-inventory" role="tabpanel" aria-labelledby="rpgTab-inventory"><div class="rpg-meta"><label class="rpg-sort"><select id="rpgSort" aria-label="所持品の並び順"><option value="category">種類順</option><option value="name">名前順</option><option value="bulk">かさ順</option></select></label><span class="rpg-money" id="rpgVitals"></span><span id="rpgWeight" title="持ち物の枠"></span></div><div class="rpg-inventory"><div class="rpg-bag"><div id="rpgEquipment" class="rpg-equipment" role="group" aria-label="身につけているもの"></div><div class="rpg-filters scrollable" id="rpgCategories">' + [['all', 'すべて'], ['food', '食料'], ['material', '素材'], ['tool', '道具']].map(k => '<button class="rpg-filter" data-category="' + k[0] + '" aria-pressed="' + (k[0] === 'all') + '">' + k[1] + '</button>').join('') + '</div><div id="rpgItemGrid" class="rpg-item-grid scrollable" aria-label="所持品"></div></div><aside class="rpg-detail scrollable" id="rpgItemDetail" aria-label="アイテムの詳細"></aside></div></section>' +
+    '<section class="rpg-panel" id="rpgPage-map" role="tabpanel" aria-labelledby="rpgTab-map" hidden><div class="rpg-meta"><span id="rpgMapCaption">世界の地図</span><span>北が上</span></div><div class="rpg-map-layout"><div class="rpg-map-box"><canvas id="rpgMapCanvas" aria-label="現在の世界とプレイヤーの現在地"></canvas><div class="rpg-map-loading" id="rpgMapLoading">地図を準備しています…</div></div><aside class="rpg-map-side scrollable"><h2>世界地図</h2><div class="rpg-map-buttons"><button id="rpgMapOut" aria-label="地図を縮小">−</button><button id="rpgMapIn" aria-label="地図を拡大">＋</button><button class="wide" id="rpgMapPlayer">現在地</button><button class="wide" id="rpgMapFit">全体を表示</button></div><div class="rpg-map-key"><i></i>現在地</div><div class="rpg-map-key"><i class="land"></i>陸地・植生</div><div class="rpg-map-key"><i class="water"></i>海・湖・川</div><p class="rpg-map-help">ドラッグで移動、＋／−で拡大縮小。<br>PCではホイールも使えます。</p></aside></div></section>' +
+    '<section class="rpg-panel" id="rpgPage-missions" role="tabpanel" aria-labelledby="rpgTab-missions" hidden><div class="rpg-missions"><div class="rpg-mission-list-wrap"><div class="rpg-filters" id="rpgMissionFilters"><button class="rpg-filter" data-status="active" aria-pressed="true">進行中 <span id="rpgActiveCount"></span></button><button class="rpg-filter" data-status="done" aria-pressed="false">完了 <span id="rpgDoneCount"></span></button></div><div class="rpg-mission-list scrollable" id="rpgMissionList"></div></div><article class="rpg-detail scrollable" id="rpgMissionDetail" aria-label="ミッションの詳細"></article></div></section>' +
+    '<section class="rpg-panel" id="rpgPage-life" role="tabpanel" aria-labelledby="rpgTab-life" hidden><div class="scrollable" id="rpgLifeHost"></div></section>' +
+    '<section class="rpg-panel" id="rpgPage-system" role="tabpanel" aria-labelledby="rpgTab-system" hidden><div class="scrollable" id="rpgSystem"></div></section>' +
+    '<footer class="rpg-footer"><span id="rpgPauseLabel">メニュー中は時間が止まります</span><strong id="rpgFootDate"></strong></footer><div class="rpg-toast" id="rpgToast" role="status" hidden></div></section>';
+  document.body.appendChild(screen);
+  // 試作と同じ配置に組み替える（装備と並び替えを1つの帯に、種類は左の縦並びに）
+  const inv = $('rpgPage-inventory'), meta = inv.querySelector('.rpg-meta'), tools = document.createElement('div'), wallet = document.createElement('div');
+  inv.insertBefore($('rpgCategories'), inv.firstElementChild);
+  tools.className = 'rpg-inventory-tools'; tools.append($('rpgEquipment'), meta.querySelector('.rpg-sort'));
+  wallet.className = 'rpg-wallet'; wallet.append(meta.querySelector('.rpg-money'), $('rpgWeight')); meta.append(tools, wallet);
+
+  const TABS = ['inventory', 'map', 'missions', 'life', 'system'];
+  let open = false, tab = 'inventory', category = 'all', sortOrder = 'category', selected = null, mFilter = 'active', mSel = null, toastTimer = null, resume = false;
+  try { const s = localStorage.getItem('woh-menu-sort'); if (['category', 'name', 'bulk'].includes(s)) sortOrder = s; } catch (e) { }
+  const toast = m => { clearTimeout(toastTimer); $('rpgToast').textContent = m; $('rpgToast').hidden = false; toastTimer = setTimeout(() => { $('rpgToast').hidden = true; }, 2300); };
+
+  // ---- 持ち物
+  function sortedItems() {
+    const L = F.list(forageSt).filter(it => category === 'all' || F.ITEMS[F.IDX[it.id]].group === category), order = ['food', 'material', 'tool'], pos = new Map(F.ITEMS.map((d, i) => [d.id, i]));
+    return L.sort((a, b) => { const A = F.ITEMS[F.IDX[a.id]], B = F.ITEMS[F.IDX[b.id]]; const d = sortOrder === 'name' ? a.name.localeCompare(b.name, 'ja') : sortOrder === 'bulk' ? b.bulk - a.bulk : order.indexOf(A.group) - order.indexOf(B.group); return d || pos.get(a.id) - pos.get(b.id); });
+  }
+  function renderEquipment() {
+    $('rpgEquipment').innerHTML = SLOTS_EQ.map(s => { const id = equippedOf(s.id), d = id ? F.ITEMS[F.IDX[id]] : null; return '<button class="rpg-equip-slot' + (d ? '' : ' vacant') + '" data-slot="' + s.id + '" aria-pressed="' + (!!id && selected === id) + '" aria-label="' + s.label + '：' + (d ? d.name : 'なし') + '">' + icon(d ? iconOf(d) : s.icon) + '<span class="rpg-equip-copy"><small>' + s.label + '</small><strong>' + (d ? d.name : 'なし') + '</strong></span><span class="rpg-equip-open">' + (d ? '詳細' : '—') + '</span></button>'; }).join('');
+  }
+  function renderInventory() {
+    const items = sortedItems(), scroll = $('rpgItemGrid').scrollTop;
+    if (!items.some(i => i.id === selected)) selected = items[0] ? items[0].id : null;
+    renderEquipment(); $('rpgSort').value = sortOrder;
+    for (const n of $('rpgCategories').children) n.setAttribute('aria-pressed', String(n.dataset.category === category));
+    const vi = F.vitalsInfo(forageSt), used = F.slotsUsed(forageSt);
+    $('rpgWeight').textContent = '持ち物 ' + used + ' / ' + F.SLOTS + ' 枠'; $('rpgVitals').textContent = '体力 ' + Math.round(vi.hp) + '　水分 ' + Math.round(vi.water);
+    const eqIds = new Set([equippedOf('weapon'), equippedOf('cloth')]);
+    $('rpgItemGrid').innerHTML = items.length ? items.map(i => '<button class="rpg-item' + (selected === i.id ? ' selected' : '') + '" data-item="' + i.id + '" aria-pressed="' + (selected === i.id) + '" aria-label="' + i.name + ' ' + i.n + '個"><span class="rpg-item-qty">×' + i.n + '</span>' + (eqIds.has(i.id) ? '<span class="rpg-equipped">使用中</span>' : '') + icon(iconOf(i)) + '<span class="rpg-item-name">' + i.name + (i.raw ? '（生）' : '') + '</span></button>').join('') + Array.from({ length: Math.max(0, 16 - items.length) }, () => '<div class="rpg-empty-slot" aria-hidden="true"></div>').join('') : '<div class="rpg-no-items">この種類の持ち物はありません</div>';
+    $('rpgItemGrid').scrollTop = scroll;
+    const det = $('rpgItemDetail'), it = items.find(i => i.id === selected);
+    if (!it) { det.innerHTML = '<p>アイテムを選ぶと詳細を確認できます。</p>'; return; }
+    const d = F.ITEMS[F.IDX[it.id]], edible = d.group === 'food', life = F.LIFE && F.LIFE[it.id] ? ' · あと' + (F.LIFE[it.id] - ((forageSt.wear || {})[it.id] || 0)) + '回ほど' : '';
+    det.innerHTML = '<div class="rpg-detail-icon">' + icon(iconOf(it)) + '</div><div class="rpg-kicker">' + GROUP[d.group] + (it.raw ? ' · 生' : '') + life + '</div><h2>' + it.name + '</h2>' +
+      '<div class="rpg-stat-row"><span>所持数</span><strong>' + it.n + '</strong></div><div class="rpg-stat-row"><span>かさ / 個</span><strong>' + d.bulk + '</strong></div>' + (d.kcal ? '<div class="rpg-stat-row"><span>熱量 / 個</span><strong>' + d.kcal + ' kcal</strong></div>' : '') +
+      (edible ? '<button class="rpg-primary" id="rpgEat">食べる</button>' : '') + '<button class="rpg-primary" id="rpgDrop" style="background:#3a2f2f;border-color:#8a6a60">捨てる</button>' +
+      '<details class="rpg-about" open><summary>説明</summary><p>' + descOf(it) + '</p></details>';
+    $('rpgEat') && ($('rpgEat').onclick = () => { forageAct('eat', it.id); renderInventory(); toast(forageLastMsg || ''); });
+    $('rpgDrop').onclick = () => { const n = F.drop(forageSt, it.id); forageBagRender(); renderInventory(); toast(it.name + 'を' + n + '個捨てた'); };
+  }
+
+  // ---- ミッション（暮らしの目標）
+  function renderMissions() {
+    const L = F.goalList(forageSt), act = L.filter(g => !g.done), dn = L.filter(g => g.done), list = mFilter === 'active' ? act : dn, trk = tracked();
+    if (!list.some(g => g.id === mSel)) mSel = (trk && list.some(g => g.id === trk.id) ? trk.id : (list[0] && list[0].id)) || null;
+    for (const n of $('rpgMissionFilters').children) n.setAttribute('aria-pressed', String(n.dataset.status === mFilter));
+    $('rpgActiveCount').textContent = act.length; $('rpgDoneCount').textContent = dn.length;
+    $('rpgMissionList').innerHTML = list.length ? list.map(g => '<button class="rpg-mission-card' + (g.id === mSel ? ' selected' : '') + '" data-mission="' + g.id + '" aria-pressed="' + (g.id === mSel) + '"><span class="tag">暮らし</span><b>' + g.text + '</b><small>' + g.have + ' / ' + g.need + '</small>' + (trk && trk.id === g.id ? '<span class="rpg-tracked">　◇ 追跡中</span>' : '') + '</button>').join('') : '<p class="rpg-subtle">ありません</p>';
+    const g = L.find(x => x.id === mSel), det = $('rpgMissionDetail');
+    if (!g) { det.innerHTML = '<p>' + (mFilter === 'active' ? '暮らしの目標はすべて達成しました。' : 'まだ完了した目標はありません。') + '</p>'; return; }
+    det.innerHTML = '<div class="rpg-kicker">暮らしの目標 · ' + (g.done ? '完了' : '進行中') + '</div><h2>' + g.text + '</h2><p>' + (HINT[g.id] || '') + '</p><div class="rpg-progress"><span style="width:' + (g.have / g.need * 100) + '%"></span></div><div class="rpg-objective"><span class="' + (g.done ? 'done' : '') + '">' + (g.done ? '✓' : '◇') + ' ' + g.text + '</span><span>' + g.have + ' / ' + g.need + '</span></div><div class="rpg-stat-row"><span>全体</span><strong>' + dn.length + ' / ' + L.length + ' 達成</strong></div>' +
+      (g.done ? '<p class="rpg-subtle">達成した目標です。</p>' : '<button class="rpg-primary" id="rpgTrack">' + (trk && trk.id === g.id ? '追跡を解除（自動に戻す）' : 'この目標を追跡') + '</button>');
+    $('rpgTrack') && ($('rpgTrack').onclick = () => { try { if (trk && trk.id === g.id) localStorage.removeItem(TRK); else localStorage.setItem(TRK, g.id); } catch (e) { } renderMissions(); toast('画面左上の目標表示に反映しました'); });
+  }
+
+  // ---- マップ
+  const mapState = { zoom: 1, cx: .5, cy: .5 }, mapCache = document.createElement('canvas'); mapCache.width = mapCache.height = 512; let mapWorld = null, mapRev = -1, drag = null, paint = null;
+  function clampMap() { if (!paint) return; const mx = Math.min(.5, paint.w / (2 * paint.scaleW)), my = Math.min(.5, paint.h / (2 * paint.scaleH)); mapState.cx = Math.max(mx, Math.min(1 - mx, mapState.cx)); mapState.cy = Math.max(my, Math.min(1 - my, mapState.cy)); }
+  function playerLocation() { const v = window.__chunkPreview, t = v && v.state && v.state.terrain, p = v && v.markerPoint; return t && p ? { x: p.xM / t.widthM, y: p.yM / t.heightM, angle: v.character && v.character.rotation ? Math.PI - v.character.rotation.y : 0 } : null; }
+  function buildMapCache(world) { const pal = window.__wohNative.cartography, ctx = mapCache.getContext('2d'), im = ctx.createImageData(512, 512), W = world.stats.width, H = world.stats.height; for (let y = 0; y < 512; y++) for (let x = 0; x < 512; x++) { const i = Math.round(y / 511 * (H - 1)) * W + Math.round(x / 511 * (W - 1)), o = (y * 512 + x) * 4, k = pal.index(world.elev[i]) * 3; let c = world.type[i] ? pal.biomes[world.biome[i]] : null; if (world.water[i]) c = world.water[i] === 2 ? pal.lake : pal.river; for (let n = 0; n < 3; n++) im.data[o + n] = c ? c[n] : pal.lut[k + n]; im.data[o + 3] = 255; } ctx.putImageData(im, 0, 0); mapWorld = world; mapRev = window.__wohNative.revision; }
+  function drawMap() {
+    if (!open || tab !== 'map') return; const nat = window.__wohNative, world = nat && nat.world, ready = !!world; $('rpgMapLoading').hidden = ready;
+    for (const id of ['rpgMapIn', 'rpgMapOut', 'rpgMapPlayer', 'rpgMapFit']) $(id).disabled = !ready;
+    if (!ready) return;
+    try { if (mapWorld !== world || mapRev !== nat.revision) buildMapCache(world); } catch (e) { $('rpgMapLoading').hidden = false; $('rpgMapLoading').textContent = '地図を作れませんでした'; return; }
+    const cv = $('rpgMapCanvas'), r = cv.getBoundingClientRect(), w = r.width, h = r.height; if (w < 1 || h < 1) return;
+    const dpr = Math.min(2, devicePixelRatio || 1); cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = '#142831'; ctx.fillRect(0, 0, w, h);
+    const aspect = (world.stats.height - 1) / (world.stats.width - 1), base = Math.min(w, h / aspect) * .93; paint = { w, h, scaleW: base * mapState.zoom, scaleH: base * mapState.zoom * aspect }; clampMap();
+    const x = w / 2 - mapState.cx * paint.scaleW, y = h / 2 - mapState.cy * paint.scaleH; ctx.imageSmoothingEnabled = false; ctx.drawImage(mapCache, x, y, paint.scaleW, paint.scaleH);
+    const p = playerLocation(); if (p) { const px = x + p.x * paint.scaleW, py = y + p.y * paint.scaleH; ctx.save(); ctx.translate(px, py); ctx.rotate(p.angle); ctx.fillStyle = '#edd08a28'; ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#f0ca68'; ctx.strokeStyle = '#1c292f'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(6, 7); ctx.lineTo(0, 4); ctx.lineTo(-6, 7); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore(); }
+    ctx.fillStyle = '#13252ce8'; ctx.fillRect(w / 2 - 25, 0, 50, 24); ctx.fillStyle = '#e4dec6'; ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'center'; ctx.fillText('北 N', w / 2, 17); ctx.fillText('南 S', w / 2, h - 9); ctx.fillText('西 W', 20, h / 2); ctx.fillText('東 E', w - 20, h / 2);
+    $('rpgMapCaption').textContent = '世界地図 · Seed ' + nat.seed + ' · ×' + mapState.zoom;
+  }
+
+  // ---- 暮らし（製作・家・火・眠るなど：既存の「持ち物パネル」をここへ表示する）
+  const bag = () => $('bagPanel');
+  function showLife(on) { const el = bag(); if (!el) return; if (on) { $('rpgLifeHost').appendChild(el); el.classList.add('show'); forageBagRender(); } else el.classList.remove('show'); }
+
+  // ---- 時間・記録（時間の操作と、情報・セーブなどの入口）
+  function renderSystem() {
+    const ids = [['tPlay', '再生／停止'], ['tMode', '進め方'], ['tSpeed', '速さ'], ['tStep', '1つ進める']];
+    $('rpgSystem').innerHTML = '<div class="rpg-kicker">時間</div><div class="rpg-sys-row"><span class="rpg-sys-date">' + ($('tDate') ? $('tDate').textContent : '') + '</span>' + ids.map(a => '<button class="rpg-sys" data-proxy="' + a[0] + '"><small>' + a[1] + '</small>' + ($(a[0]) ? $(a[0]).textContent : '') + '</button>').join('') + '</div>' +
+      '<div class="rpg-kicker" style="margin-top:16px">開く</div><div class="rpg-sys-row">' + [['btnInfo', '情報（世界・地形・資源・天気）'], ['btnMenu', 'セーブ・ロード・設定'], ['viewMode', '世界を俯瞰（3D）'], ['fgView', '視点の切り替え']].map(a => '<button class="rpg-sys" data-launch="' + a[0] + '">' + a[1] + '</button>').join('') + '</div>' +
+      '<p class="rpg-subtle" style="margin-top:14px">メニューを開いている間は時間が止まります。閉じると、元の進み方に戻ります。</p>';
+    $('rpgFootDate').textContent = $('tDate') ? $('tDate').textContent : '';
+  }
+  $('rpgSystem').addEventListener('click', e => {
+    const p = e.target.closest('[data-proxy]'), l = e.target.closest('[data-launch]');
+    if (p) { const real = $(p.dataset.proxy); if (real) { if (p.dataset.proxy === 'tPlay') { clockSetPlaying(!clock.playing); resume = clock.playing; } else real.click(); } renderSystem(); }
+    else if (l) { setOpen(false); const real = $(l.dataset.launch); if (real) setTimeout(() => real.click(), 30); }
+  });
+
+  function selectTab(next, focus) {
+    if (!TABS.includes(next)) return; if (tab === 'life' && next !== 'life') showLife(false); tab = next;
+    for (const k of TABS) { $('rpgPage-' + k).hidden = k !== tab; $('rpgTab-' + k).setAttribute('aria-selected', String(k === tab)); $('rpgTab-' + k).tabIndex = k === tab ? 0 : -1; }
+    if (tab === 'inventory') renderInventory(); else if (tab === 'missions') renderMissions(); else if (tab === 'map') drawMap(); else if (tab === 'life') showLife(true); else if (tab === 'system') renderSystem();
+    if (focus) $('rpgTab-' + tab).focus({ preventScroll: true });
+  }
+  function setOpen(v, want) {
+    v = !!v; if (v === open) { if (v && want) selectTab(want); return; }
+    open = v; screen.hidden = !open; document.body.classList.toggle('rpg-menu-open', open);
+    try { window.dispatchEvent(new Event('blur')); if (window.__wohNative) __wohNative.clearTouches(); } catch (e) { }
+    if (open) { resume = !!clock.playing; if (resume) clockSetPlaying(false); $('rpgToast').hidden = true; selectTab(want || tab); $('rpgTab-' + tab).focus({ preventScroll: true }); }
+    else { showLife(false); if (resume && !clock.playing) clockSetPlaying(true); resume = false; }
+  }
+  $('rpgClose').onclick = () => setOpen(false);
+  for (const k of TABS) $('rpgTab-' + k).onclick = () => selectTab(k);
+  $('rpgCategories').onclick = e => { const b = e.target.closest('[data-category]'); if (b) { category = b.dataset.category; $('rpgItemGrid').scrollTop = 0; renderInventory(); } };
+  $('rpgEquipment').onclick = e => { const b = e.target.closest('[data-slot]'); if (!b) return; const id = equippedOf(b.dataset.slot); if (!id) { toast('身につけているものはありません'); return; } category = 'all'; selected = id; renderInventory(); };
+  $('rpgSort').onchange = e => { if (!['category', 'name', 'bulk'].includes(e.target.value)) return; sortOrder = e.target.value; try { localStorage.setItem('woh-menu-sort', sortOrder); } catch (er) { } $('rpgItemGrid').scrollTop = 0; renderInventory(); };
+  $('rpgItemGrid').onclick = e => { const b = e.target.closest('[data-item]'); if (!b) return; selected = b.dataset.item; renderInventory(); };
+  $('rpgMissionFilters').onclick = e => { const b = e.target.closest('[data-status]'); if (b) { mFilter = b.dataset.status; mSel = null; renderMissions(); } };
+  $('rpgMissionList').onclick = e => { const b = e.target.closest('[data-mission]'); if (b) { mSel = b.dataset.mission; renderMissions(); } };
+  const zoom = k => { mapState.zoom = Math.max(1, Math.min(16, mapState.zoom * k)); drawMap(); };
+  $('rpgMapIn').onclick = () => zoom(2); $('rpgMapOut').onclick = () => zoom(.5); $('rpgMapFit').onclick = () => { Object.assign(mapState, { zoom: 1, cx: .5, cy: .5 }); drawMap(); };
+  $('rpgMapPlayer').onclick = () => { const p = playerLocation(); if (p) { mapState.zoom = Math.max(4, mapState.zoom); mapState.cx = p.x; mapState.cy = p.y; drawMap(); } };
+  const mc = $('rpgMapCanvas'); mc.addEventListener('wheel', e => { e.preventDefault(); zoom(e.deltaY > 0 ? .5 : 2); }, { passive: false });
+  mc.addEventListener('pointerdown', e => { if (!paint || e.button > 0) return; drag = { id: e.pointerId, x: e.clientX, y: e.clientY }; mc.setPointerCapture(e.pointerId); });
+  mc.addEventListener('pointermove', e => { if (!drag || drag.id !== e.pointerId || !paint) return; mapState.cx -= (e.clientX - drag.x) / paint.scaleW; mapState.cy -= (e.clientY - drag.y) / paint.scaleH; drag.x = e.clientX; drag.y = e.clientY; drawMap(); });
+  for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) mc.addEventListener(ev, e => { if (drag && drag.id === e.pointerId) drag = null; });
+  // キー：I＝持ち物、M＝マップ、J＝ミッション、Esc＝閉じる
+  document.addEventListener('keydown', e => {
+    const typing = /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.target.isContentEditable;
+    if (!open) { const k = { KeyI: 'inventory', KeyM: 'map', KeyJ: 'missions' }[e.code]; if (k && !typing && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && document.getElementById('hudTL')) { e.preventDefault(); e.stopImmediatePropagation(); setOpen(true, k); } return; }
+    if (e.code === 'Escape') { e.preventDefault(); setOpen(false); }
+    else if (e.target.getAttribute && e.target.getAttribute('role') === 'tab' && ['ArrowLeft', 'ArrowRight'].includes(e.code)) { e.preventDefault(); const i = TABS.indexOf(tab); selectTab(TABS[(i + (e.code === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length], true); }
+    if (!typing) e.stopPropagation();
+  }, true);
+  addEventListener('woh-world-ready', () => { mapWorld = null; drawMap(); }); addEventListener('resize', drawMap);
+  window.__wohRpgMenu = { open: t => setOpen(true, t), close: () => setOpen(false), get isOpen() { return open; }, get tab() { return tab; }, selectTab, tracked };
+})();
 
 
 // ================================================================ 画面のHUD（左上：日付・天気・時間／目標／方位／右上：ボタン／左下：ステータス／下：ホットバー／右下：操作）
@@ -10599,12 +10941,13 @@ globalThis.__wohForage = { context: forageContext, fauna: () => fauna, FA: () =>
   // ボタン
   q('hbMap').addEventListener('click', () => click('viewMode'));
   q('hbInfo').addEventListener('click', () => { click('btnInfo'); q('hbInfo').classList.toggle('on', q('info').classList.contains('show')); });
-  q('hbMenu').addEventListener('click', () => click('btnMenu'));
+  q('hbMenu').addEventListener('click', () => { if (globalThis.__wohRpgMenu) __wohRpgMenu.open('inventory'); else click('btnMenu'); });
   q('hbUi').addEventListener('click', () => { const off = document.body.classList.toggle('hud-off'); q('hbUi').querySelector('span').textContent = off ? 'UI表示' : 'UI非表示'; q('hbUi').innerHTML = svg(off ? 'eye' : 'eyeoff') + '<span>' + (off ? 'UI表示' : 'UI非表示') + '</span>'; });
   q('mzIn').addEventListener('click', () => { if (globalThis.__wohMapZoomBy) __wohMapZoomBy(+1); });
   q('mzOut').addEventListener('click', () => { if (globalThis.__wohMapZoomBy) __wohMapZoomBy(-1); });
   q('mzView').addEventListener('click', () => click('fgView'));
   q('hudDate').addEventListener('click', () => click('tDate'));
+  q('hudGoal').addEventListener('click', () => { if (globalThis.__wohRpgMenu) __wohRpgMenu.open('missions'); });
   let hmode = 'food';
   const setMode = m => { hmode = m; q('hmFood').classList.toggle('on', m === 'food'); q('hmMat').classList.toggle('on', m === 'mat'); q('hmWat').classList.toggle('on', m === 'wat'); q('hmHunt').classList.toggle('on', m === 'hunt'); };
   q('hmHunt').addEventListener('click', () => setMode('hunt'));
@@ -10666,7 +11009,7 @@ globalThis.__wohForage = { context: forageContext, fauna: () => fauna, FA: () =>
     // 満腹度
     try { const pct = Math.round(100 * forageSt.kcal / WohForage.KCAL_MAX); const bar = q('hudFood').querySelector('b'); const k = 'f' + pct; if (lastTxt.get('food') !== k) { lastTxt.set('food', k); bar.style.width = pct + '%'; q('hudFood').style.color = pct < 8 ? '#e5524a' : pct < 30 ? '#e8963a' : '#f1c24a'; } } catch (e) { }
     // 目標
-    try { const g = WohForage.goals(forageSt); const g1 = q('hudGoalT'), gn = q('hudGoalN'); const txt = g.all ? g.text : g.text + '（' + g.have + '/' + g.need + '）'; setT(g1, txt); setT(gn, g.all ? '完了' : (g.done + 1) + '/' + g.total); q('hudGoal').classList.toggle('all', g.all); } catch (e) { }
+    try { const g = (window.__wohGoalView ? __wohGoalView() : WohForage.goals(forageSt)); const g1 = q('hudGoalT'), gn = q('hudGoalN'); const txt = g.all ? g.text : g.text + '（' + g.have + '/' + g.need + '）'; setT(g1, txt); setT(gn, g.all ? '完了' : (g.done + 1) + '/' + g.total); q('hudGoal').classList.toggle('all', g.all); } catch (e) { }
     // 方位・視点
     try { const cam = globalThis.__chunkPreview && __chunkPreview.camera; if (cam) { const v = new THREE.Vector3(); cam.getWorldDirection(v); compassUpdate((Math.atan2(v.x, -v.z) * 180 / Math.PI + 360) % 360); } } catch (e) { }
     q('mzView').classList.toggle('on', !!(window.__wohAvatar && __wohAvatar.firstPerson));

@@ -514,5 +514,13 @@ t('不毛地は全部ほぼ0', Object.values(F.availability(desert)).every(v => 
   const R = mk({ kcal: 100, water: 0, hp: 5 }); F.tick(R, 5); t('消耗なしでなければ、いつもどおり消耗する（god未設定）', R.water === 0 && R.hp < 5 || R.dead === 'thirst' || R.dead === 'hunger', JSON.stringify([R.hp, R.dead]));
   t('消耗なしはセーブに入らない', F.save(G).god === undefined);
 }
+{ // 目標の一覧（メニュー）
+  const S = F.newState(), L = F.goalList(S);
+  t('目標一覧：22件で、最初は未達成', L.length === 22 && L.every(g => !g.done && g.have === 0 && g.need >= 1));
+  S.total.firewood = 99; S.n = S.n || {}; S.n.drink = 1;
+  const L2 = F.goalList(S);
+  t('目標一覧：達成が反映され、have は need で頭打ち', L2.find(g => g.id === 'wood').done && L2.find(g => g.id === 'wood').have === 10 && L2.find(g => g.id === 'drink').done);
+  t('目標一覧と goals() の件数が一致', F.goals(S).total === L2.length);
+}
 console.log(ng ? 'FAIL ' + ng + ' / ' + (ok + ng) : 'OK ' + ok + ' 件通過');
 process.exit(ng ? 1 : 0);
