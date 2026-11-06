@@ -41,4 +41,24 @@ const sv = P.peopleSave ? null : null;
 const again = run(true, Math.min(YEARS, 10)); const part = tech.years.find(r => r.y === Math.min(YEARS, 10)); if (part) t('決定性：同じ条件で同じ10年後', again.years[again.years.length - 1].pop === part.pop, `${again.years[again.years.length - 1].pop} vs ${part.pop}`);
 // 民族の技術：新しい民族は親から受け継ぐ
 const S = tech.people.nation; t('技術の層が作られている', !!S && S.n >= 100);
+// ---- 指導者の操作：分配・方針・建設
+{
+  const fauna = G.faunaClone(world.fauna), people = P.peopleGenerate(7, { world, plantFood, fauna, FA }), pl = people.player, Pn = people.npc;
+  const g = people.groups[Pn.group[pl.id] - 1]; g.settle = 1; g.pop = Math.max(g.pop, 30);
+  const step = (n) => { for (let i = 0; i < n; i++) { const month = i % 12; G.faunaMonthly(fauna, { month, env, cc }); P.peopleMonthly(people, { month, day: (people.__d = (people.__d || 0) + 30), world, fauna, FA, plantFood, env, cc, res }); } };
+  const ctx = { world, x: g.x, y: g.y };
+  t('技術のない農耕の提案は断られる', P.peopleProposal(people, 'farm', ctx).reason === 'noTech');
+  t('技術のない畑の拡張は建てられない', P.peopleBuildCheck(people, 'field').reason === 'noTech');
+  P.peopleGrantTech(people, people.playerEth, 'cultivate');
+  const b0 = P.peopleBuildCheck(people, 'field'); t('技術があれば畑の拡張を始められる', b0.ok, JSON.stringify(b0.reason));
+  const r = P.peopleBuildStart(people, 'field'); t('建設を始める', r.ok && r.months === 4);
+  t('建設中は、別の建設ができない', P.peopleBuildCheck(people, 'well').reason === 'busy');
+  step(2); t('建設の途中では、まだ施設が増えない', (g.facil ? g.facil.field : 0) === 0 && !!g.build);
+  step(5); t('月数がたつと完成する', g.facil && g.facil.field === 1 && !g.build, JSON.stringify([g.facil, g.build, g.fed, g.pop]));
+  const gr = P.peopleGrowth(people, g.id); t('画面用の情報に施設が出る', gr.facil.field === 1 && gr.build === null);
+  for (let k = 0; k < 3; k++) { P.peopleBuildStart(people, 'well'); step(3); }
+  t('施設は上限を超えない（井戸は2つまで）', (g.facil.well || 0) <= 2 && P.peopleBuildCheck(people, 'well').reason === 'max');
+  // 分配
+  g.share = 0.5; const sv = P.peopleSave ? 1 : 1; t('分配の割合は集団に残る', g.share === 0.5);
+}
 console.log(ng ? 'FAIL ' + ng + ' / ' + (ok + ng) : 'OK ' + ok + ' 件通過'); process.exit(ng ? 1 : 0);
