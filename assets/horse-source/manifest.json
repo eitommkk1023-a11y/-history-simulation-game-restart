@@ -1,6 +1,6 @@
 {
-  "name": "woh-original-horse-v1",
-  "version": 1,
+  "name": "woh-original-horse-v2",
+  "version": 2,
   "owner": "World of History project",
   "rights": "Original generated project asset. No third-party model or texture; project owner determines redistribution license.",
   "license": "LicenseRef-World-of-History-Original",
@@ -12,7 +12,8 @@
     "idle",
     "walk",
     "trot",
-    "canter"
+    "canter",
+    "gallop"
   ],
   "lodTriangles": [
     2132,
@@ -31,13 +32,19 @@
   "files": [
     {
       "path": "woh-horse.glb",
-      "bytes": 287880,
-      "sha256": "200ab431ad96fe763e71fe04d9cb7d373b235ddc8811136f09f447c1575911c9"
+      "bytes": 324572,
+      "sha256": "8fdafa6a1e3c31377cbdfc1da2207a71e5c16b7bc74498306aa0706a7ae957e2"
     },
     {
       "path": "horse.render.json",
-      "bytes": 600887,
-      "sha256": "84f55818947fe2c5a4257f9b973b08eaa5c9d17d66d50773a9dac7defa41da03"
+      "bytes": 600896,
+      "sha256": "6745444cf738431151c7bd3d39a7cdfe06c194588bf62d79b89a60623ccef92d"
     }
-  ]
+  ],
+  "animationTexture": {
+    "width": 64,
+    "height": 256,
+    "framesPerClip": 48,
+    "occupiedRows": 240
+  }
 }

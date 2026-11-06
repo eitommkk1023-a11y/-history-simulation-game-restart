@@ -11,7 +11,7 @@ export function createHorseRider(THREE,scene){
  }
  function update(foot,horse,mounted,pose){
   root.position.set(mounted?horse.x:foot.x,mounted?horse.y:foot.y,mounted?horse.z:foot.z);root.rotation.y=mounted?horse.yaw:foot.yaw;root.scale.setScalar(mounted?horse.identity.scale:1);
-  if(mounted){hips.position.y=1.67+(pose?.bob??0);chest.rotation.x=horse.speed>5?.13:.02;for(const l of legs){l.thigh.position.x=l.sign*.19;l.thigh.rotation.set(-.95,0,l.sign*.70);l.shin.rotation.set(1.28,0,-l.sign*.45);}for(const a of arms){a.arm.rotation.set(-1.35,0,-a.sign*.10);a.forearm.rotation.x=1.02;}}
+  if(mounted){hips.position.y=1.67+(pose?.bob??0)+(horse.mode==='gallop'?.035:0);chest.rotation.x=horse.mode==='gallop'?.26:horse.speed>5?.13:.02;for(const l of legs){l.thigh.position.x=l.sign*.19;l.thigh.rotation.set(-.95,0,l.sign*.70);l.shin.rotation.set(1.28,0,-l.sign*.45);}for(const a of arms){a.arm.rotation.set(-1.35,0,-a.sign*.10);a.forearm.rotation.x=1.02;}}
   else{const moving=foot.speed>.03,g=humanGait(foot.phase,'walk');hips.position.y=moving?g.hip:.865;chest.rotation.x=.015;legs.forEach((l,i)=>{const f=moving?g.feet[i]:{z:0,lift:0},k=solveHumanLeg(f.z,hips.position.y-.04-f.lift);l.thigh.position.x=l.sign*.105;l.thigh.rotation.set(k.hip,0,0);l.shin.rotation.set(k.knee,0,0);});arms.forEach((a,i)=>{a.arm.rotation.set(moving?Math.sin(foot.phase*Math.PI*2+i*Math.PI)*.28:.04,0,-a.sign*.08);a.forearm.rotation.x=-.12;});}
  }
  return {root,hips,legs,arms,update};
