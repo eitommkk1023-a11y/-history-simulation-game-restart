@@ -31,3 +31,9 @@ test('flat sea means no motion; motion is bounded', () => {
 test('head seas slow the ship more than following seas', () => {
   const head = addedResistanceFactor(3, 21, Math.PI, 0), foll = addedResistanceFactor(3, 21, 0, 0); assert.ok(head > foll && head > 1.3 && foll < 1.3);
 });
+
+test('a distant storm sends long swell ahead of itself', () => {
+  const wf = createWindField({ baseWind: () => ({ x: -2, y: 0 }), elev: () => -50, dayAt: () => 1, seed: 3, params: { breezeMax: 0, stormChance: 0, calmChance: 0 } });
+  const calm = createSeaState({ windField: wf, elev: () => -50 }).info(0, 0), s = createSeaState({ windField: wf, elev: () => -50, swellSource: () => ({ hs: 2, dirToRad: 1 }) }).info(0, 0);
+  assert.ok(s.hs > calm.hs + 1 && s.precursorHs === 2 && s.tp > 10 && Math.abs(s.dirToRad - 1) < 1e-9);
+});

@@ -20,7 +20,8 @@ export const SEA_PARAMS = Object.freeze({
 const G = 9.81;
 const periodOf = (hs) => Math.max(1.5, 3.9 * Math.sqrt(Math.max(hs, 0)));
 
-export function createSeaState({ windField, elev, params = {} }) {
+/** swellSource(X, Y) -> { hs, dirToRad } | null: long swell that outruns a distant storm (the first sign of one). */
+export function createSeaState({ windField, elev, params = {}, swellSource = null }) {
   const P = { ...SEA_PARAMS, ...params }, cache = new Map();
   /** Distance to land straight upwind (m), cached on a 500 m grid and 16 directions. */
   function fetchM(X, Y, ux, uy) {
@@ -32,9 +33,10 @@ export function createSeaState({ windField, elev, params = {} }) {
   function info(X, Y, t = 0) {
     const w = windField.info(X, Y, t), U = w.speed, base = Math.hypot(w.base.x, w.base.y);
     const f = U > 0.05 ? fetchM(X, Y, -w.x / U, -w.y / U) : P.openFetchM;
-    const hws = P.fullyDevelopedK * U * U * (1 - Math.exp(-f / P.fetchScaleM)), hsw = P.swellFraction * P.fullyDevelopedK * base * base;
-    const hs = Math.hypot(hws, hsw), windDir = Math.atan2(w.x, w.y), swellDir = Math.atan2(w.base.x, w.base.y);
-    return { hs, tp: hws >= hsw ? periodOf(hws) : P.swellPeriodS, dirToRad: hws >= hsw ? windDir : swellDir, windSeaHs: hws, swellHs: hsw, fetchM: f };
+    const hws = P.fullyDevelopedK * U * U * (1 - Math.exp(-f / P.fetchScaleM)), hsw0 = P.swellFraction * P.fullyDevelopedK * base * base;
+    const ex = swellSource ? swellSource(X, Y) : null, exHs = ex?.hs > 0 ? ex.hs : 0, hsw = Math.hypot(hsw0, exHs);
+    const windDir = Math.atan2(w.x, w.y), swellDir = exHs > hsw0 ? ex.dirToRad : Math.atan2(w.base.x, w.base.y), hs = Math.hypot(hws, hsw);
+    return { hs, tp: hws >= hsw ? periodOf(hws) : (exHs > hsw0 ? 11 : P.swellPeriodS), dirToRad: hws >= hsw ? windDir : swellDir, windSeaHs: hws, swellHs: hsw, precursorHs: exHs, fetchM: f };
   }
   return { info, params: P };
 }

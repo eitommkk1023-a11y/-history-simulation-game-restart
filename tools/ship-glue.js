@@ -5,7 +5,7 @@
   'use strict';
   const DEG = Math.PI / 180, KEY_PREFIX = 'woh-ships-';
   const EVT = { captain_route_planned: '航路を決めた', captain_no_route: '', captain_tack: '帆の向きを替えた', captain_reef: '帆を絞った', captain_arriving: '目的地に近づいた', captain_arrived: '到着した', captain_replan: '浅瀬を避けて航路を引き直した', captain_cancelled: '航海をやめた', grounded: '座礁した', refloated: '離礁した', anchor_dropped: '錨を下ろした', anchor_raised: '錨を上げた', anchor_dragging: '錨が走っている', anchor_parted: '錨索が切れた' };
-  const dbg = {}; let simT = 0, windField = null, seaState = null, savedShips = null, pendingBoard = null, pendingSince = 0, lastPlaced = null, uiHidden = false, dwell = 0, renderError = null, ladderSig = '', pickMode = false, destMarker = null, routeLine = null, cp, nat, THREE_, S = null, fleet = null, env = null, ref = null, ctl = {}, meshes = new Map(), boarded = null, speedX = 1, lastT = null, saveAcc = 0, trimAcc = 0, lastSeed = null;
+  const dbg = {}; let simT = 0, visField = null, windField = null, seaState = null, savedShips = null, pendingBoard = null, pendingSince = 0, lastPlaced = null, uiHidden = false, dwell = 0, renderError = null, ladderSig = '', pickMode = false, destMarker = null, routeLine = null, cp, nat, THREE_, S = null, fleet = null, env = null, ref = null, ctl = {}, meshes = new Map(), boarded = null, speedX = 1, lastT = null, saveAcc = 0, trimAcc = 0, lastSeed = null;
   const REASON = { destination_too_shallow: 'そこは浅くて行けない', blocked: '回り込む道がない', search_limit: '遠すぎて航路を決められない' };
   const ui = {};
   const $ = (tag, props = {}, kids = []) => { const e = Object.assign(document.createElement(tag), props); for (const k of kids) e.append(k); return e; };
@@ -37,18 +37,36 @@
     }
     const w = windField.info(rec.vessel.state.X, rec.vessel.state.Y, 0), sp = w.speed;
     if (w.beaufort < 2) { streaks.visible = false; return; }
-    const dx = w.x / (sp || 1), dz = -w.y / (sp || 1), len = Math.min(12, Math.max(1.5, sp * 0.7)), shown = Math.floor(STREAKS * Math.min(1, (w.beaufort - 1) / 6)), off = streaks.geometry.userData.off, pos = streaks.geometry.attributes.position.array, g = focus.group.position;
+    const dx = w.x / (sp || 1), dz = -w.y / (sp || 1), len = Math.min(8, Math.max(1.5, sp * 0.5)), shown = Math.floor(STREAKS * Math.min(1, (w.beaufort - 1) / 6)), off = streaks.geometry.userData.off, pos = streaks.geometry.attributes.position.array, g = focus.group.position;
     for (let i = 0; i < STREAKS; i++) {
       off[i * 2] += dx * sp * 0.45 * dt; off[i * 2 + 1] += dz * sp * 0.45 * dt;
       if (off[i * 2] > SPAN) off[i * 2] -= SPAN * 2; else if (off[i * 2] < -SPAN) off[i * 2] += SPAN * 2; if (off[i * 2 + 1] > SPAN) off[i * 2 + 1] -= SPAN * 2; else if (off[i * 2 + 1] < -SPAN) off[i * 2 + 1] += SPAN * 2;
-      const x = g.x + off[i * 2], z = g.z + off[i * 2 + 1], y = g.y + 0.35, k = i * 12, hw = 0.18 + len * 0.025, px = -dz * hw, pz = dx * hw;
+      const x = g.x + off[i * 2], z = g.z + off[i * 2 + 1], y = g.y + 0.35, k = i * 12, hw = 0.12 + len * 0.012, px = -dz * hw, pz = dx * hw;
       pos[k] = x - px; pos[k + 1] = y; pos[k + 2] = z - pz; pos[k + 3] = x + px; pos[k + 4] = y; pos[k + 5] = z + pz;
       pos[k + 6] = x + dx * len - px; pos[k + 7] = y; pos[k + 8] = z + dz * len - pz; pos[k + 9] = x + dx * len + px; pos[k + 10] = y; pos[k + 11] = z + dz * len + pz;
     }
     streaks.geometry.setDrawRange(0, shown * 6); streaks.geometry.attributes.position.needsUpdate = true; streaks.visible = shown > 0;
   }
+  // ---------- weather seen from the deck: fog distance, sky colour and light follow rain / fog / storm (eased; the game's values are restored ashore) ----------
+  let wv = null;
+  function applyWeatherView() {
+    const sc = gameScene(), fog = sc.fog; if (!fog) return;
+    if (!wv) { const lights = []; sc.traverse((o) => { if (o.isLight) lights.push({ o, i: o.intensity }); }); wv = { near: fog.near, far: fog.far, col: fog.color.clone(), bg: sc.background && sc.background.isColor ? sc.background.clone() : null, lights, cur: null, scene: sc }; }
+    if (wv.scene !== sc) { wv = null; return; }
+    const now = performance.now(), dt = Math.min(0.2, (now - (wv.t || now)) / 1000); wv.t = now;
+    let tgt = { far: wv.far, near: wv.near, col: wv.col, dim: 1 };
+    if (boarded && fleet?.has(boarded) && !cp.view.overview) {
+      const st = fleet.get(boarded).vessel.state, v = visField.info(st.X, st.Y, 0), far = Math.min(wv.far, v.visM), c = new THREE_.Color(v.color[0] / 255, v.color[1] / 255, v.color[2] / 255);
+      tgt = { far, near: far < wv.far ? far * 0.1 : wv.near, col: v.dim < 1 || far < wv.far ? c : wv.col, dim: v.dim };
+    }
+    const r = 1 - Math.exp(-dt / 2.5); // ~2.5 s easing
+    if (!wv.cur) wv.cur = { far: wv.far, near: wv.near, col: wv.col.clone(), dim: 1 };
+    const cu = wv.cur; cu.far += (tgt.far - cu.far) * r; cu.near += (tgt.near - cu.near) * r; cu.col.lerp(tgt.col, r); cu.dim += (tgt.dim - cu.dim) * r;
+    fog.far = cu.far; fog.near = cu.near; fog.color.copy(cu.col); if (sc.background?.isColor) sc.background.copy(cu.col);
+    for (const l of wv.lights) l.o.intensity = l.i * cu.dim;
+  }
   function preRender(cam) {
-    syncMeshes(); try { updateStreaks(); } catch (_) { /* decoration only */ }
+    syncMeshes(); try { updateStreaks(); applyWeatherView(); } catch (_) { /* decoration only */ }
     if (!boarded || !fleet.has(boarded) || !meshes.has(boarded)) return;
     const mk = cp.character, w = deckPoint(meshes.get(boarded)), v = cp.view;
     mk.position.copy(w);
@@ -108,16 +126,19 @@
     const base = Ship.createWorldEnvironment(S.world, { origin: { x: ref.xM / mpc, y: ref.yM / mpc }, blockM: mpc, dayAt: () => globalThis.__geo?.clock?.day ?? 0 });
     const cache = new Map(), ecache = new Map();
     const elevAt = (X, Y) => { const xM = ref.xM + X, yM = ref.yM - Y, k = Math.round(xM / 20) + ',' + Math.round(yM / 20); let e = ecache.get(k); if (e !== undefined) return e; e = -1; if (xM >= 0 && yM >= 0 && xM <= T.widthM && yM <= T.heightM) { try { e = T.sampleBase(xM, yM).baseElevationM; } catch (_) { e = -1; } } if (ecache.size > 20000) ecache.clear(); ecache.set(k, e); return e; };
+    const simCell = (X, Y) => { const sim = globalThis.__geo?.sim; if (!sim?.kind) return null; const bx = (ref.xM + X) / mpc, by = (ref.yM - Y) / mpc, cx = Math.min(sim.w - 1, Math.max(0, Math.floor(bx / sim.step))), cy = Math.min(sim.h - 1, Math.max(0, Math.floor(by / sim.step))), c = cy * sim.w + cx; return { sim, c, kind: sim.kind[c] }; };
     let seedN = 1; for (const ch of String(lastSeed)) seedN = (Math.imul(seedN, 31) + ch.charCodeAt(0)) | 0;
     windField = Ship.createWindField({ baseWind: base.wind, elev: elevAt, seed: seedN, toWorld: (X, Y) => ({ x: ref.xM + X, y: ref.yM - Y }),
       dayAt: () => (globalThis.__geo?.clock?.day ?? 0) + 0.3 + simT / 86400,
       gameWeather: (X, Y) => { // the game's own daily weather (read-only): 0 clear, 1 cloudy, 2 rain, 3 snow, 4 storm
-        const sim = globalThis.__geo?.sim; if (!sim?.kind) return null;
-        const bx = (ref.xM + X) / mpc, by = (ref.yM - Y) / mpc, cx = Math.min(sim.w - 1, Math.max(0, Math.floor(bx / sim.step))), cy = Math.min(sim.h - 1, Math.max(0, Math.floor(by / sim.step))), c = cy * sim.w + cx, kind = sim.kind[c];
+        const g = simCell(X, Y); if (!g) return null; const { sim, c, kind } = g;
         const storm = kind === 4 ? 0.6 + 0.4 * Math.min(1, sim.storm?.[c] ?? 0) : kind === 2 || kind === 3 ? Math.min(0.3, (sim.P[c] ?? 0) / 60 * 0.3) : 0;
         return { storm, rain: kind === 2 || kind === 3 || kind === 4 ? 1 : 0, label: ['晴れ', 'くもり', '雨', '雪', '嵐'][kind] };
-      } }); // D: a ship-time day cycle (86400 s); the game has no time of day yet
-    seaState = Ship.createSeaState({ windField, elev: elevAt });
+      } });
+    visField = Ship.createVisibility({ seed: seedN, toWorld: (X, Y) => ({ x: ref.xM + X, y: ref.yM - Y }), dayAt: () => (globalThis.__geo?.clock?.day ?? 0) + 0.3 + simT / 86400,
+      windAt: (X, Y, t) => windField.info(X, Y, t),
+      weatherAt: (X, Y) => { const g = simCell(X, Y); if (!g) return null; return { P: g.sim.P[g.c] ?? 0, cloud: g.sim.cloud?.[g.c] ?? 0, storm: g.kind === 4 ? 0.6 + 0.4 * Math.min(1, g.sim.storm?.[g.c] ?? 0) : 0 }; } }); // D: a ship-time day cycle (86400 s); the game has no time of day yet
+    seaState = Ship.createSeaState({ windField, elev: elevAt, swellSource: (X, Y) => { const k = scanSky(X, Y).storm; return k ? { hs: 2.5 * Math.max(0, 1 - k.km / 100), dirToRad: Math.PI / 2 - k.ang + Math.PI } : null; } });
     env = {
       wind: (X, Y, t) => windField.wind(X, Y, t), sea: (X, Y, t) => seaState.info(X, Y, t), current: base.current, seabed: base.seabed,
       depth(X, Y) {
@@ -475,15 +496,32 @@ html.shipUiHidden #shipEye{left:calc(8px + env(safe-area-inset-left));opacity:.4
     if (active) ui.ctrl.append($('button', { textContent: '中止', onclick: () => { fleet.cancelDestination(boarded); updateRoute(null); v.setHeadingTarget(null); ctl[boarded].heading = v.snapshot().headingDeg; refreshList(); } }));
     ui.ctrl.append($('button', { textContent: '降りる', onclick: () => disembark() }), $('button', { textContent: `×${speedX}`, onclick: (e) => { speedX = speedX === 1 ? 4 : speedX === 4 ? 10 : 1; e.target.textContent = `×${speedX}`; } }));
   }
-  /** Nearest storm or calm within 20 km (checked once a second): where it is, for the HUD. */
-  let wxAt = 0, wxLast = null;
-  function weatherNear(X, Y) {
-    const now = performance.now(); if (now - wxAt < 1000) return wxLast; wxAt = now; wxLast = null;
-    for (const km of [4, 8, 12, 16, 20]) for (let a = 0; a < 8; a++) {
-      const ang = a * Math.PI / 4, q = windField.weather(X + Math.cos(ang) * km * 1000, Y + Math.sin(ang) * km * 1000, 0), kind = q.storm > 0.25 ? 'storm' : q.calm > 0.35 ? 'calm' : null;
-      if (kind && (!wxLast || kind === 'storm' && wxLast.kind !== 'storm')) wxLast = { kind, km, dir: ['東', '北東', '北', '北西', '西', '南西', '南', '南東'][a] };
+  /** Where the nearest game storm (within 100 km) and calm (within 20 km) are, as seen from here. Cached per 2 km cell and game day. */
+  const skyCache = new Map();
+  function scanSky(X, Y) {
+    const day = globalThis.__geo?.clock?.day ?? 0, key = `${Math.round(X / 2000)},${Math.round(Y / 2000)},${day}`; let r = skyCache.get(key); if (r) return r;
+    r = { storm: null, calm: null };
+    for (const km of [5, 10, 20, 40, 60, 80, 100]) for (let a = 0; a < 8; a++) {
+      const ang = a * Math.PI / 4, q = windField.weather(X + Math.cos(ang) * km * 1000, Y + Math.sin(ang) * km * 1000, 0);
+      if (!r.storm && q.storm > 0.25) r.storm = { km, ang };
+      if (!r.calm && km <= 20 && q.calm > 0.35) r.calm = { km, ang };
     }
-    return wxLast;
+    if (skyCache.size > 600) skyCache.clear(); skyCache.set(key, r); return r;
+  }
+  const DIR8 = ['東', '北東', '北', '北西', '西', '南西', '南', '南東'], dirName = (ang) => DIR8[((Math.round(ang / (Math.PI / 4)) % 8) + 8) % 8];
+  /** Omens of a storm, by distance (hypothesis D): high cirrus, haze and growing swell, dark sky and falling glass, the storm itself. */
+  function omenText(sk, inStorm) {
+    const k = sk.storm; if (!k || inStorm) return '';
+    const d = dirName(k.ang);
+    return k.km <= 10 ? `／嵐が近い(${d}約${k.km}km)` : k.km <= 20 ? `／${d}の空が暗く、気圧が下がる` : k.km <= 40 ? `／${d}の空が白く霞み、うねりが強まる` : k.km <= 60 ? `／${d}に高い筋雲` : `／${d}の遠くに薄い雲の帯`;
+  }
+  // barometer (hypothesis D): 1013 hPa, lower the closer a storm is; trend over the last ~10 game minutes
+  const pHist = []; let pTrend = 0;
+  function pressureHpa(X, Y, stormW) { const k = scanSky(X, Y).storm; const near = k ? Math.exp(-k.km / 30) : 0; return 1013 - 24 * Math.max(stormW, near * 0.85); }
+  function pressureText(p) {
+    pHist.push({ t: simT, p }); while (pHist.length > 2 && simT - pHist[0].t > 600) pHist.shift();
+    const d = p - pHist[0].p; pTrend = simT - pHist[0].t > 30 ? d : 0;
+    return `／気圧${p.toFixed(0)}hPa${pTrend < -1.2 ? '↓↓' : pTrend < -0.4 ? '↓' : pTrend > 0.4 ? '↑' : '→'}`;
   }
   function updateHud() {
     if (!ui.info) return;
@@ -492,7 +530,9 @@ html.shipUiHidden #shipEye{left:calc(8px + env(safe-area-inset-left));opacity:.4
     const wi = windField.info(v.state.X, v.state.Y, 0), w = wi, wf = wi.fromDeg, arrow = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'][Math.round(((wf + 180) % 360) / 45) % 8];
     const sm = meshes.get(boarded)?.sea, seaTxt = sm ? `／波${sm.hs < 0.5 ? '穏やか' : sm.hs < 1.25 ? '小さい' : sm.hs < 2.5 ? 'やや高い' : sm.hs < 4 ? '荒い' : sm.hs < 6 ? '非常に荒い' : '猛烈'}（${sm.hs.toFixed(1)}m・周期${sm.tp.toFixed(0)}秒${v.forces(env).waveResistanceFactor > 1.1 ? '・向かい波で減速' : ''}）` : '';
     const tag = wi.storm > 0.5 ? `／${wi.label === '嵐' ? '嵐' : '荒天'}の中` : wi.storm > 0.3 ? '／荒れ模様' : wi.calm > 0.3 ? '／凪' : wi.shelter < 0.8 ? '／陸の風下で風が弱い' : '';
-    const wx = weatherNear(v.state.X, v.state.Y); const wxTxt = wx && !tag ? `／${wx.kind === 'storm' ? '嵐' : '凪'}が${wx.dir}約${Math.round(wx.km)}km` : '';
+    const sk = scanSky(v.state.X, v.state.Y), calmTxt = !tag && sk.calm ? `／凪が${dirName(sk.calm.ang)}約${sk.calm.km}km` : '';
+    const vi = visField.info(v.state.X, v.state.Y, 0), visTxt = `／視程${vi.visM >= 10000 ? '良好' : (vi.visM / 1000).toFixed(1) + 'km'}${vi.fog > 0.3 ? '(霧)' : vi.rainMm > 2 ? '(雨)' : ''}`;
+    const wxTxt = omenText(sk, wi.storm > 0.5) + calmTxt + visTxt + pressureText(pressureHpa(v.state.X, v.state.Y, wi.storm));
     const cap = fleet.get(boarded).captain, dd = cap?.destination && Math.hypot(cap.destination.X - v.state.X, cap.destination.Y - v.state.Y), eta = dd ? Math.round(dd / Math.max(0.8, s.speedOverGround) / 60) : 0;
     const capTxt = cap && ['sailing', 'arriving'].includes(cap.mode) ? `／航海中 残り${dd > 1000 ? (dd / 1000).toFixed(1) + 'km' : Math.round(dd) + 'm'}（約${eta}分）${cap.reef < 1 ? '／帆を絞っている' : ''}` : cap?.mode === 'arrived' ? '／到着' : '';
     ui.info.textContent = `速度 ${(s.speedOverGround * 1.9438).toFixed(1)} kt／方位 ${s.headingDeg.toFixed(0)}°（目標 ${c.heading.toFixed(0)}°）／風 ${arrow}風力${wi.beaufort}（${wi.speed.toFixed(1)} m/s・${wf.toFixed(0)}°から）${tag}${wxTxt}${seaTxt}／傾斜 ${s.heelDeg.toFixed(1)}°／水深余裕 ${f.clearanceM.toFixed(1)} m${s.aground ? '／座礁中' : ''}${s.anchored ? (s.anchorDragging ? '／走錨中' : '／錨泊中') : ''}${capTxt}`;

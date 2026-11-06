@@ -21,3 +21,4 @@ export { createAugust1492, SCENARIO } from './pinta-1492-scenario.mjs';
 export { planFurnishings, addFurnishings, updateFurnishingsVisibility } from './pinta-furnishings.mjs';
 export { createWindField, WIND_PARAMS, beaufort } from './wind-field.mjs';
 export { createSeaState, waveMotion, addedResistanceFactor, SEA_PARAMS } from './sea-state.mjs';
+export { createVisibility, VIS_PARAMS } from './visibility.mjs';
