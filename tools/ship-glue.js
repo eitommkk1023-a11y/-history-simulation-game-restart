@@ -246,7 +246,7 @@
   }
   function board(id) {
     const rec = fleet.get(id), m = meshes.get(id); if (!m) return;
-    boarded = id; lastPlaced = null; if (m.interior) m.pos = m.interior.startPosition(); ui.panel.style.display = 'none'; refreshList(); toast(`${id} に乗った（移動で甲板を歩けます）`);
+    boarded = id; lastPlaced = null; if (m.interior) m.pos = m.interior.startPosition(); document.getElementById('standardMode')?.dispatchEvent(new Event('pointerdown')); /* close the game's developer menu */ refreshList(); toast(`${id} に乗った（移動で甲板を歩けます）`);
   }
   /** Step off without moving the player (they were moved by the game). */
   function leaveShip(msg) {
@@ -376,57 +376,104 @@
   const posOf = (id) => { const s = fleet.get(id).vessel.state; return { X: s.X, Y: s.Y }; };
 
   // ---------- HUD ----------
+  // ---------- ship UI (v2): lives in the game's developer frame; instruments at the top edge, grouped controls at the bottom edge ----------
+  const devOn = () => document.body.classList.contains('woh-dev');
+  const SVGNS = 'http://www.w3.org/2000/svg', svg = (tag, attrs = {}, kids = []) => { const e = document.createElementNS(SVGNS, tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); for (const c of kids) e.append(c); return e; };
+  const GAUGES = [['spd', '速度'], ['wind', '風'], ['wave', '波'], ['baro', '気圧'], ['vis', '視程'], ['depth', '水深']];
+  function setUiHidden(on) {
+    uiHidden = !!on; document.documentElement.classList.toggle('shipUiHidden', uiHidden);
+    try { localStorage.setItem('woh-ship-ui-hidden', uiHidden ? '1' : '0'); } catch (_) { /* storage unavailable */ }
+    layoutShipUi();
+  }
   function buildHud() {
     const css = $('style', { textContent: `
-#shipBtn,#shipPanel{position:fixed;z-index:120;left:calc(8px + env(safe-area-inset-left));font:12px/1.35 -apple-system,"Hiragino Sans",sans-serif;color:#e6edf3}
-#shipBtn{top:calc(56px + env(safe-area-inset-top));padding:6px 10px;background:#132a40e8;border:1px solid #2e5576;border-radius:8px}
-#shipPanel{top:calc(96px + env(safe-area-inset-top));width:min(250px,calc(100vw - 24px));max-height:calc(100vh - 170px);min-height:0;overflow:auto;background:#10202ff2;border:1px solid #2e5576;border-radius:10px;padding:8px;display:none;-webkit-user-select:none;user-select:none}
-#shipBar{position:fixed;z-index:120;bottom:calc(8px + env(safe-area-inset-bottom));left:calc(128px + env(safe-area-inset-left));right:calc(226px + env(safe-area-inset-right));display:none;font:12px/1.3 -apple-system,"Hiragino Sans",sans-serif;color:#e6edf3;background:#10202ff2;border:1px solid #2e5576;border-radius:10px;padding:6px;-webkit-user-select:none;user-select:none}
-#shipBar .info{font-size:11px;color:#9fc4de;margin-bottom:2px}#shipBar .btns{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
-@media (max-width:720px){#shipPanel:not([style*="display: none"]) ~ #shipBar{display:none!important}}
-#shipPanel{touch-action:pan-y;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
-#shipBar button{padding:3px 7px!important;font-size:11px!important;min-height:27px!important;margin:1px!important}#shipBar .info{font-size:10.5px!important}
-#shipPanel button,#shipBar button{background:#25415a;color:#e6edf3;border:1px solid #3b6288;border-radius:7px;padding:6px 9px;font-size:12px;min-height:30px;margin:2px 2px 2px 0}
-#shipPanel button.on,#shipBar button.on{background:#4cc2ff;color:#04202e}#shipPanel h4{margin:6px 0 2px;font-size:12px;color:#7fc8f0}
-#shipPanel .row{display:flex;align-items:center;gap:6px}#shipPanel input[type=range]{flex:1;min-width:0}
-html.shipUiHidden #shipBtn,html.shipUiHidden #shipPanel,html.shipUiHidden #shipBar,html.shipUiHidden #shipLadders,html.shipUiHidden #shipToast{display:none!important}
-#shipEye{position:fixed;z-index:122;top:calc(56px + env(safe-area-inset-top));left:calc(88px + env(safe-area-inset-left));padding:6px 9px;background:#132a40b0;color:#e6edf3;border:1px solid #2e5576;border-radius:8px;font-size:13px;opacity:.85}
-html.shipUiHidden #shipEye{left:calc(8px + env(safe-area-inset-left));opacity:.45}
-#shipLadders{position:fixed;z-index:121;left:calc(150px + env(safe-area-inset-left));bottom:calc(96px + env(safe-area-inset-bottom))}#shipLadders button{background:#4cc2ff;color:#04202e;border:1px solid #3b6288;border-radius:7px;padding:6px 14px;font-size:13px;min-height:34px}
-#shipToast{position:fixed;z-index:130;left:50%;top:calc(54px + env(safe-area-inset-top));max-width:min(420px,56vw);text-align:center;transform:translateX(-50%);background:#000c;color:#fff;padding:6px 12px;border-radius:8px;font:13px sans-serif;opacity:0;transition:opacity .3s;pointer-events:none}` });
-    ui.btn = $('button', { id: 'shipBtn', textContent: '⛵ 船' });
-    ui.eye = $('button', { id: 'shipEye', textContent: '👁', title: '船のUIの表示／非表示', onclick: () => setUiHidden(!uiHidden) });
-    ui.panel = $('div', { id: 'shipPanel', className: 'scrollable' });
-    ui.toast = $('div', { id: 'shipToast' });
-    ui.btn.onclick = () => { ui.panel.style.display = ui.panel.style.display === 'block' ? 'none' : 'block'; refreshList(); };
-    ui.spawn = $('div', {}, [$('h4', { textContent: '船を出す（近くの海へ）' }),
-      ...Object.entries({ 'pinta-1492': 'ピンタ1492 横帆', 'pinta-1492-lateen': 'ピンタ1492 ラテン', galleon: 'ガレオン', galley: 'ガレー' }).map(([d, n]) => $('button', { textContent: n, onclick: () => spawn(d) }))]);
-    ui.list = $('div'); ui.ctrl = $('div', { className: 'btns' }); ui.info = $('div', { className: 'info' });
-    ui.ladders = $('div', { id: 'shipLadders' }); ui.bar = $('div', { id: 'shipBar' }, [ui.info, ui.ctrl]);
-    ui.bench = $('div', { className: 'info', style: 'margin-top:6px;user-select:text;font-size:11px;color:#9fc4de' }); ui.panel.append(ui.spawn, ui.list, $('button', { textContent: '性能測定(6秒)', onclick: benchmark }), ui.bench);
-    document.body.append(css, ui.btn, ui.eye, ui.panel, ui.bar, ui.ladders, ui.toast);
+.shipui{font:12px/1.3 system-ui,-apple-system,"Hiragino Sans",sans-serif;color:#fff;-webkit-user-select:none;user-select:none}
+body:not(.woh-dev) .shipui,body:not(.woh-ship-on) .shipui.onboard{display:none!important}
+.shipcard{background:#12263bee;border:1px solid #7799ae;border-radius:12px;box-shadow:0 2px 10px #0006}
+#shipInst{position:fixed;z-index:119;display:none;padding:5px 7px 4px;gap:4px 6px}
+body.woh-ship-on #shipInst{display:flex;flex-wrap:wrap;align-items:flex-start}
+#shipDial{flex:0 0 auto;width:48px;height:48px}
+#shipGauges{flex:1;display:grid;gap:4px 6px;min-width:0}
+#shipGauges .g{min-width:0}#shipGauges .v{font-size:14px;font-weight:700;line-height:1.15;white-space:nowrap}#shipGauges .s{font-size:9.5px;color:#9db8cc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#shipStat{flex:1 0 100%;display:flex;flex-wrap:wrap;gap:3px;min-height:0}
+#shipStat span{padding:1px 7px;border-radius:9px;font-size:10.5px;background:#2a4a66;white-space:nowrap}
+#shipStat .w{background:#7a5a16}#shipStat .d{background:#8a2a2a}
+#shipEye{position:fixed;z-index:121;display:none;width:34px;height:30px;padding:0;border-radius:10px;font-size:15px}
+body.woh-ship-on #shipEye{display:block}
+#shipBar{position:fixed;z-index:119;display:none;padding:5px 6px}
+body.woh-ship-on #shipBar{display:block}
+#shipTabs{display:flex;gap:4px;margin-bottom:5px}
+#shipTabs button{flex:1;min-height:30px;padding:2px 4px}
+#shipTabs .out{flex:0 0 auto;background:#5a2a30;border-color:#a56}
+#shipBody{display:flex;align-items:center;gap:6px;min-height:38px;flex-wrap:wrap}
+.shipbtn{background:#1d3a57;color:#fff;border:1px solid #7799ae88;border-radius:10px;padding:4px 10px;font:inherit;font-size:13px;min-height:36px}
+.shipbtn.on{background:#4cc2ff;color:#04202e;border-color:#4cc2ff}.shipbtn.big{min-width:76px;font-size:15px;font-weight:700}
+.shipbtn:active{filter:brightness(1.25)}
+#shipBody .lab{color:#9db8cc;font-size:11px}
+#shipBody input[type=range]{width:120px}
+#shipLadders{position:fixed;z-index:121}#shipLadders button{background:#4cc2ff;color:#04202e;border:0;border-radius:10px;padding:6px 16px;font-size:14px;font-weight:700;min-height:36px}
+#shipToast{position:fixed;z-index:130;left:50%;max-width:min(420px,56vw);text-align:center;transform:translateX(-50%);background:#000c;color:#fff;padding:6px 12px;border-radius:8px;font:13px sans-serif;opacity:0;transition:opacity .3s;pointer-events:none}
+html.shipUiHidden #shipInst,html.shipUiHidden #shipBar,html.shipUiHidden #shipLadders,html.shipUiHidden #shipToast{display:none!important}
+html.shipUiHidden #shipEye{opacity:.5}
+.shipSec{margin-top:8px;border-top:1px solid #7799ae66;padding-top:6px}.shipSec>summary{cursor:pointer;font-weight:700;margin-bottom:4px}
+.shipSec .row{display:flex;align-items:center;gap:6px;margin:3px 0;flex-wrap:wrap}.shipSec .sub{color:#9db8cc;font-size:11px}
+.shipSec button{margin:2px 4px 2px 0}
+.shipSec .card{border:1px solid #7799ae55;border-radius:10px;padding:5px 7px;margin:4px 0;background:#0d1d2e88}
+.shipSec .card b{font-size:13px}` });
+    // instruments (top strip)
+    ui.dial = svg('svg', { id: 'shipDial', viewBox: '0 0 56 56' });
+    const card = svg('g', {}), ring = svg('circle', { cx: 28, cy: 28, r: 25, fill: '#0b1826', stroke: '#7799ae', 'stroke-width': 1.5 });
+    card.append(ring);
+    for (let a = 0; a < 360; a += 30) card.append(svg('line', { x1: 28, y1: 3.5, x2: 28, y2: a % 90 === 0 ? 8.5 : 6.5, stroke: '#9db8cc', 'stroke-width': 1, transform: `rotate(${a} 28 28)` }));
+    [['N', 0], ['E', 90], ['S', 180], ['W', 270]].forEach(([t, a]) => { const x = 28 + Math.sin(a * DEG) * 16.5, y = 28 - Math.cos(a * DEG) * 16.5 + 3; card.append(svg('text', { x, y, 'text-anchor': 'middle', 'font-size': 8.5, fill: t === 'N' ? '#ff7a6a' : '#cfe0ee', 'font-weight': 700 }, [document.createTextNode(t)])); });
+    ui.dialWind = svg('g', {}, [svg('path', { d: 'M28 1.5 L32 8 L24 8 Z', fill: '#ffb347' })]); // where the wind comes from
+    ui.dialTgt = svg('g', {}, [svg('rect', { x: 26.5, y: 1.5, width: 3, height: 7, fill: '#4cc2ff' })]); // target heading
+    card.append(ui.dialWind, ui.dialTgt); ui.dialCard = card;
+    ui.dial.append(card, svg('path', { d: 'M28 10 L32 18 L24 18 Z', fill: '#fff' }));
+    ui.dialNum = svg('text', { x: 28, y: 33, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700, fill: '#fff' }, [document.createTextNode('0')]); ui.dial.append(ui.dialNum);
+    ui.gauges = $('div', { id: 'shipGauges' }); ui.g = {};
+    for (const [id, label] of GAUGES) { const v = $('div', { className: 'v', textContent: '—' }), sub = $('div', { className: 's', textContent: label }); ui.g[id] = v; ui.g[id + 'S'] = sub; sub.dataset.label = label; ui.gauges.append($('div', { className: 'g' }, [v, sub])); }
+    ui.stat = $('div', { id: 'shipStat' });
+    ui.inst = $('div', { id: 'shipInst', className: 'shipui shipcard onboard' }, [ui.dial, ui.gauges, ui.stat]);
+    ui.eye = $('button', { id: 'shipEye', className: 'shipui shipbtn onboard', textContent: '👁', title: '船のUIの表示／非表示', onclick: () => setUiHidden(!uiHidden) });
+    // controls (bottom bar)
+    ui.tabs = $('div', { id: 'shipTabs' }); ui.ctrl = $('div', { id: 'shipBody' });
+    ui.bar = $('div', { id: 'shipBar', className: 'shipui shipcard onboard' }, [ui.tabs, ui.ctrl]);
+    ui.ladders = $('div', { id: 'shipLadders', className: 'shipui onboard' }); ui.toast = $('div', { id: 'shipToast', className: 'shipui' });
+    document.body.append(css, ui.inst, ui.eye, ui.bar, ui.ladders, ui.toast);
+    ui.info = { set textContent(_) { /* legacy text readout replaced by the gauges */ } };
     try { setUiHidden(localStorage.getItem('woh-ship-ui-hidden') === '1'); } catch (_) { /* storage unavailable */ }
+    // developer frame: the game's own "開発者" panel hosts the ship system section (dev mode only)
+    ui.dev = $('details', { className: 'shipSec shipui', open: true }, [$('summary', { textContent: '⛵ 船システム' })]);
+    ui.spawn = $('div'); ui.list = $('div'); ui.crewBox = $('div'); ui.bench = $('div', { className: 'sub', style: 'user-select:text;margin-top:4px' });
+    ui.dev.append(ui.spawn, ui.list, ui.crewBox, $('div', { className: 'row' }, [$('button', { className: 'shipbtn', textContent: '性能測定(6秒)', onclick: benchmark }), $('button', { className: 'shipbtn', textContent: '👁 船UI 表示/非表示', onclick: () => setUiHidden(!uiHidden) })]), ui.bench);
+    const mount = () => { const dp = document.getElementById('developerPane') ?? document.getElementById('developerPanel'); if (dp && !ui.dev.isConnected) dp.append(ui.dev); };
+    mount(); setInterval(() => { mount(); document.body.classList.toggle('woh-ship-on', devOn() && !!boarded && !!fleet?.has(boarded)); if (!devOn() && boarded) disembark(); }, 500);
+    ui.spawn.append($('div', { className: 'sub', textContent: '船を出す(近くの海へ)' }), ...Object.entries({ 'pinta-1492': 'ピンタ1492 横帆', 'pinta-1492-lateen': 'ピンタ1492 ラテン', galleon: 'ガレオン', galley: 'ガレー' }).map(([d, n]) => $('button', { className: 'shipbtn', textContent: n, onclick: () => { spawn(d); } })));
     layoutShipUi(); setInterval(layoutShipUi, 400); addEventListener('resize', layoutShipUi);
     let down = null; const cv = nat.renderer.domElement;
     cv.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; }, true);
     cv.addEventListener('pointerup', (e) => { if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 8 && performance.now() - down.t < 500) onMapTap(e); down = null; }, true);
-    ['pointerdown', 'pointermove', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'wheel'].forEach((ev) => { for (const el of [ui.panel, ui.btn, ui.eye, ui.bar, ui.ladders]) el.addEventListener(ev, (e) => e.stopPropagation(), { passive: true}); });
+    ['pointerdown', 'pointermove', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'wheel'].forEach((ev) => { for (const el of [ui.inst, ui.eye, ui.bar, ui.ladders]) el.addEventListener(ev, (e) => e.stopPropagation(), { passive: true }); });
   }
-  /** Keep the ship UI clear of the game's own HUD (v31 layout): measured from the game's elements, so it follows any screen size. */
+  /** Keep the ship UI clear of the game's own HUD, measured from the game's elements (works at any screen size). */
   function layoutShipUi() {
+    if (!ui.inst) return;
     const R = (id) => { const e = document.getElementById(id); if (!e) return null; const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden') return null; const b = e.getBoundingClientRect(); return b.width ? b : null; };
-    const hud = ['hudGoal', 'hudTL'].map(R).filter(Boolean), compass = R('hudCompass'), hot = R('hudHot'), joy = R('joystick'), ch = ['sprint', 'jump', 'crouch', 'hudTalk'].map(R).filter(Boolean);
-    const left0 = Math.max(8, ...hud.map((b) => b.left)), below = Math.max(0, ...hud.map((b) => b.bottom)) + 6;
-    const top = below > 6 ? below : 56, bw = ui.btn.offsetWidth || 52;
-    Object.assign(ui.btn.style, { top: top + 'px', left: '8px' }); Object.assign(ui.eye.style, { top: top + 'px', left: uiHidden ? '8px' : (8 + bw + 8) + 'px' });
-    const barBottom = hot ? innerHeight - hot.top + 6 : 8, stat = R('hudStatus'), barLeft = Math.max(joy ? joy.right + 8 : 128, stat ? stat.right + 8 : 0), barRight = ch.length ? innerWidth - Math.min(...ch.map((b) => b.left)) + 6 : 226;
-    Object.assign(ui.bar.style, { bottom: barBottom + 'px', left: barLeft + 'px', right: barRight + 'px' });
-    const barTop = ui.bar.style.display === 'none' ? innerHeight - barBottom : innerHeight - barBottom - (ui.bar.offsetHeight || 0);
-    const pTop = (compass ? compass.bottom : 48) + 6, pLeft = Math.max(...hud.map((b) => b.right), 8) + 8;
-    const rights = ['hudMode', 'miniZoom', 'hudTalk'].map(R).filter((b) => b && b.left > pLeft).map((b) => b.left), pW = Math.max(170, Math.min(250, (rights.length ? Math.min(...rights) : innerWidth) - pLeft - 10));
-    Object.assign(ui.panel.style, { top: pTop + 'px', left: pLeft + 'px', width: pW + 'px', maxHeight: Math.max(80, barTop - pTop - 8) + 'px' });
-    Object.assign(ui.ladders.style, { left: barLeft + 'px', bottom: (barBottom + (ui.bar.offsetHeight || 60) + 6) + 'px' });
-    ui.toast.style.top = ((compass ? compass.bottom : 48) + 6) + 'px';
+    const hud = ['hudGoal', 'hudTL'].map(R).filter(Boolean), compass = R('hudCompass'), hot = R('hudHot'), joy = R('joystick'), stat = R('hudStatus'), btns = R('hudBtns');
+    const ch = ['sprint', 'jump', 'crouch', 'hudTalk', 'hudMode'].map(R).filter(Boolean), topY = (compass ? compass.bottom : 48) + 5;
+    // instruments: top edge, between the left HUD block and the right-hand buttons
+    const hmode = R('hudMode'), estH = ui.inst.offsetHeight || 100;
+    const iL = Math.max(8, ...hud.map((b) => b.right)) + 10, iR = Math.min((btns ? btns.left : innerWidth - 8), hmode && topY + estH > hmode.top - 2 ? hmode.left : 1e9) - 10, iW = Math.max(176, Math.min(320, iR - iL - 40));
+    const cols = iW >= 250 ? 3 : 2; ui.gauges.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+    Object.assign(ui.inst.style, { top: topY + 'px', left: iL + 'px', width: iW + 'px' });
+    const hh = ui.inst.offsetHeight || 80, room = iL + iW + 6 + 34 <= (btns ? btns.left : innerWidth) - 4;
+    Object.assign(ui.eye.style, uiHidden ? { top: topY + 'px', left: iL + 'px' } : room ? { top: topY + 'px', left: (iL + iW + 6) + 'px' } : { top: (topY + hh + 4) + 'px', left: iL + 'px' });
+    // controls: bottom edge, above the hotbar, between the joystick/status and the action buttons
+    const barBottom = hot ? innerHeight - hot.top + 5 : 8, bL = Math.max(joy ? joy.right + 8 : 128, stat ? stat.right + 8 : 0), bR = ch.length ? innerWidth - Math.min(...ch.map((b) => b.left)) + 6 : 226;
+    Object.assign(ui.bar.style, { bottom: barBottom + 'px', left: bL + 'px', right: bR + 'px' });
+    Object.assign(ui.ladders.style, { left: bL + 'px', bottom: (barBottom + (ui.bar.offsetHeight || 80) + 6) + 'px' });
+    Object.assign(ui.toast.style, { top: (topY + (uiHidden ? 36 : hh) + 8) + 'px', left: iL + 'px', transform: 'none', maxWidth: (iW - 30) + 'px', textAlign: 'left' });
   }
   /** Performance check for real devices: samples ~6 s of frames in whatever view is current and reports it as text (copyable). */
   function benchmark() {
@@ -472,29 +519,38 @@ html.shipUiHidden #shipEye{left:calc(8px + env(safe-area-inset-left));opacity:.4
     refreshList(); save();
   }
   function dismissHand(shipId, personId) { const rec = fleet.get(shipId); if (rec?.crew?.dismiss(personId)) { toast('乗員を降ろした'); refreshList(); save(); } }
+  let shipTab = 'rudder';
+  function renderBar() {
+    if (!ui.bar) return; ui.ctrl.replaceChildren(); ui.tabs.replaceChildren();
+    if (!boarded || !fleet?.has(boarded)) return;
+    const rec = fleet.get(boarded), c = ctl[boarded], v = rec.vessel, tab = (k, t) => $('button', { className: 'shipbtn' + (shipTab === k ? ' on' : ''), textContent: t, onclick: () => { shipTab = k; renderBar(); } });
+    ui.tabs.append(tab('rudder', '舵'), tab('sail', v.sails.length || v.oars.length ? '帆' : '推進'), tab('anchor', '錨'), tab('nav', '航海'), $('button', { className: 'shipbtn out', textContent: '降りる', onclick: () => disembark() }));
+    const hold = (label, dir) => { const b = $('button', { className: 'shipbtn big', textContent: label }); const on = (e) => { e.preventDefault(); c.held = dir; }, off = () => { if (c.held === dir) c.held = 0; }; b.addEventListener('pointerdown', on); ['pointerup', 'pointerleave', 'pointercancel'].forEach((t) => b.addEventListener(t, off)); return b; };
+    if (shipTab === 'rudder') { ui.tgt = $('b', { textContent: '—' }); ui.ctrl.append(hold('◀ 左', -1), hold('右 ▶', 1), $('span', { className: 'lab' }, [document.createTextNode('目標方位 '), ui.tgt])); }
+    else if (shipTab === 'sail') {
+      if (v.sails.length) ui.ctrl.append($('button', { className: 'shipbtn' + (c.auto ? ' on' : ''), textContent: '帆 自動', onclick: () => { c.auto = true; renderBar(); } }), $('button', { className: 'shipbtn' + (!c.auto ? ' on' : ''), textContent: '帆 固定', onclick: () => { c.auto = false; renderBar(); } }), $('span', { className: 'lab', textContent: c.auto ? '風に合わせて自動で調整' : '帆の向きを固定' }));
+      if (v.oars.length) { const r = $('input', { type: 'range', min: -100, max: 100, step: 5, value: Math.round(c.oar * 100) }); r.oninput = () => { c.oar = r.value / 100; }; ui.ctrl.append($('span', { className: 'lab', textContent: '櫂' }), r); }
+      if (!v.sails.length && !v.oars.length) ui.ctrl.append($('span', { className: 'lab', textContent: '帆も櫂もありません' }));
+    } else if (shipTab === 'anchor') {
+      ui.ctrl.append($('button', { className: 'shipbtn big' + (v.state.anchor ? ' on' : ''), textContent: v.state.anchor ? '錨を上げる' : '錨を下ろす', onclick: () => { if (v.state.anchor) v.raiseAnchor(); else { const r = v.dropAnchor(env, { anchorKg: 400, rodeM: 60 }); if (r.status !== 'ok') toast('投錨できない：' + r.status); } renderBar(); } }), $('span', { className: 'lab', textContent: v.state.anchor ? '錨泊中' : '錨は上がっている' }));
+    } else {
+      ui.ctrl.append($('button', { className: 'shipbtn' + (pickMode ? ' on' : ''), textContent: pickMode ? '地図をタップ…' : '目的地', onclick: () => { pickMode = !pickMode; toast(pickMode ? '開発者→マップ(世界を俯瞰)を開き、行き先をタップ' : '指定をやめた'); renderBar(); } }),
+        $('button', { className: 'shipbtn', textContent: '前方3km', onclick: () => { const st = v.state, h = st.psi; setDest(boarded, st.X + Math.sin(h) * 3000, st.Y + Math.cos(h) * 3000); } }));
+      if (captainActive(rec)) ui.ctrl.append($('button', { className: 'shipbtn', textContent: '中止', onclick: () => { fleet.cancelDestination(boarded); updateRoute(null); v.setHeadingTarget(null); ctl[boarded].heading = v.snapshot().headingDeg; renderBar(); } }));
+      ui.ctrl.append($('button', { className: 'shipbtn', textContent: `時間 ×${speedX}`, onclick: (e) => { speedX = speedX === 1 ? 4 : speedX === 4 ? 10 : 1; e.target.textContent = `時間 ×${speedX}`; } }));
+    }
+  }
   function refreshList() {
     if (!ui.list) return;
-    ui.list.replaceChildren($('h4', { textContent: '船' }), ...(fleet?.list() ?? []).map((r) => $('div', { className: 'row' }, [
-      $('span', { textContent: `${r.id}（${Ship.sampleDesigns[r.designId]?.label ?? r.designId}）`, style: 'flex:1' }),
-      $('button', { textContent: boarded === r.id ? '降りる' : '乗る', className: boarded === r.id ? 'on' : '', onclick: () => (boarded === r.id ? disembark() : board(r.id)) }),
-      $('button', { textContent: '消す', onclick: () => removeShip(r.id) })])));
-    const crewShips = (fleet?.list() ?? []).filter((r) => fleet.get(r.id).crew);
-    if (crewShips.length) ui.list.append($('h4', { textContent: '乗員（村人を雇う）' }), $('button', { textContent: '選択中の村人を雇う', onclick: hireSelected }),
-      ...crewShips.flatMap((r) => fleet.get(r.id).crew.members.filter((x) => x.hired).map((x) => $('div', { className: 'row' }, [$('span', { textContent: `${x.name}（${r.id}）`, style: 'flex:1' }), $('button', { textContent: '降ろす', onclick: () => dismissHand(r.id, x.id) })]))));
-    ui.ctrl.replaceChildren();
-    ui.bar.style.display = boarded && fleet?.has(boarded) ? 'block' : 'none';
-    if (!boarded || !fleet?.has(boarded)) return;
-    const rec = fleet.get(boarded), c = ctl[boarded], v = rec.vessel;
-    const hold = (label, dir) => { const b = $('button', { textContent: label }); const on = (e) => { e.preventDefault(); c.held = dir; }, off = () => { if (c.held === dir) c.held = 0; }; b.addEventListener('pointerdown', on); ['pointerup', 'pointerleave', 'pointercancel'].forEach((t) => b.addEventListener(t, off)); return b; };
-    ui.ctrl.append(hold('◀左', -1), hold('右▶', 1),
-      $('button', { textContent: v.state.anchor ? '錨↑' : '錨↓', onclick: () => { if (v.state.anchor) v.raiseAnchor(); else { const r = v.dropAnchor(env, { anchorKg: 400, rodeM: 60 }); if (r.status !== 'ok') toast('投錨できない：' + r.status); } refreshList(); } }));
-    if (v.sails.length) ui.ctrl.append($('button', { textContent: c.auto ? '帆自動' : '帆固定', className: c.auto ? 'on' : '', onclick: () => { c.auto = !c.auto; refreshList(); } }));
-    if (v.oars.length) { const r = $('input', { type: 'range', min: -100, max: 100, step: 5, value: Math.round(c.oar * 100) }); r.oninput = () => { c.oar = r.value / 100; }; ui.ctrl.append($('span', { textContent: '櫂' }), r); r.style.cssText = 'width:90px'; }
-    const active = captainActive(rec);
-    ui.ctrl.append($('button', { textContent: pickMode ? '地図タップ' : '目的地', className: pickMode ? 'on' : '', onclick: () => { pickMode = !pickMode; toast(pickMode ? '「UIを表示」→「世界を俯瞰」で地図を開き、行き先をタップ' : '指定をやめた'); refreshList(); } }),
-      $('button', { textContent: '前方3km', onclick: () => { const st = v.state, h = st.psi; setDest(boarded, st.X + Math.sin(h) * 3000, st.Y + Math.cos(h) * 3000); } }));
-    if (active) ui.ctrl.append($('button', { textContent: '中止', onclick: () => { fleet.cancelDestination(boarded); updateRoute(null); v.setHeadingTarget(null); ctl[boarded].heading = v.snapshot().headingDeg; refreshList(); } }));
-    ui.ctrl.append($('button', { textContent: '降りる', onclick: () => disembark() }), $('button', { textContent: `×${speedX}`, onclick: (e) => { speedX = speedX === 1 ? 4 : speedX === 4 ? 10 : 1; e.target.textContent = `×${speedX}`; } }));
+    const ships = fleet?.list() ?? [];
+    ui.list.replaceChildren(...ships.map((r) => $('div', { className: 'card' }, [
+      $('div', { className: 'row' }, [$('b', { textContent: r.id }), $('span', { className: 'sub', textContent: Ship.sampleDesigns[r.designId]?.label ?? r.designId })]),
+      $('div', { className: 'row' }, [$('button', { className: 'shipbtn' + (boarded === r.id ? ' on' : ''), textContent: boarded === r.id ? '降りる' : '乗る', onclick: () => (boarded === r.id ? disembark() : board(r.id)) }), $('button', { className: 'shipbtn', textContent: '消す', onclick: () => removeShip(r.id) })])])));
+    if (!ships.length) ui.list.append($('div', { className: 'sub', textContent: '船はまだありません' }));
+    const crewShips = ships.filter((r) => fleet.get(r.id).crew);
+    ui.crewBox.replaceChildren(...(crewShips.length ? [$('div', { className: 'sub', textContent: '乗員(同民族の村人5人が最初から乗る)' }), $('button', { className: 'shipbtn', textContent: '選択中の村人を雇う', onclick: hireSelected }),
+      ...crewShips.flatMap((r) => fleet.get(r.id).crew.members.filter((x) => x.hired).map((x) => $('div', { className: 'row' }, [$('span', { textContent: `${x.name}(${r.id})`, style: 'flex:1' }), $('button', { className: 'shipbtn', textContent: '降ろす', onclick: () => dismissHand(r.id, x.id) })])))] : []));
+    renderBar();
   }
   /** Where the nearest game storm (within 100 km) and calm (within 20 km) are, as seen from here. Cached per 2 km cell and game day. */
   const skyCache = new Map();
@@ -518,23 +574,34 @@ html.shipUiHidden #shipEye{left:calc(8px + env(safe-area-inset-left));opacity:.4
   // barometer (hypothesis D): 1013 hPa, lower the closer a storm is; trend over the last ~10 game minutes
   const pHist = []; let pTrend = 0;
   function pressureHpa(X, Y, stormW) { const k = scanSky(X, Y).storm; const near = k ? Math.exp(-k.km / 30) : 0; return 1013 - 24 * Math.max(stormW, near * 0.85); }
-  function pressureText(p) {
+  function pressureReading(p) {
     pHist.push({ t: simT, p }); while (pHist.length > 2 && simT - pHist[0].t > 600) pHist.shift();
     const d = p - pHist[0].p; pTrend = simT - pHist[0].t > 30 ? d : 0;
-    return `／気圧${p.toFixed(0)}hPa${pTrend < -1.2 ? '↓↓' : pTrend < -0.4 ? '↓' : pTrend > 0.4 ? '↑' : '→'}`;
+    return { p, arrow: pTrend < -1.2 ? '↓↓' : pTrend < -0.4 ? '↓' : pTrend > 0.4 ? '↑' : '→' };
   }
   function updateHud() {
-    if (!ui.info) return;
-    if (!boarded || !fleet?.has(boarded)) { ui.info.textContent = ''; return; }
-    const v = fleet.get(boarded).vessel, s = v.snapshot(), f = v.forces(env), c = ctl[boarded];
-    const wi = windField.info(v.state.X, v.state.Y, 0), w = wi, wf = wi.fromDeg, arrow = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'][Math.round(((wf + 180) % 360) / 45) % 8];
-    const sm = meshes.get(boarded)?.sea, seaTxt = sm ? `／波${sm.hs < 0.5 ? '穏やか' : sm.hs < 1.25 ? '小さい' : sm.hs < 2.5 ? 'やや高い' : sm.hs < 4 ? '荒い' : sm.hs < 6 ? '非常に荒い' : '猛烈'}（${sm.hs.toFixed(1)}m・周期${sm.tp.toFixed(0)}秒${v.forces(env).waveResistanceFactor > 1.1 ? '・向かい波で減速' : ''}）` : '';
-    const tag = wi.storm > 0.5 ? `／${wi.label === '嵐' ? '嵐' : '荒天'}の中` : wi.storm > 0.3 ? '／荒れ模様' : wi.calm > 0.3 ? '／凪' : wi.shelter < 0.8 ? '／陸の風下で風が弱い' : '';
-    const sk = scanSky(v.state.X, v.state.Y), calmTxt = !tag && sk.calm ? `／凪が${dirName(sk.calm.ang)}約${sk.calm.km}km` : '';
-    const vi = visField.info(v.state.X, v.state.Y, 0), visTxt = `／視程${vi.visM >= 10000 ? '良好' : (vi.visM / 1000).toFixed(1) + 'km'}${vi.fog > 0.3 ? '(霧)' : vi.rainMm > 2 ? '(雨)' : ''}`;
-    const wxTxt = omenText(sk, wi.storm > 0.5) + calmTxt + visTxt + pressureText(pressureHpa(v.state.X, v.state.Y, wi.storm));
-    const cap = fleet.get(boarded).captain, dd = cap?.destination && Math.hypot(cap.destination.X - v.state.X, cap.destination.Y - v.state.Y), eta = dd ? Math.round(dd / Math.max(0.8, s.speedOverGround) / 60) : 0;
-    const capTxt = cap && ['sailing', 'arriving'].includes(cap.mode) ? `／航海中 残り${dd > 1000 ? (dd / 1000).toFixed(1) + 'km' : Math.round(dd) + 'm'}（約${eta}分）${cap.reef < 1 ? '／帆を絞っている' : ''}` : cap?.mode === 'arrived' ? '／到着' : '';
-    ui.info.textContent = `速度 ${(s.speedOverGround * 1.9438).toFixed(1)} kt／方位 ${s.headingDeg.toFixed(0)}°（目標 ${c.heading.toFixed(0)}°）／風 ${arrow}風力${wi.beaufort}（${wi.speed.toFixed(1)} m/s・${wf.toFixed(0)}°から）${tag}${wxTxt}${seaTxt}／傾斜 ${s.heelDeg.toFixed(1)}°／水深余裕 ${f.clearanceM.toFixed(1)} m${s.aground ? '／座礁中' : ''}${s.anchored ? (s.anchorDragging ? '／走錨中' : '／錨泊中') : ''}${capTxt}`;
+    if (!ui.inst || !boarded || !fleet?.has(boarded)) return;
+    const rec = fleet.get(boarded), v = rec.vessel, s = v.snapshot(), f = v.forces(env), c = ctl[boarded];
+    const wi = windField.info(v.state.X, v.state.Y, 0), wf = wi.fromDeg, warrow = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'][Math.round(((wf + 180) % 360) / 45) % 8];
+    const sk = scanSky(v.state.X, v.state.Y), vi = visField.info(v.state.X, v.state.Y, 0), sm = meshes.get(boarded)?.sea, pr = pressureReading(pressureHpa(v.state.X, v.state.Y, wi.storm));
+    ui.dialCard.setAttribute('transform', `rotate(${(-s.headingDeg).toFixed(1)} 28 28)`); ui.dialWind.setAttribute('transform', `rotate(${wf.toFixed(1)} 28 28)`); ui.dialTgt.setAttribute('transform', `rotate(${(c.heading ?? s.headingDeg).toFixed(1)} 28 28)`);
+    ui.dialNum.textContent = String(Math.round(s.headingDeg) % 360);
+    if (ui.tgt) ui.tgt.textContent = `${Math.round(c.heading ?? s.headingDeg)}°`;
+    const set = (id, v1, v2) => { if (ui.g[id].textContent !== v1) ui.g[id].textContent = v1; const t2 = ui.g[id + 'S'].dataset.label + (v2 ? ' · ' + v2 : ''); if (ui.g[id + 'S'].textContent !== t2) ui.g[id + 'S'].textContent = t2; };
+    set('spd', `${(s.speedOverGround * 1.9438).toFixed(1)}kt`, '');
+    set('wind', `${warrow}風力${wi.beaufort}`, `${wi.speed.toFixed(1)}m/s`);
+    set('wave', sm ? `${sm.hs.toFixed(1)}m` : '—', sm ? `${sm.tp.toFixed(0)}秒${f.waveResistanceFactor > 1.1 ? '・向かい波' : ''}` : '');
+    set('baro', `${pr.p.toFixed(0)}hPa`, pr.arrow);
+    set('vis', vi.visM >= 10000 ? '良好' : `${(vi.visM / 1000).toFixed(1)}km`, vi.fog > 0.3 ? '霧' : vi.rainMm > 2 ? '雨' : '');
+    set('depth', `${f.clearanceM.toFixed(0)}m`, `傾斜${s.heelDeg.toFixed(0)}°`);
+    const chips = []; // [text, level] level: '' info, 'w' warning, 'd' danger
+    if (wi.storm > 0.5) chips.push([wi.label === '嵐' ? '嵐の中' : '荒天の中', 'd']); else if (wi.storm > 0.3) chips.push(['荒れ模様', 'w']);
+    else { const om = omenText(sk, false).replace(/^／/, ''); if (om) chips.push([om, 'w']); }
+    if (wi.calm > 0.3) chips.push(['凪', '']); else if (!wi.storm && sk.calm) chips.push([`凪が${dirName(sk.calm.ang)}約${sk.calm.km}km`, '']); if (wi.shelter < 0.8 && wi.storm < 0.3) chips.push(['陸の風下で風が弱い', '']);
+    if (s.aground) chips.push(['座礁中', 'd']); else if (f.clearanceM < 3) chips.push(['浅瀬', 'w']);
+    if (s.anchored) chips.push([s.anchorDragging ? '走錨中' : '錨泊中', s.anchorDragging ? 'd' : '']);
+    const cap = rec.captain, dd = cap?.destination && Math.hypot(cap.destination.X - v.state.X, cap.destination.Y - v.state.Y);
+    if (cap && ['sailing', 'arriving'].includes(cap.mode)) chips.push([`航海中 残り${dd > 1000 ? (dd / 1000).toFixed(1) + 'km' : Math.round(dd) + 'm'}（約${Math.round(dd / Math.max(0.8, s.speedOverGround) / 60)}分）${cap.reef < 1 ? '・帆を絞る' : ''}`, '']); else if (cap?.mode === 'arrived') chips.push(['到着', '']);
+    const sig = JSON.stringify(chips); if (sig !== ui.statSig) { ui.statSig = sig; ui.stat.replaceChildren(...chips.map(([t, l]) => $('span', { className: l, textContent: t }))); }
   }
 })();
