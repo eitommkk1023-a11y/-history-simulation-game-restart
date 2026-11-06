@@ -61,7 +61,11 @@ const PE = {
   FARM_VALUE: 1, HERD_VALUE: 1.4,                 // 働き手の割り振りで、農産物・畜産物 1kg を採集物の何kg分と見るか
   HERD_KG: 5, HERD_PER: 20, HERD_GROW: 0.012,     // 家畜1頭・1か月の食料（乳・肉。kg）／牧人1人が世話できる頭数／1か月の増え方
   HERD_CAP: [10, 400],                            // 牧草地で支えられる頭数＝a＋b×草地の割合
-  FARM_STORE: 1.2, FARM_SPOIL: 0.5,               // 穀物の割合が高いほど蓄えられる量（倍）と、腐りにくさ
+  FARM_STORE: 1.2,                                // 農産物の割合が高いほど、蓄えられる量（倍）
+  // 蓄えは3種類：穀物・根・木の実（長持ち）／生鮮（肉・魚・貝・果実・乳。すぐ傷む）／干物・燻製。1か月の傷み＝a＋b×(気温/25℃)［仮。個人の持ち物の表と同じ考え方］
+  SPOIL_DUR: [0.015, 0.02], SPOIL_FRESH: [0.15, 0.15], SPOIL_DRIED: [0.006, 0.006],
+  GATHER_DURABLE: 0.55,                           // 採集で得た食料のうち、長持ちする（根・木の実・草の実）割合
+  RACK_KG: 200, RACK_YIELD: 0.8,                  // 干し棚1つが、1か月に干物へ変える生鮮の量（kg）と、干物になる割合
   STORE_MONTHS: 4,                                // 蓄えられる上限（必要量の何か月分。移動生活なので少ない）［仮］
   // ---- 人口：年齢別の死亡（年あたりの基本ハザード）［研究：Gurven & Kaplan 2007 の狩猟採集民の生命表に近づけた］
   // 乳児死亡 約20%、15歳までの生存 約55〜60%、40歳から死亡率が約 6.5%/年 ずつ増える（ゴンペルツ）
@@ -1076,9 +1080,9 @@ function peNationYear(people, ev, rel) {
 }
 // 民族が持っている農耕・牧畜の技術と、収穫への効き（乗数）
 function peTechOf(people, ethId) {
-  const S = people.nation, o = { farm: false, herd: false, mult: 1, farmSince: -1 }; if (!S) return o;
+  const S = people.nation, o = { farm: false, herd: false, kiln: false, mult: 1, farmSince: -1 }; if (!S) return o;
   const h = (n) => Nation.hasNode(S, ethId, n);
-  o.farm = h('cultivate'); o.herd = h('herd');
+  o.farm = h('cultivate'); o.herd = h('herd'); o.kiln = h('kiln');
   if (o.farm) { o.farmSince = Nation.sinceNode(S, ethId, 'cultivate'); o.mult = 1 + (h('irrigate') ? 0.35 : 0) + (h('rotation') ? 0.2 : 0) + (h('draft') ? 0.15 : 0) + (h('iron') ? 0.1 : 0); }
   return o;
 }
@@ -1117,7 +1121,7 @@ function peopleGrowth(people, gid) {
   const stage = settle === 2 && pop >= 120 && (g.farmFrac || 0) > 0.3 ? 3 : settle;
   const cnt = (j) => P.gcount[gid * NJOB + j];
   const need = g.lastFood ? g.lastFood.need : 0;
-  return { stage, label: GROWTH_LABELS[stage], pop, farm: tech.farm, herd: tech.herd, farmers: cnt(9), herders: cnt(10), herdN: Math.round(g.herdN || 0), farmFrac: g.farmFrac || 0, share: g.share || 0, policy: g.policy || 'auto', facil: Object.assign({ granary: 0, well: 0, pen: 0, field: 0 }, g.facil), build: g.build ? { kind: g.build.kind, left: g.build.left } : null, storeDays: need > 0 ? Math.round(30 * g.food / need) : 0,
+  return { stage, label: GROWTH_LABELS[stage], pop, farm: tech.farm, herd: tech.herd, farmers: cnt(9), herders: cnt(10), herdN: Math.round(g.herdN || 0), farmFrac: g.farmFrac || 0, share: g.share || 0, policy: g.policy || 'auto', facil: Object.assign({}, peFacil(g)), avail: peFacilAvail(people, g), stock: { dur: Math.max(0, g.food - (g.fresh || 0) - (g.dried || 0)), fresh: g.fresh || 0, dried: g.dried || 0 }, build: g.build ? { kind: g.build.kind, left: g.build.left } : null, storeDays: need > 0 ? Math.round(30 * g.food / need) : 0,
     income: g.lastFood ? { hunt: g.lastFood.hunt, gather: g.lastFood.gather, fish: g.lastFood.fish, farm: g.lastFood.farm || 0, herd: g.lastFood.herd || 0, need } : null };
 }
 // 技術を民族に与える（開発・試験用）
@@ -1131,20 +1135,26 @@ function peTechFlags(people) {
 // ---------------------------------------------------------------- 村の施設（指導者が建てる）
 // 材料は、あなたの持ち物（暮らしの持ち物）から。建てるには月数がかかり、集団の人数が足りないと進まない。効果は施設ごとに数に応じて増える（上限あり）
 const FACIL = {
-  granary: { name: '倉庫', cost: { firewood: 8, fiber: 10, rope: 2 }, months: 3, max: 3, info: '蓄えられる食料が増える（1つにつき+35%）' },
-  well: { name: '井戸', cost: { stone: 6, rope: 2, firewood: 3 }, months: 2, max: 2, info: '疫病が広がりにくくなる（1つにつき-25%）' },
-  pen: { name: '家畜の囲い', cost: { firewood: 10, fiber: 6, rope: 2 }, months: 2, max: 3, tech: 'herd', info: '養える家畜が増える（1つにつき+40%）' },
-  field: { name: '畑の拡張', cost: { stone: 4, fiber: 6 }, months: 4, max: 3, tech: 'farm', info: '農耕の収穫が増える（1つにつき+12%）' },
+  pit: { name: '貯蔵穴', cost: { stone: 3, fiber: 4 }, months: 2, max: 3, role: 'storage_pit', info: '穀物・根・木の実が腐りにくい（×0.7）。生鮮は逆に傷みやすい（×1.3）。蓄えられる量+25%', lock: '半定住以上（動かない集団）', when: (g) => (g.settle || 0) >= 1 },
+  rack: { name: '干し棚', cost: { firewood: 6, fiber: 6, rope: 1 }, months: 1, max: 4, role: 'drying_rack', info: '生鮮の肉・魚・果実を、1つで月に約200kgぶん干物に変える（寒い月は半分）。野営地でも建てられる（分解できる）', lock: '集団が移動中でないこと', when: (g) => true },
+  granary: { name: '倉庫', cost: { firewood: 8, fiber: 10, rope: 2 }, months: 3, max: 3, role: 'raised_storehouse', info: '穀物・根・木の実が腐りにくい（×0.6）、干物も少し（×0.8）。蓄えられる量+50%', lock: '村で、栽培を持つか、農産物が食料の3割以上', when: (g, t) => g.settle === 2 && (t.farm || (g.farmFrac || 0) >= 0.3) },
+  well: { name: '井戸', cost: { stone: 6, rope: 2, firewood: 3 }, months: 2, max: 2, role: 'well', info: '疫病が広がりにくくなる（1つにつき-25%）', lock: '半定住以上', when: (g) => (g.settle || 0) >= 1 },
+  pen: { name: '家畜の囲い', cost: { firewood: 10, fiber: 6, rope: 2 }, months: 2, max: 3, role: 'livestock_pen', info: '養える家畜が増える（1つにつき+40%）', lock: '牧畜を持ち、半定住以上で、家畜が8頭以上', when: (g, t) => t.herd && (g.settle || 0) >= 1 && (g.herdN || 0) >= 8 },
+  hearth: { name: '共同の炉', cost: { stone: 8, firewood: 4 }, months: 2, max: 1, role: 'communal_hearth', info: '生鮮が傷みにくい（×0.7）。食料が足りないとき、飢える人が少し減る', lock: '村で、人口60人以上', when: (g) => g.settle === 2 && (g.pop || 0) >= 60 },
+  field: { name: '畑の拡張', cost: { stone: 4, fiber: 6 }, months: 4, max: 3, role: 'field', info: '農耕の収穫が増える（1つにつき+12%）', lock: '栽培を持ち、半定住以上', when: (g, t) => t.farm && (g.settle || 0) >= 1 },
+  kiln: { name: '窯', cost: { clay: 10, stone: 6, firewood: 6 }, months: 4, max: 2, role: 'pottery_kiln', info: '高温焼成の窯（土器の品質は次の段階で効かせる）', lock: '技術「高温焼成」を持ち、半定住以上', when: (g, t) => t.kiln && (g.settle || 0) >= 1 },
 };
-function peFacil(g) { return g.facil || (g.facil = { granary: 0, well: 0, pen: 0, field: 0 }); }
+function peFacil(g) { const f = g.facil || (g.facil = {}); for (const k in FACIL) if (f[k] === undefined) f[k] = 0; return f; }
+// 施設ごとに、いま使えるか（技術・村の段階・人口など）。画面用
+function peFacilAvail(people, g) { const t = peTechOf(people, g.ethId), o = {}; for (const k in FACIL) o[k] = { open: !!FACIL[k].when(g, t), lock: FACIL[k].lock }; return o; }
 // 建てられるか（材料の不足は呼び出し側で調べる）
 function peopleBuildCheck(people, kind) {
   const F = FACIL[kind], pl = people.player; if (!F) return { ok: false, reason: 'unknown' };
   if (!pl || pl.over || pl.id < 0) return { ok: false, reason: 'noPlayer' };
   const P = people.npc, g = people.groups[P.group[pl.id] - 1]; if (!g || !g.alive) return { ok: false, reason: 'noGroup' };
   if (P.age(pl.id) < P.adultAge(pl.id)) return { ok: false, reason: 'minor' };
-  if (F.tech && !peTechOf(people, g.ethId)[F.tech]) return { ok: false, reason: 'noTech' };
-  if (g.moveTo || (g.settle || 0) < 1) return { ok: false, reason: 'notSettled' };
+  if (g.moveTo) return { ok: false, reason: 'moving' };
+  if (!F.when(g, peTechOf(people, g.ethId))) return { ok: false, reason: 'locked', why: F.lock };
   if (g.build) return { ok: false, reason: 'busy', kind: g.build.kind };
   if (peFacil(g)[kind] >= F.max) return { ok: false, reason: 'max' };
   if ((g.pop || 0) < 15) return { ok: false, reason: 'small' };
@@ -1204,11 +1214,20 @@ function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
   if (pl.tech.herd) peHerdStep(g, pl, pop);
   peCropCycle(g, pl.fq.sf, pl.tech.farm);
   peBuildStep(people, g, ev, rel);
-  // ---- 消費・保存
-  const have = g.food + got;
-  const ratio = need > 0 ? Math.min(1, have / need) : 1;
-  const spoil = (PE.SPOIL[0] + PE.SPOIL[1] * peClamp01(T / 25)) * (1 - PE.FARM_SPOIL * (g.farmFrac || 0));
-  g.food = Math.min(need * PE.STORE_MONTHS * (1 + PE.VILLAGE_STORE * (g.settle || 0)) * (1 + PE.FARM_STORE * (g.farmFrac || 0)) * (1 + 0.35 * peFacil(g).granary), Math.max(0, have - need) * (1 - spoil));   // 定住するほど、たくさん蓄えられる
+  // ---- 消費・保存：蓄えは「長持ち（穀物・根・木の実）」「生鮮」「干物」の3つ。食べるのは傷みやすい順（生鮮→長持ち→干物）。干し棚が生鮮を干物に変え、貯蔵穴・倉庫・炉が傷み方を変える
+  const kk = 1 - 0.2 * (g.share || 0), fa = peFacil(g);
+  let fresh = (g.fresh || 0) + (gotH + gotF + gotHerd + gotG * (1 - PE.GATHER_DURABLE)) * kk, dried = g.dried || 0, dur = Math.max(0, g.food - (g.fresh || 0) - dried) + (gotFarm + gotG * PE.GATHER_DURABLE) * kk;
+  const have = fresh + dried + dur, ratio = need > 0 ? Math.min(1, have / need) : 1;
+  { let eat = Math.min(need, have); const take = (v) => { const t = Math.min(v, eat); eat -= t; return v - t; }; fresh = take(fresh); dur = take(dur); dried = take(dried); }
+  if (fa.rack > 0 && fresh > 0) { const conv = Math.min(fresh, fa.rack * PE.RACK_KG * (T < 0 ? 0.5 : 1)); fresh -= conv; dried += conv * PE.RACK_YIELD; }
+  { const t25 = peClamp01(T / 25), sp = (c) => c[0] + c[1] * t25;
+    dur *= 1 - sp(PE.SPOIL_DUR) * Math.min(fa.pit > 0 ? 0.7 : 1, fa.granary > 0 ? 0.6 : 1);
+    fresh *= 1 - Math.min(1, sp(PE.SPOIL_FRESH) * (fa.pit > 0 ? 1.3 : 1) * (fa.hearth > 0 ? 0.7 : 1));
+    dried *= 1 - sp(PE.SPOIL_DRIED) * (fa.granary > 0 ? 0.8 : 1); }
+  { const cap = need * PE.STORE_MONTHS * (1 + PE.VILLAGE_STORE * (g.settle || 0)) * (1 + PE.FARM_STORE * (g.farmFrac || 0)) * (1 + 0.25 * Math.min(3, fa.pit) + 0.5 * Math.min(3, fa.granary));   // 定住するほど、たくさん蓄えられる
+    let over = fresh + dried + dur - cap;
+    if (over > 0) { let t = Math.min(fresh, over); fresh -= t; over -= t; t = Math.min(dried, over); dried -= t; over -= t; t = Math.min(dur, over); dur -= t; } }
+  g.fresh = fresh; g.dried = dried; g.food = fresh + dried + dur;
   g.lastFood.need = need; g.lastFood.got = got; g.lastFood.hunt = gotH; g.lastFood.gather = gotG; g.lastFood.fish = gotF;
   g.fed += (ratio - g.fed) / 12;
   if (ratio < PE.HUNGER_FOOD) {
@@ -1222,7 +1241,7 @@ function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
     g.epi = PE.EPI_MONTHS[0] + Math.floor(rng() * (PE.EPI_MONTHS[1] - PE.EPI_MONTHS[0] + 1));
     ev.push({ type: 'epidemic', imp: 1, relevant: rel(g.ethId), group: g.id, eth: g.ethId, x: g.x, y: g.y });
   }
-  hz.starv[id] = PE.STARV_H * Math.pow(1 - ratio, 1.5) * (1 - 0.8 * (g.share || 0));   // 分けているほど、足りないときに飢える人が出にくい
+  hz.starv[id] = PE.STARV_H * Math.pow(1 - ratio, 1.5) * (1 - 0.8 * (g.share || 0)) * (1 - 0.15 * Math.min(1, peFacil(g).hearth));   // 分けているほど、共同の炉があるほど、足りないときに飢える人が出にくい
   let snow = 0; if (ctx.snow) snow = ctx.snow[home] || 0;
   const harsh = peClamp01((PE.COLD_T[0] - T) / PE.COLD_T[1]) + peClamp01((snow - 50) / 100) * 0.3;
   hz.cold[id] = PE.COLD_H * harsh * (1 - PE.COLD_KNOW * kH) * (1 + (1 - ratio));
@@ -1278,7 +1297,7 @@ function peSplit(people, g, S, world, rng, ev, rel) {
     if (mix(P.seed, fam(i), P.day, 77) / 4294967296 < share) { P.moveToGroup(i, c.id); moved++; }
   }
   const f = all ? moved / all : 0;
-  c.food = g.food * f; g.food -= c.food;
+  c.food = g.food * f; g.food -= c.food; c.fresh = (g.fresh || 0) * f; g.fresh = (g.fresh || 0) - c.fresh; c.dried = (g.dried || 0) * f; g.dried = (g.dried || 0) - c.dried;
   c.cult = (g.cult || []).slice(); c.policy = g.policy; c.fed = g.fed; c.homeX = g.homeX; c.homeY = g.homeY;
   c.moveTo = { x: d.x, y: d.y, by: 'ai' };
   const hz = peHazards(people); hz.fert[c.id] = hz.fert[g.id]; hz.starv[c.id] = hz.starv[g.id]; hz.cold[c.id] = hz.cold[g.id]; hz.dis[c.id] = hz.dis[g.id]; hz.hungerDis[c.id] = hz.hungerDis[g.id];

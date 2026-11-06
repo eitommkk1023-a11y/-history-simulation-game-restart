@@ -45,6 +45,12 @@
       if (DEPTH[k] !== 1 || NOT_AT_START[NODES[k].id] || S.needF[i * NN + k] < 1) continue;
       if (hm(S.seed, i, k, 7) < 0.9) adopt(S, i, k, -1, 0, -1);
     }
+    // 開始時代：農耕が始まり、採集・狩猟・牧畜が併存している頃。栽培・牧畜は、始まった場所（必要な資源の近さ）と文化の開きしだいで、一部の民族だけが持つ
+    if (opts.start !== false && opts.era !== 'none') for (let i = 0; i < n; i++) {
+      const kc = IDX.cultivate, kh = IDX.herd;
+      if (hm(S.seed, i, kc, 8) < S.needF[i * NN + kc] * S.open[i * NN + kc] * (opts.farmStart == null ? 1.6 : opts.farmStart)) adopt(S, i, kc, -1, 0, -1);
+      if (hm(S.seed, i, kh, 8) < S.needF[i * NN + kh] * S.open[i * NN + kh] * (opts.herdStart == null ? 0.7 : opts.herdStart)) adopt(S, i, kh, -1, 0, -1);
+    }
     return S;
   }
   // 1つの民族の、場所ごとの値（必要な資源の近さ・文化の開き・肥沃さ・人口の上限）

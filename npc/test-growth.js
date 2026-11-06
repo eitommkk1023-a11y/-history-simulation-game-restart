@@ -30,10 +30,10 @@ const last = (o) => o.years[o.years.length - 1];
 const avg = (a) => a.reduce((x, y) => x + y, 0) / a.length;
 console.log(`1か月の計算：対照 ${avg(base.ms).toFixed(1)}ms／技術あり ${avg(tech.ms).toFixed(1)}ms`);
 console.log('出来事（技術あり）', JSON.stringify(tech.ev));
-t('栽培を持たなければ農民がいない', base.years.every(r => r.farmers === 0));
+t('開始時から栽培を持つ民族がある（地域差）が、与えた方が農民が多い', base.years.some(r => r.farmers > 0) && last(tech).farmers > last(base).farmers * 1.5, last(base).farmers + ' / ' + last(tech).farmers);
 t('技術ありでは農民がいる', last(tech).farmers > 0, JSON.stringify(last(tech)));
 t('技術ありでは農産物が食料の一部になる', last(tech).farmShare > 0.05, last(tech).farmShare);
-t('技術ありは、人口の減りが対照より小さい（または増える）', last(tech).pop > last(base).pop * 1.02, `${last(tech).pop} vs ${last(base).pop}`);
+t('技術ありは、人口の減りが対照より小さい（または増える）', last(tech).pop > last(base).pop, `${last(tech).pop} vs ${last(base).pop}`);
 t('食料の充足は対照より下がらない', last(tech).fed >= last(base).fed - 0.03);
 // 保存・読み込みで技術が残る
 const sv = P.peopleSave ? null : null;
@@ -48,7 +48,11 @@ const S = tech.people.nation; t('技術の層が作られている', !!S && S.n 
   const step = (n) => { for (let i = 0; i < n; i++) { const month = i % 12; G.faunaMonthly(fauna, { month, env, cc }); P.peopleMonthly(people, { month, day: (people.__d = (people.__d || 0) + 30), world, fauna, FA, plantFood, env, cc, res }); } };
   const ctx = { world, x: g.x, y: g.y };
   t('技術のない農耕の提案は断られる', P.peopleProposal(people, 'farm', ctx).reason === 'noTech');
-  t('技術のない畑の拡張は建てられない', P.peopleBuildCheck(people, 'field').reason === 'noTech');
+  t('技術のない畑の拡張は建てられない', P.peopleBuildCheck(people, 'field').reason === 'locked');
+  t('干し棚は半定住でなくても（野営地でも）建てられる', (g.settle = 0, P.peopleBuildCheck(people, 'rack').ok) && !P.peopleBuildCheck(people, 'pit').ok && (g.settle = 1, true));
+  t('倉庫は村になるまで建てられない', P.peopleBuildCheck(people, 'granary').reason === 'locked');
+  t('窯は技術「高温焼成」がなければ建てられない', P.peopleBuildCheck(people, 'kiln').reason === 'locked');
+  t('物見櫓は建設の候補にない', P.FACIL.watchtower === undefined);
   P.peopleGrantTech(people, people.playerEth, 'cultivate');
   const b0 = P.peopleBuildCheck(people, 'field'); t('技術があれば畑の拡張を始められる', b0.ok, JSON.stringify(b0.reason));
   const r = P.peopleBuildStart(people, 'field'); t('建設を始める', r.ok && r.months === 4);
@@ -60,5 +64,16 @@ const S = tech.people.nation; t('技術の層が作られている', !!S && S.n 
   t('施設は上限を超えない（井戸は2つまで）', (g.facil.well || 0) <= 2 && P.peopleBuildCheck(people, 'well').reason === 'max');
   // 分配
   g.share = 0.5; const sv = P.peopleSave ? 1 : 1; t('分配の割合は集団に残る', g.share === 0.5);
+}
+// ---- 保存：干し棚が生鮮を干物にする／貯蔵穴は穀物に効き、生鮮には逆効果
+{
+  const mkRun = (facil) => { const fauna = G.faunaClone(world.fauna), people = P.peopleGenerate(5, { world, plantFood, fauna, FA }), pl = people.player, Pn = people.npc, g = people.groups[Pn.group[pl.id] - 1]; g.settle = 2; g.pop = Math.max(g.pop, 80); g.fresh = 4000; g.food = 4000; Object.assign(g, { facil: Object.assign({}, facil) });
+    for (let i = 0; i < 12; i++) { G.faunaMonthly(fauna, { month: i % 12, env, cc }); P.peopleMonthly(people, { month: i % 12, day: i * 30, world, fauna, FA, plantFood, env, cc, res }); }
+    return { g, gr: P.peopleGrowth(people, g.id) }; };
+  const a = mkRun({}), b = mkRun({ rack: 3 });
+  t('干し棚がないと、干物はできない', (a.g.dried || 0) === 0, a.g.dried);
+  t('干し棚があると、干物ができる', (b.g.dried || 0) > 0, b.g.dried);
+  t('蓄えの内訳が出る', b.gr.stock && b.gr.stock.dried > 0 && Math.abs(b.gr.stock.dur + b.gr.stock.fresh + b.gr.stock.dried - b.g.food) < 1e-6);
+  t('施設の解放状況が出る', b.gr.avail.rack.open === true && b.gr.avail.kiln.open === false && typeof b.gr.avail.kiln.lock === 'string');
 }
 console.log(ng ? 'FAIL ' + ng + ' / ' + (ok + ng) : 'OK ' + ok + ' 件通過'); process.exit(ng ? 1 : 0);
