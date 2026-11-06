@@ -1,0 +1,11 @@
+import {readFile,writeFile,mkdir} from 'node:fs/promises';import {createHash} from 'node:crypto';
+const root=new URL('../',import.meta.url),basePath=process.argv[2]||new URL('prototypes/village/vendor/world-v31.html',root),read=p=>readFile(new URL(p,root),'utf8');
+let html=await readFile(basePath,'utf8');const baseHash=createHash('sha256').update(html).digest('hex');if(baseHash!=='50a6f786eef5b641d0ec235f2111712d7acabd29e87542a75d802b2d993dd348')throw Error('Expected the frozen v31 standalone HTML; refusing to change the prototype baseline silently.');
+const villageData=(await read('prototypes/village/village-data.mjs')).replace(/^export /gm,''),villageMenu=(await read('prototypes/village/village-menu.mjs')).replace(/^import.*;\r?\n/gm,'').replace(/^export /gm,'');
+const gate=await read('prototypes/rpg-menu/pause-gate.js'),css=(await read('prototypes/rpg-menu/menu.css'))+'\n'+await read('prototypes/village/village-menu.css'),model=(await read('prototypes/rpg-menu/model.mjs')).replace(/^export /gm,''),app=(await read('prototypes/rpg-menu/menu.mjs')).replace(/^import.*;\r?\n/gm,'').replace(/^export /gm,'');
+const gameFrames=html.match(/(?<![.\w])requestAnimationFrame\((frame|loop|tick)\)/g);if(gameFrames?.length!==5)throw Error('Unexpected baseline animation loops');html=html.replace(/(?<![.\w])requestAnimationFrame\((frame|loop|tick)\)/g,'window.__rpgMenuGate.frame($1)');
+html=html.replace('<meta charset=utf8>','<meta charset=utf8><script>'+gate+'</script>').replace("indexedDB.open('geo-world-saves', 1)","indexedDB.open('geo-world-saves-prototype-rpg-menu-v1', 1)").replace('`world-${currentSeed}-${clock.day}.json`','`prototype-menu-world-${currentSeed}-${clock.day}.json`').replaceAll('generate(randomSeed())',"generate('12345')");
+html=html.replace(/<title>[^<]*<\/title>/,'<title>World of History — メニュー試作07</title>');
+html=html.replace('</body></html>','<style>'+css+'</style><script>(()=>{'+villageData+'\n'+villageMenu+'\n'+model+'\n'+app+'\ninstallRPGMenuPrototype();})();</script></body></html>');
+await mkdir(new URL('exports/',root),{recursive:true});const output=new URL('exports/World-of-History-menu-prototype-v7.html',root);await writeFile(output,html);
+console.log(JSON.stringify({output:output.pathname,bytes:Buffer.byteLength(html),baseHash,prototypeSaveDB:'geo-world-saves-prototype-rpg-menu-v1'}));

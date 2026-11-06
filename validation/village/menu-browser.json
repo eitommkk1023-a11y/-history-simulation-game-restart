@@ -1,0 +1,206 @@
+{
+  "checks": [
+    "menu07 starts on the village tab with game paused",
+    "874x380 village fits entirely without scrolling or clipped controls",
+    "stage 0 refreshes the village snapshot",
+    "stage 1 refreshes the village snapshot",
+    "stage 2 refreshes the village snapshot",
+    "stage 3 refreshes the village snapshot",
+    "ration opens an in-menu confirmation without applying",
+    "escape cancels confirmation without closing menu",
+    "confirmed ration records 60 percent locally",
+    "storehouse displays material and time confirmation",
+    "well displays material and time confirmation",
+    "livestock_shed displays material and time confirmation",
+    "field_expansion displays material and time confirmation",
+    "cancelled proposals do not create intents",
+    "proposal can be confirmed without modifying the snapshot food",
+    "existing tab inventory remains selectable",
+    "existing tab map remains selectable",
+    "existing tab missions remains selectable",
+    "existing tab village remains selectable",
+    "keyboard tabs wrap across all four pages",
+    "keyboard reverse wrap returns to village",
+    "snapshot replacement cancels stale commands",
+    "official world save database untouched",
+    "no page or shader errors"
+  ],
+  "layout": {
+    "root": {
+      "x": 0,
+      "y": 49,
+      "w": 874,
+      "h": 331,
+      "right": 874,
+      "bottom": 380,
+      "scrollH": 331,
+      "clientH": 331,
+      "scrollW": 874,
+      "clientW": 874
+    },
+    "cards": [
+      {
+        "x": 8,
+        "y": 109,
+        "w": 253.921875,
+        "h": 263,
+        "right": 261.921875,
+        "bottom": 372,
+        "scrollH": 261,
+        "clientH": 261,
+        "scrollW": 252,
+        "clientW": 252
+      },
+      {
+        "x": 269.921875,
+        "y": 109,
+        "w": 320.765625,
+        "h": 263,
+        "right": 590.6875,
+        "bottom": 372,
+        "scrollH": 261,
+        "clientH": 261,
+        "scrollW": 319,
+        "clientW": 319
+      },
+      {
+        "x": 598.6875,
+        "y": 109,
+        "w": 267.296875,
+        "h": 263,
+        "right": 865.984375,
+        "bottom": 372,
+        "scrollH": 261,
+        "clientH": 261,
+        "scrollW": 265,
+        "clientW": 265
+      }
+    ],
+    "inputs": [
+      {
+        "x": 120,
+        "y": 57,
+        "w": 103,
+        "h": 44,
+        "right": 223,
+        "bottom": 101,
+        "scrollH": 42,
+        "clientH": 42,
+        "scrollW": 101,
+        "clientW": 101
+      },
+      {
+        "x": 54,
+        "y": 256,
+        "w": 159.921875,
+        "h": 44,
+        "right": 213.921875,
+        "bottom": 300,
+        "scrollH": 44,
+        "clientH": 44,
+        "scrollW": 160,
+        "clientW": 160
+      },
+      {
+        "x": 17,
+        "y": 303,
+        "w": 235.921875,
+        "h": 44,
+        "right": 252.921875,
+        "bottom": 347,
+        "scrollH": 42,
+        "clientH": 42,
+        "scrollW": 234,
+        "clientW": 234
+      },
+      {
+        "x": 278.921875,
+        "y": 244,
+        "w": 148.375,
+        "h": 44,
+        "right": 427.296875,
+        "bottom": 288,
+        "scrollH": 42,
+        "clientH": 42,
+        "scrollW": 146,
+        "clientW": 146
+      },
+      {
+        "x": 433.296875,
+        "y": 244,
+        "w": 148.390625,
+        "h": 44,
+        "right": 581.6875,
+        "bottom": 288,
+        "scrollH": 42,
+        "clientH": 42,
+        "scrollW": 146,
+        "clientW": 146
+      },
+      {
+        "x": 278.921875,
+        "y": 294,
+        "w": 148.375,
+        "h": 44,
+        "right": 427.296875,
+        "bottom": 338,
+        "scrollH": 42,
+        "clientH": 42,
+        "scrollW": 146,
+        "clientW": 146
+      },
+      {
+        "x": 433.296875,
+        "y": 294,
+        "w": 148.390625,
+        "h": 44,
+        "right": 581.6875,
+        "bottom": 338,
+        "scrollH": 42,
+        "clientH": 42,
+        "scrollW": 146,
+        "clientW": 146
+      },
+      {
+        "x": 607.6875,
+        "y": 166,
+        "w": 249.296875,
+        "h": 44,
+        "right": 856.984375,
+        "bottom": 210,
+        "scrollH": 42,
+        "clientH": 42,
+        "scrollW": 247,
+        "clientW": 247
+      },
+      {
+        "x": 607.6875,
+        "y": 216,
+        "w": 249.296875,
+        "h": 44,
+        "right": 856.984375,
+        "bottom": 260,
+        "scrollH": 42,
+        "clientH": 42,
+        "scrollW": 247,
+        "clientW": 247
+      },
+      {
+        "x": 607.6875,
+        "y": 266,
+        "w": 249.296875,
+        "h": 44,
+        "right": 856.984375,
+        "bottom": 310,
+        "scrollH": 42,
+        "clientH": 42,
+        "scrollW": 247,
+        "clientW": 247
+      }
+    ]
+  },
+  "dbs": [
+    "geo-world-saves-prototype-rpg-menu-v1"
+  ],
+  "errors": []
+}

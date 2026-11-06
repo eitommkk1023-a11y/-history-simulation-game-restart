@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "name": "woh-village-growth-01",
+  "sourceBase": {
+    "repository": "eitommkk1023-a11y/-history-simulation-game-restart",
+    "commit": "7df2862213d1c60c92e59ddd23f87e2a65294ce0",
+    "readOnlyArchitecture": "npc/arch-gen.js"
+  },
+  "menuBase": {
+    "commit": "964124ba403f435ec873ea5df50510fc26e89be5",
+    "version": 6,
+    "sha256": "c2a4fd5973601594632c970880d1078d72b6417e86ecd391ef24820513cb0641"
+  },
+  "targetBranch": "codex/prototype-village-v1",
+  "threeVersion": "128",
+  "units": "meters",
+  "generation": "original procedural JavaScript, no external models/textures or paid services",
+  "canonicalGLBPackageVerified": false,
+  "hardwareSafariTested": false,
+  "boneTexture": {
+    "width": 32,
+    "height": 384,
+    "format": "RGBA Float32",
+    "bytes": 196608
+  },
+  "imageTextureBytes": 0,
+  "unitTests": 12,
+  "assetsBrowserChecks": 37,
+  "menuBrowserChecks": 24,
+  "benchmark": {
+    "samples": 60,
+    "cpuUpdateMS": {
+      "mean": 0.07666666631897291,
+      "p95": 0.20000000298023224,
+      "min": 0,
+      "max": 0.7000000029802322
+    },
+    "cpuSubmitMS": {
+      "mean": 0.8466666673620542,
+      "p95": 0.6999999955296516,
+      "min": 0.09999999403953552,
+      "max": 33
+    },
+    "frameIntervalMS": {
+      "mean": 394.4133333333582,
+      "p95": 766.6000000000022,
+      "min": 16.599999999998545,
+      "max": 816.6000000000022
+    },
+    "gpuTime": "not measured; CPU submission includes software-driver work"
+  },
+  "sha256": {
+    "prototypes/village/app.mjs": "c67c64e2470a1469aeb8f9e9a4e67ed9d3d625dceaa0189d617b53716ce3f309",
+    "prototypes/village/facilities.mjs": "e68b3c3657a712b3b7695ae97de8af3da34dceccef098b2a317b7b18e04d5de0",
+    "prototypes/village/fields.mjs": "97775c4e8d3a642734014a80ccf3a52d593bce5324223a6da5572b604bb40868",
+    "prototypes/village/geometry.mjs": "d0a5f5c59f8e63e1c4a05b1645f748bed389b723070ff62d53406402f13e4c2f",
+    "prototypes/village/livestock-model.mjs": "f9c8c1a2e1d6cccffd0815ea229582a214dbe2d75b6eeb75af5383750fdd09f4",
+    "prototypes/village/livestock.mjs": "dc57198a2558325c7743bb8e87a1d7e30e8776bb98ae4a364a95479d7bf813ad",
+    "prototypes/village/village-data.mjs": "59489cbf83cf006a1989741110eeb2692e9d2becfae35d58d60d5fa09b05e37c",
+    "prototypes/village/village-menu.mjs": "c7aa769f62393fd407ce2926a059d23c269c874374f82b0834b14fa2f0564725",
+    "prototypes/village/index.html": "cbea618b16ed3e91b75350b7c5629ebb68263eb04d9f81262656d8f933daa348",
+    "prototypes/village/README.md": "417b9184d179d8eac1196c0005fb518fe6b104a5db2ebc819943a4b2714f50f2",
+    "tools/build-village-prototype.mjs": "6215be7375210bfa1625fbbbdd6af52caca23958ad03a6e5537a1675b056ff35",
+    "tools/build-village-menu-prototype.mjs": "893d7f187098b8b42700a228883f32fc17440e90514222658aff5e1eb616ec35",
+    "exports/World-of-History-village-prototype-v1.html": "a247be56219017fbde6c1afb1bfa1b8dc1abd24657230a4067ffcfd1939bf997",
+    "exports/World-of-History-menu-prototype-v7.html": "b245e1f6de663601ba00492b810887b5a5ec51c1e972a05b0c57d5867346e93d",
+    "assets/village-source/village.render.json": "9223da2ec9d22cae18f78fd6d849ec7d90609dcdfd24a4259f297f161effbff0",
+    "prototypes/village/vendor/world-v31.html": "50a6f786eef5b641d0ec235f2111712d7acabd29e87542a75d802b2d993dd348"
+  }
+}

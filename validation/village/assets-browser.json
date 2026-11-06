@@ -1,0 +1,101 @@
+{
+  "checks": [
+    "Three r128 and bone texture animation are available",
+    "874x380 fields controls fit with 44px targets",
+    "874x380 animals controls fit with 44px targets",
+    "874x380 facilities controls fit with 44px targets",
+    "874x380 village controls fit with 44px targets",
+    "plot kind 0 reaches all instance rows",
+    "plot kind 1 reaches all instance rows",
+    "plot kind 2 reaches all instance rows",
+    "crop 0 stage 0 uploads",
+    "crop 0 stage 1 uploads",
+    "crop 0 stage 2 uploads",
+    "crop 0 stage 3 uploads",
+    "crop 0 stage 4 uploads",
+    "crop 1 stage 0 uploads",
+    "crop 1 stage 1 uploads",
+    "crop 1 stage 2 uploads",
+    "crop 1 stage 3 uploads",
+    "crop 1 stage 4 uploads",
+    "crop 2 stage 0 uploads",
+    "crop 2 stage 1 uploads",
+    "crop 2 stage 2 uploads",
+    "crop 2 stage 3 uploads",
+    "crop 2 stage 4 uploads",
+    "forced far LOD lowers field geometry",
+    "idle graze walk and lie change actual skinned pixels",
+    "facility role 0 selected",
+    "facility role 1 selected",
+    "facility role 2 selected",
+    "facility role 3 selected",
+    "facility role 4 selected",
+    "facility role 5 selected",
+    "facility role 6 selected",
+    "facility role 7 selected",
+    "200 plots and 500 animals stay within eight asset batches",
+    "benchmark recorded frame and CPU timings",
+    "capacity errors preserve existing maximum-count renderers",
+    "no browser or shader errors"
+  ],
+  "gpu": [
+    1573,
+    1722,
+    3846
+  ],
+  "stress": {
+    "fields": {
+      "plots": 200,
+      "drawCalls": 2,
+      "triangles": 82600,
+      "lods": [
+        0,
+        200
+      ]
+    },
+    "animals": {
+      "animals": 500,
+      "drawCalls": 1,
+      "triangles": 262000,
+      "lods": [
+        0,
+        500
+      ],
+      "boneTextureBytes": 196608
+    },
+    "facilities": {
+      "facilities": 80,
+      "drawCalls": 1,
+      "triangles": 109280,
+      "lods": [
+        0,
+        80
+      ]
+    },
+    "calls": 5,
+    "triangles": 455032
+  },
+  "benchmark": {
+    "samples": 60,
+    "cpuUpdateMS": {
+      "mean": 0.07666666631897291,
+      "p95": 0.20000000298023224,
+      "min": 0,
+      "max": 0.7000000029802322
+    },
+    "cpuSubmitMS": {
+      "mean": 0.8466666673620542,
+      "p95": 0.6999999955296516,
+      "min": 0.09999999403953552,
+      "max": 33
+    },
+    "frameIntervalMS": {
+      "mean": 394.4133333333582,
+      "p95": 766.6000000000022,
+      "min": 16.599999999998545,
+      "max": 816.6000000000022
+    },
+    "gpuTime": "not measured; CPU submission includes software-driver work"
+  },
+  "errors": []
+}
