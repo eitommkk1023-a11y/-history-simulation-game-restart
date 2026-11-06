@@ -1121,7 +1121,7 @@ function peopleGrowth(people, gid) {
   const stage = settle === 2 && pop >= 120 && (g.farmFrac || 0) > 0.3 ? 3 : settle;
   const cnt = (j) => P.gcount[gid * NJOB + j];
   const need = g.lastFood ? g.lastFood.need : 0;
-  return { stage, label: GROWTH_LABELS[stage], pop, farm: tech.farm, herd: tech.herd, farmers: cnt(9), herders: cnt(10), herdN: Math.round(g.herdN || 0), farmFrac: g.farmFrac || 0, share: g.share || 0, policy: g.policy || 'auto', facil: Object.assign({}, peFacil(g)), avail: peFacilAvail(people, g), preview: peFacilPreview(people, g), stock: { dur: Math.max(0, g.food - (g.fresh || 0) - (g.dried || 0)), fresh: g.fresh || 0, dried: g.dried || 0 }, build: g.build ? { kind: g.build.kind, left: g.build.left } : null, storeDays: need > 0 ? Math.round(30 * g.food / need) : 0,
+  return { stage, label: GROWTH_LABELS[stage], pop, farm: tech.farm, herd: tech.herd, farmers: cnt(9), herders: cnt(10), herdN: Math.round(g.herdN || 0), farmFrac: g.farmFrac || 0, share: g.share || 0, policy: g.policy || 'auto', facil: Object.assign({}, peFacil(g)), avail: peFacilAvail(people, g), preview: peFacilPreview(people, g), stock: { dur: Math.max(0, g.food - (g.fresh || 0) - (g.dried || 0)), fresh: g.fresh || 0, dried: g.dried || 0 }, build: g.build ? { kind: g.build.kind, left: g.build.left, spot: g.build.spot || null } : null, spots: g.facilSpots || {}, storeDays: need > 0 ? Math.round(30 * g.food / need) : 0,
     income: g.lastFood ? { hunt: g.lastFood.hunt, gather: g.lastFood.gather, fish: g.lastFood.fish, farm: g.lastFood.farm || 0, herd: g.lastFood.herd || 0, need } : null };
 }
 // ---------------------------------------------------------------- 村の技術・技能の集計（表示用。新しい数値や制度は作らず、いま管理しているものを集めて見せる）
@@ -1234,15 +1234,17 @@ function peopleBuildCheck(people, kind) {
   if ((g.pop || 0) < 15) return { ok: false, reason: 'small' };
   return { ok: true, group: g, cost: F.cost, months: F.months };
 }
-function peopleBuildStart(people, kind) {
+// spot：見下ろしの画面で選んだ置き場所 { x, z, rot }（集落の配置の座標）。なければ自動で決まる
+function peopleBuildStart(people, kind, spot) {
   const r = peopleBuildCheck(people, kind); if (!r.ok) return r;
-  r.group.build = { kind, left: FACIL[kind].months }; return { ok: true, kind, months: FACIL[kind].months, group: r.group.id };
+  const sp = spot && Number.isFinite(spot.x) && Number.isFinite(spot.z) ? { x: spot.x, z: spot.z, rot: Number.isFinite(spot.rot) ? spot.rot : 0 } : null;
+  r.group.build = { kind, left: FACIL[kind].months, spot: sp }; return { ok: true, kind, months: FACIL[kind].months, group: r.group.id, spot: sp };
 }
 function peBuildStep(people, g, ev, rel) {
   const b = g.build; if (!b) return; if (g.moveTo) return;
   if ((g.pop || 0) >= 15 && g.fed > 0.5) b.left -= 1;
   if (b.left > 0) return;
-  peFacil(g)[b.kind]++; g.build = null; if ((g.settle || 0) >= 1) g.layout = null;
+  peFacil(g)[b.kind]++; if (b.spot) { const sp = g.facilSpots || (g.facilSpots = {}); (sp[b.kind] || (sp[b.kind] = [])).push(b.spot); } g.build = null; if ((g.settle || 0) >= 1) g.layout = null;
   const mine = people.player && people.player.id >= 0 && people.npc.group[people.player.id] === g.id;
   ev.push({ type: 'built', imp: mine ? 2 : 1, relevant: mine || rel(g.ethId), group: g.id, eth: g.ethId, kind: b.kind, x: g.x, y: g.y });
 }

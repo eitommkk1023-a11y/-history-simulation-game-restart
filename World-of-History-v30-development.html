@@ -643,6 +643,12 @@ body.rpg-menu-open .hud, body.rpg-menu-open #joystick, body.rpg-menu-open #actio
 .rt-chip { padding: 5px 10px; border: 1px solid #526362; border-radius: 14px; background: none; color: #acbab7; font-size: 12px; min-height: 36px; } .rt-chip.on { border-color: #b39860; color: #e5cc97; } .rt-chip small { color: #9fb0ad; }
 @media (max-height: 440px) { .rt-seg button, #rtSearch, #rtSort, .rt-solo { min-height: 34px; } .rt-cats .rpg-filter { min-height: 30px; padding: 0 10px; } .rt-row { min-height: 42px; padding: 6px 10px; } }
 @media (max-width: 700px) { .rt-body { grid-template-columns: 1fr; } }
+
+body.bvw-on .hud, body.bvw-on #joystick, body.bvw-on #actions, body.bvw-on #miniMap, body.bvw-on #miniZoom, body.bvw-on #forageBar, body.bvw-on #forageMsg, body.bvw-on #talkPanel, body.bvw-on #uiToggle, body.bvw-on #devBadge, body.bvw-on #movementNotice, body.bvw-on #toolbar { display: none !important; }
+#bvwBar { position: fixed; z-index: 120; left: 50%; transform: translateX(-50%); bottom: calc(12px + env(safe-area-inset-bottom)); display: flex; gap: 14px; align-items: center; padding: 10px 14px; border: 1px solid #b39860; border-radius: 12px; background: #101e24ee; color: #eee9de; font: 13px system-ui; max-width: calc(100vw - 24px); }
+#bvwBar .bi { min-width: 150px; } #bvwBar .bt { font-weight: 600; font-size: 14px; white-space: nowrap; } #bvwBar .bs { font-size: 12px; color: #b3bfbc; margin-top: 2px; } #bvwBar .bs.ok { color: #8fe0a0; } #bvwBar .bs.ng { color: #f0a090; }
+#bvwBar .bb { display: flex; gap: 8px; } #bvwBar button { min-height: 44px; padding: 0 12px; white-space: nowrap; border: 1px solid #6e7c73; border-radius: 8px; background: #293b3e; color: #e4e6db; font-size: 13px; touch-action: manipulation; } #bvwBar button.go { background: #4a6a34; border-color: #8fe0a0; } #bvwBar button:disabled { opacity: .4; }
+#bvwTip { position: fixed; z-index: 119; top: calc(10px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); padding: 6px 12px; border-radius: 14px; background: #101e24cc; color: #e4e6db; font: 12px system-ui; pointer-events: none; white-space: nowrap; }
 /* 画面の混雑を減らす：下の6つのボタン・地図/情報ボタン・時間の細かい操作は、メニューへ移した */
 #hudHot, #hbMap, #hbInfo { display: none !important; }
 #hudTL #timebar #tMode, #hudTL #timebar #tSpeed, #hudTL #timebar #tStep { display: none !important; }
@@ -9174,7 +9180,7 @@ function peopleGrowth(people, gid) {
   const stage = settle === 2 && pop >= 120 && (g.farmFrac || 0) > 0.3 ? 3 : settle;
   const cnt = (j) => P.gcount[gid * NJOB + j];
   const need = g.lastFood ? g.lastFood.need : 0;
-  return { stage, label: GROWTH_LABELS[stage], pop, farm: tech.farm, herd: tech.herd, farmers: cnt(9), herders: cnt(10), herdN: Math.round(g.herdN || 0), farmFrac: g.farmFrac || 0, share: g.share || 0, policy: g.policy || 'auto', facil: Object.assign({}, peFacil(g)), avail: peFacilAvail(people, g), preview: peFacilPreview(people, g), stock: { dur: Math.max(0, g.food - (g.fresh || 0) - (g.dried || 0)), fresh: g.fresh || 0, dried: g.dried || 0 }, build: g.build ? { kind: g.build.kind, left: g.build.left } : null, storeDays: need > 0 ? Math.round(30 * g.food / need) : 0,
+  return { stage, label: GROWTH_LABELS[stage], pop, farm: tech.farm, herd: tech.herd, farmers: cnt(9), herders: cnt(10), herdN: Math.round(g.herdN || 0), farmFrac: g.farmFrac || 0, share: g.share || 0, policy: g.policy || 'auto', facil: Object.assign({}, peFacil(g)), avail: peFacilAvail(people, g), preview: peFacilPreview(people, g), stock: { dur: Math.max(0, g.food - (g.fresh || 0) - (g.dried || 0)), fresh: g.fresh || 0, dried: g.dried || 0 }, build: g.build ? { kind: g.build.kind, left: g.build.left, spot: g.build.spot || null } : null, spots: g.facilSpots || {}, storeDays: need > 0 ? Math.round(30 * g.food / need) : 0,
     income: g.lastFood ? { hunt: g.lastFood.hunt, gather: g.lastFood.gather, fish: g.lastFood.fish, farm: g.lastFood.farm || 0, herd: g.lastFood.herd || 0, need } : null };
 }
 // ---------------------------------------------------------------- 村の技術・技能の集計（表示用。新しい数値や制度は作らず、いま管理しているものを集めて見せる）
@@ -9287,15 +9293,17 @@ function peopleBuildCheck(people, kind) {
   if ((g.pop || 0) < 15) return { ok: false, reason: 'small' };
   return { ok: true, group: g, cost: F.cost, months: F.months };
 }
-function peopleBuildStart(people, kind) {
+// spot：見下ろしの画面で選んだ置き場所 { x, z, rot }（集落の配置の座標）。なければ自動で決まる
+function peopleBuildStart(people, kind, spot) {
   const r = peopleBuildCheck(people, kind); if (!r.ok) return r;
-  r.group.build = { kind, left: FACIL[kind].months }; return { ok: true, kind, months: FACIL[kind].months, group: r.group.id };
+  const sp = spot && Number.isFinite(spot.x) && Number.isFinite(spot.z) ? { x: spot.x, z: spot.z, rot: Number.isFinite(spot.rot) ? spot.rot : 0 } : null;
+  r.group.build = { kind, left: FACIL[kind].months, spot: sp }; return { ok: true, kind, months: FACIL[kind].months, group: r.group.id, spot: sp };
 }
 function peBuildStep(people, g, ev, rel) {
   const b = g.build; if (!b) return; if (g.moveTo) return;
   if ((g.pop || 0) >= 15 && g.fed > 0.5) b.left -= 1;
   if (b.left > 0) return;
-  peFacil(g)[b.kind]++; g.build = null; if ((g.settle || 0) >= 1) g.layout = null;
+  peFacil(g)[b.kind]++; if (b.spot) { const sp = g.facilSpots || (g.facilSpots = {}); (sp[b.kind] || (sp[b.kind] = [])).push(b.spot); } g.build = null; if ((g.settle || 0) >= 1) g.layout = null;
   const mine = people.player && people.player.id >= 0 && people.npc.group[people.player.id] === g.id;
   ev.push({ type: 'built', imp: mine ? 2 : 1, relevant: mine || rel(g.ethId), group: g.id, eth: g.ethId, kind: b.kind, x: g.x, y: g.y });
 }
@@ -11571,7 +11579,7 @@ globalThis.__wohForage = { context: forageContext, fauna: () => fauna, FA: () =>
   $('rpgVillage').addEventListener('click', e => {
     const p = e.target.closest('[data-prop]'), b = e.target.closest('[data-build]');
     if (p && !p.disabled) { const r = window.__wohVillage.propose(p.dataset.prop); vMsg = r.text; renderVillage(); toast(r.text); }
-    else if (b && !b.disabled) { const r = window.__wohVillage.build(b.dataset.build); vMsg = r.text; renderVillage(); toast(r.text); }
+    else if (b && !b.disabled) { setOpen(false); window.__wohVillage.place(b.dataset.build, r => { vMsg = r.text; setOpen(true, 'village'); toast(r.text); }); }
   });
   // ---- 技術（村の技術と技能の一覧。技術から人物、人物から技術の両方で調べる。表示・集計・検索だけ）
   const TS = { mode: 'tech', sel: null, psel: null, q: '', cat: 'all', sort: 'practiced', solo: false };
@@ -11871,19 +11879,33 @@ function peoplePropose(kind, label) {
   return { ok: true, passed: r.passed, text: `${r.passed ? '通った' : '通らなかった'}（賛成 ${pct}%／必要 ${need}%${r.leaderOppose ? '・首長は反対' : ''}）` };
 }
 // 村の施設を建てる：材料はあなたの持ち物から。戻り値：{ ok, text }
-function peopleBuild(kind) {
+function peopleBuild(kind, spot) {
   if (!people) return { ok: false, text: '世界の準備中' };
   const F = WohPeople.FACIL[kind], r = WohPeople.peopleBuildCheck(people, kind);
   if (!r.ok) return { ok: false, text: r.reason === 'locked' ? '建てられない（条件：' + r.why + '）' : (PE_PROP_REASON[r.reason] || '建てられない') };
   const lack = Object.keys(F.cost).filter(k => (forageSt.inv[k] || 0) < F.cost[k]);
   if (lack.length) return { ok: false, text: '材料が足りない：' + lack.map(k => WohForage.ITEMS[WohForage.IDX[k]].name.replace(/（.*）/, '') + 'あと' + (F.cost[k] - (forageSt.inv[k] || 0))).join('・') };
   for (const k in F.cost) WohForage.drop(forageSt, k, F.cost[k]);
-  const s = WohPeople.peopleBuildStart(people, kind); forageBagRender();
+  const s = WohPeople.peopleBuildStart(people, kind, spot); forageBagRender();
   if (!s.ok) return { ok: false, text: '建てられない' };
   postEvent({ cat: 'people', imp: 1, relevant: true, group: 'player-build', text: `あなたは${F.name}を建て始めた（約${s.months}か月）`, place: null });
   peopleInfoUpdate(); return { ok: true, text: `${F.name}を建て始めた（約${s.months}か月）` };
 }
-globalThis.__wohVillage = { propose: peoplePropose, build: peopleBuild };
+// 場所を選んで建てる：メニューを閉じ、村を上から見て置き場所を選ぶ。決めたら、材料を使って建て始める（畑の拡張のように場所のないものは、そのまま）
+const PE_PLACED = ['pit', 'rack', 'granary', 'well', 'pen', 'hearth', 'kiln'];
+function peopleBuildPlace(kind, done) {
+  const F = WohPeople.FACIL[kind]; if (!people || !F) return { ok: false, text: '世界の準備中' };
+  if (!PE_PLACED.includes(kind) || !globalThis.__wohBuildView) { const r = peopleBuild(kind); if (done) done(r); return r; }
+  const r = WohPeople.peopleBuildCheck(people, kind); if (!r.ok) { const t = r.reason === 'locked' ? '建てられない（条件：' + r.why + '）' : (PE_PROP_REASON[r.reason] || '建てられない'); if (done) done({ ok: false, text: t }); return { ok: false, text: t }; }
+  const lack = Object.keys(F.cost).filter(k => (forageSt.inv[k] || 0) < F.cost[k]);
+  if (lack.length) { const t = '材料が足りない：' + lack.map(k => WohForage.ITEMS[WohForage.IDX[k]].name.replace(/（.*）/, '') + 'あと' + (F.cost[k] - (forageSt.inv[k] || 0))).join('・'); if (done) done({ ok: false, text: t }); return { ok: false, text: t }; }
+  const g = people.groups[people.npc.group[people.player.id] - 1], was = clock.playing; if (was) clockSetPlaying(false);
+  const fin = (res) => { if (was && !clock.playing) clockSetPlaying(true); if (done) done(res); };
+  const e = __wohBuildView.enter({ gid: g.id, kind, name: F.name, onDone: (spot) => fin(peopleBuild(kind, spot)), onCancel: () => fin({ ok: false, text: '建てるのをやめた', cancelled: true }) });
+  if (!e.ok) { if (was && !clock.playing) clockSetPlaying(true); const t = e.why; if (done) done({ ok: false, text: t }); return { ok: false, text: t }; }
+  return { ok: true, text: '建てる場所を選んでください', placing: true };
+}
+globalThis.__wohVillage = { propose: peoplePropose, build: peopleBuild, place: peopleBuildPlace };
 function peoplePropInit() {
   const sel = document.getElementById('iProp'), go = document.getElementById('iPropGo'); if (!sel || sel.options.length) return;
   for (const [k, name] of WohPeople.PROPOSALS) { const o = document.createElement('option'); o.value = k; o.textContent = name; sel.appendChild(o); }
@@ -14680,6 +14702,7 @@ let jumpHeight=0,jumpVelocity=0;
 
 function draw(){const map=overview?state?.map:null;renderer.render(map?.scene||scene,map?.camera||camera);}
 // ---- 1人称視点（切り替え式。標準は3人称）：目の高さにカメラを置き、自分の体は隠す
+let bvw=null;   // 見下ろしの建設（施設の置き場所を選ぶ）の状態。null＝ふだんの視点
 let firstPerson=false;const BASE_FOV=55,FP_FOV=72;
 function setFirstPerson(on){
   on=!!on;if(firstPerson===on)return;firstPerson=on;globalThis.__wohFirstPerson=on;
@@ -14691,6 +14714,7 @@ function setFirstPerson(on){
 }
 function updateCamera(){
   if(overview&&state?.map){state.map.update();draw();return;}
+  if(bvw){bvwCamera();draw();return;}
   if(firstPerson){
     const eye=marker.position.clone();eye.y+=crouched?1.0:1.58;
     const cp=Math.cos(pitch);
@@ -15229,6 +15253,7 @@ function vlSpot(g,L,key,hw,hd,r0,terr,S){
   return null;
 }
 const VL_KIND={aurochs:0,sheep:1,boar:2};
+const SZ={pit:[3.5,3.5,1.2,8],rack:[4,2.2,2.4,12],granary:[4,5,3.2,10],well:[2.2,2.2,2.4,6],pen:[9,7,2.2,26],hearth:[3.2,3.2,1.6,3],kiln:[3.5,3.5,3.2,14]};   // 施設の寸法（幅・奥行・高さ m）と、広場からの自動配置の距離
 function vlGroup(pe,g,L,c,cx,cz,cElev,terr,near){
   if(!vlInit()||!terr)return;const S=globalThis.WohSettle,W=vlV.W;
   if(near(0,0)>VL_RANGE)return;
@@ -15242,10 +15267,12 @@ function vlGroup(pe,g,L,c,cx,cz,cElev,terr,near){
     vlP[vlP.length-1].heights=hs; vlP[vlP.length-1].y=(hs[0]+hs[1]+hs[2]+hs[3])/4;
   }
   // 施設：あなたが（または集団が）建てたもの
-  const F=gr&&gr.facil||{},put=(role,n,w,d,h,r0,wallRoof)=>{for(let i=0;i<n;i++){if(vlF.length>=VL_CAP.f)return;const sp=vlSpot(g,L,role+i,w/2+1,d/2+1,r0,terr,S);if(!sp)continue;
+  const F=gr&&gr.facil||{},put=(role,n,w,d,h,r0,wallRoof,kind)=>{for(let i=0;i<n;i++){if(vlF.length>=VL_CAP.f)return;const chosen=kind&&g.facilSpots&&g.facilSpots[kind]&&g.facilSpots[kind][i],sp=chosen||vlSpot(g,L,role+i,w/2+1,d/2+1,r0,terr,S);if(!sp)continue;
     vlF.push({x:cx+sp.x,y:gy(sp.x,sp.z),z:cz+sp.z,yaw:-sp.rot,w,d,h,role,wall:wallRoof[0],roof:wallRoof[1],state:1,ox:sp.x,oz:sp.z});}};
-  const wall=0,roof=0,SZ={pit:[3.5,3.5,1.2,8],rack:[4,2.2,2.4,12],granary:[4,5,3.2,10],well:[2.2,2.2,2.4,6],pen:[9,7,2.2,26],hearth:[3.2,3.2,1.6,3],kiln:[3.5,3.5,3.2,14]},ROLE={pit:'storage_pit',rack:'drying_rack',granary:'raised_storehouse',well:'well',pen:'livestock_pen',hearth:'communal_hearth',kiln:'pottery_kiln'};
-  for(const k of Object.keys(SZ)){const z=SZ[k];put(ROLE[k],F[k]||0,z[0],z[1],z[2],L.plaza.r+z[3],[k==='well'?1:k==='kiln'?3:wall,roof]);}
+  const wall=0,roof=0,ROLE={pit:'storage_pit',rack:'drying_rack',granary:'raised_storehouse',well:'well',pen:'livestock_pen',hearth:'communal_hearth',kiln:'pottery_kiln'};
+  for(const k of Object.keys(SZ)){const z=SZ[k];put(ROLE[k],F[k]||0,z[0],z[1],z[2],L.plaza.r+z[3],[k==='well'?1:k==='kiln'?3:wall,roof],k);}
+  // 工事中：選んだ場所に、地面の印と杭
+  if(gr&&gr.build&&gr.build.spot&&SZ[gr.build.kind]){const b=gr.build,z=SZ[b.kind],y=gy(b.spot.x,b.spot.z);dwBase(cx+b.spot.x,y,cz+b.spot.z,-b.spot.rot);dwPut('box',0,0.02,0,z[0],0.1,z[1],[.55,.42,.25],0);for(const [ox,oz] of [[-1,-1],[1,-1],[-1,1],[1,1]])dwPut('cyl6',ox*z[0]/2,0,oz*z[1]/2,.25,1.3,.25,[.45,.32,.18],0);}
   // 家畜：数の一部を、囲いか村はずれに。位置と動きは vlStep が毎フレーム進める（食べる・立つ・寝る・歩く）
   if(gr&&gr.herd&&gr.herdN>0){
     const n=Math.min(50,Math.ceil(gr.herdN/2)),k0=VL_KIND[(g.herdSp)||''],base=k0!==undefined?k0:Math.floor(vlH(g.ethId,2,2)*3);
@@ -15310,6 +15337,84 @@ function vlFrame(now){
   return vlCount.a>0;
 }
 globalThis.__wohVillageView={get stats(){return {...vlStats};},get active(){return !!vlV;},get bad(){return vlBad;},get items(){return {p:vlP.slice(0,5),f:vlF.slice(0,8),a:vlA.slice(0,5),herds:[...vlHerds.values()].map(h=>({n:h.an.length,home:h.home,states:h.an.map(a=>a.state),pos:h.an.map(a=>[a.x,a.z,a.yaw])}))};},get metrics(){return vlV?{fields:vlV.fields.metrics,animals:vlV.animals.metrics,fac:vlV.fac.metrics}:null;}};
+// ---- 見下ろしの建設：施設の置き場所を、村を上から見て選ぶ。カメラが上がり、タップで置き場所を決め、色（緑＝置ける／赤＝置けない）で確かめる
+const BVW_RADIUS=90;
+function bvwCamera(){
+  const c=bvw,t=c.target,h=c.h,tilt=0.22;
+  camera.position.set(t.x,t.y+h,t.z+h*tilt);camera.lookAt(t.x,t.y,t.z);
+}
+function bvwCheck(x,z,rot){
+  const c=bvw,L=c.L,S=globalThis.WohSettle,terr=c.terr,f={x,z,rot,hw:c.w/2,hd:c.d/2};
+  if(Math.hypot(x-L.center.x,z-L.center.z)>BVW_RADIUS)return {ok:false,why:'村から遠すぎる'};
+  if(Math.hypot(x-L.center.x,z-L.center.z)<2.5+Math.max(f.hw,f.hd)*0.5)return {ok:false,why:'広場の中心には置けない'};
+  if(terr.water(x,z)>0.1)return {ok:false,why:'水辺・水の上には置けない'};
+  if(terr.slope(x,z)>14)return {ok:false,why:'斜面が急すぎる'};
+  if(L.items.some(b=>b.state!=='removed'&&S.overlaps(S.shapeOf(b),f,1.2)))return {ok:false,why:'建物と重なる'};
+  if((L.fields||[]).some(o=>S.overlaps(o,f,1)))return {ok:false,why:'畑と重なる'};
+  for(const o of vlSpots.values())if(o.gid===c.gid&&S.overlaps(o,f,1))return {ok:false,why:'ほかの施設と重なる'};
+  const sp=c.g.facilSpots||{};for(const k in sp)for(const o of sp[k]){const z0=SZ[k];if(z0&&S.overlaps({x:o.x,z:o.z,rot:o.rot,hw:z0[0]/2,hd:z0[1]/2},f,1))return {ok:false,why:'ほかの施設と重なる'};}
+  if(c.g.build&&c.g.build.spot){const o=c.g.build.spot,z0=SZ[c.g.build.kind];if(z0&&S.overlaps({x:o.x,z:o.z,rot:o.rot,hw:z0[0]/2,hd:z0[1]/2},f,1))return {ok:false,why:'工事中の場所と重なる'};}
+  return {ok:true,why:'ここに建てられる'};
+}
+function bvwGhost(){
+  const c=bvw;if(!c.ghost){
+    const g=new THREE.Group(),m=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshBasicMaterial({color:0x44dd66,transparent:true,opacity:.45,depthTest:false})),f=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.8,depthTest:false}));
+    const ring=new THREE.Mesh(new THREE.RingGeometry(1,1.18,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:0x44dd66,transparent:true,opacity:.9,depthTest:false,side:THREE.DoubleSide}));ring.renderOrder=998;
+    m.renderOrder=999;f.renderOrder=1000;g.add(ring);g.add(m);g.add(f);g.userData={m,f,ring};scene.add(g);c.ghost=g;}
+  const g=c.ghost,{m,f,ring}=g.userData,col=c.ok?0x44dd66:0xdd4444;m.material.color.setHex(col);ring.material.color.setHex(col);ring.scale.setScalar(Math.max(c.w,c.d)*0.9+1.5);
+  m.scale.set(c.w,0.5,c.d);f.scale.set(c.w,0.35,0.5);f.position.set(0,0,c.d/2-0.25);
+  g.position.set(c.cx+c.x,c.cy+0.3,c.cz+c.z);g.rotation.y=-c.rot;g.visible=true;
+}
+function bvwSetSpot(x,z){
+  const c=bvw;c.x=x;c.z=z;const r=bvwCheck(x,z,c.rot);c.ok=r.ok;c.why=r.why;c.cy=c.terr.height(x,z)+c.cElev;bvwGhost();bvwBar();updateCamera();
+}
+function bvwBar(){
+  const c=bvw,bar=document.getElementById('bvwBar');if(!bar)return;
+  bar.querySelector('.bt').textContent=c.name+'（'+c.w+'×'+c.d+'m）';bar.querySelector('.bs').textContent=c.placed?c.why:'建てる場所をタップしてください';bar.querySelector('.bs').className='bs'+(c.placed?(c.ok?' ok':' ng'):'');
+  bar.querySelector('#bvwGo').disabled=!(c.placed&&c.ok);
+}
+function bvwScreenToGround(cx,cy){
+  const rect=renderer.domElement.getBoundingClientRect(),nd=new THREE.Vector2((cx-rect.left)/rect.width*2-1,-((cy-rect.top)/rect.height)*2+1);
+  camera.updateMatrixWorld(true);scene.updateMatrixWorld(true);raycaster.setFromCamera(nd,camera);const hit=raycaster.intersectObjects(state.entries.map(e=>e.mesh))[0];return hit?hit.point:null;
+}
+function bvwEnter(o){
+  if(bvw)return {ok:false,why:'いま、建設の場所を選んでいる'};
+  if(overview||!state||!markerPoint)return {ok:false,why:'3Dの場所が決まっていない'};
+  const pe=window.__geo?.people,g=pe&&pe.groups[o.gid-1],S=globalThis.WohSettle,rec=dwSpecs.get(o.gid),c0=npcCamps.get(o.gid);
+  if(!g||!g.layout||!rec||!c0||!S)return {ok:false,why:'集落の近くへ行ってください（集落の配置がまだできていません）'};
+  const z=SZ[o.kind];if(!z)return {ok:false,why:'この施設は、場所を選ばずに建てます'};
+  const L=g.layout,cx=c0.xM-state.origin.xM,cz=c0.yM-state.origin.yM,cElev=rec.cE-state.origin.elevationM;
+  if(Math.hypot(cx+L.center.x-marker.position.x,cz+L.center.z-marker.position.z)>260)return {ok:false,why:'集落から遠すぎます。集落の近くへ行ってください'};
+  const ty=rec.spec.terr.height(L.center.x,L.center.z)+cElev;
+  bvw={gid:o.gid,kind:o.kind,name:o.name,g,L,terr:rec.spec.terr,cx,cz,cElev,w:z[0],d:z[1],rot:0,x:0,z:0,ok:false,placed:false,why:'',cy:0,h:72,target:new THREE.Vector3(cx+L.center.x,ty,cz+L.center.z),onDone:o.onDone,onCancel:o.onCancel,ghost:null,ptr:new Map(),moved:0,pinch:0};
+  document.body.classList.add('bvw-on');
+  const bar=document.createElement('div');bar.id='bvwBar';bar.innerHTML='<div class="bi"><div class="bt"></div><div class="bs"></div></div><div class="bb"><button id="bvwRot">向きを変える</button><button id="bvwCancel">やめる</button><button id="bvwGo" class="go">ここに建てる</button></div>';document.body.appendChild(bar);
+  const tip=document.createElement('div');tip.id='bvwTip';tip.textContent='タップで場所を選ぶ／ドラッグで動かす／2本指で拡大・縮小';document.body.appendChild(tip);
+  const tap=(el,fn)=>{let ts=0;el.addEventListener('touchend',e=>{e.preventDefault();ts=Date.now();fn();},{passive:false});el.addEventListener('click',()=>{if(Date.now()-ts>800)fn();});};
+  tap(bar.querySelector('#bvwRot'),()=>{if(!bvw)return;bvw.rot=(bvw.rot+Math.PI/4)%(Math.PI*2);if(bvw.placed)bvwSetSpot(bvw.x,bvw.z);});
+  tap(bar.querySelector('#bvwCancel'),()=>bvwExit(false));
+  tap(bar.querySelector('#bvwGo'),()=>{if(bvw&&bvw.placed&&bvw.ok)bvwExit(true);});
+  bvwBar();updateCamera();return {ok:true};
+}
+function bvwExit(done){
+  const c=bvw;if(!c)return;bvw=null;
+  if(c.ghost){scene.remove(c.ghost);c.ghost.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose();});}
+  document.body.classList.remove('bvw-on');document.getElementById('bvwBar')?.remove();document.getElementById('bvwTip')?.remove();updateCamera();
+  try{if(done&&c.onDone)c.onDone({x:c.x,z:c.z,rot:c.rot});else if(!done&&c.onCancel)c.onCancel();}catch(e){console.error(e);}
+}
+// 入力：つまむ（拡大・縮小）、ドラッグ（動かす）、タップ（置き場所）。ふだんの操作（視点・移動）には渡さない
+{const el=renderer.domElement;
+ const stop=e=>{if(!bvw)return false;e.stopImmediatePropagation();return true;};
+ el.addEventListener('pointerdown',e=>{if(!stop(e))return;bvw.ptr.set(e.pointerId,{x:e.clientX,y:e.clientY,x0:e.clientX,y0:e.clientY});bvw.moved=0;try{el.setPointerCapture(e.pointerId);}catch(er){}if(bvw.ptr.size===2){const [a,b]=[...bvw.ptr.values()];bvw.pinch=Math.hypot(a.x-b.x,a.y-b.y);}},true);
+ el.addEventListener('pointermove',e=>{if(!stop(e))return;const p=bvw.ptr.get(e.pointerId);if(!p)return;const dx=e.clientX-p.x,dy=e.clientY-p.y;p.x=e.clientX;p.y=e.clientY;bvw.moved=Math.max(bvw.moved,Math.hypot(e.clientX-p.x0,e.clientY-p.y0));
+   if(bvw.ptr.size===2){const [a,b]=[...bvw.ptr.values()],d=Math.hypot(a.x-b.x,a.y-b.y);if(bvw.pinch>0){bvw.h=Math.max(40,Math.min(220,bvw.h*bvw.pinch/d));}bvw.pinch=d;bvw.moved=99;updateCamera();}
+   else if(bvw.moved>8){const k=2*Math.tan(camera.fov*Math.PI/360)*bvw.h/renderer.domElement.clientHeight;bvw.target.x-=dx*k;bvw.target.z-=dy*k;updateCamera();}},true);
+ const up=e=>{if(!stop(e))return;const p=bvw.ptr.get(e.pointerId);bvw.ptr.delete(e.pointerId);if(!p)return;
+   if(bvw.moved<=8&&bvw.ptr.size===0){const pt=bvwScreenToGround(e.clientX,e.clientY);if(pt){bvw.placed=true;bvwSetSpot(pt.x-bvw.cx,pt.z-bvw.cz);}}};
+ el.addEventListener('pointerup',up,true);el.addEventListener('pointercancel',e=>{if(stop(e))bvw.ptr.delete(e.pointerId);},true);
+ el.addEventListener('wheel',e=>{if(!bvw)return;e.preventDefault();bvw.h=Math.max(40,Math.min(220,bvw.h*(e.deltaY>0?1.12:0.89)));updateCamera();},{passive:false,capture:true});}
+globalThis.__wohBuildView={enter:bvwEnter,exit:bvwExit,get active(){return !!bvw;},get state(){return bvw?{kind:bvw.kind,x:bvw.x,z:bvw.z,rot:bvw.rot,ok:bvw.ok,why:bvw.why,placed:bvw.placed,h:bvw.h}:null;},setSpot(x,z){if(bvw){bvw.placed=true;bvwSetSpot(x,z);}}};
+
 function npcTick(dt){
   const pe=window.__geo?.people,V=globalThis.WohNpcView;
   if(!pe||!V||!state||!markerPoint||overview||document.hidden){npcHide();vlHide();return false;}
