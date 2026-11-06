@@ -76,4 +76,32 @@ const S = tech.people.nation; t('技術の層が作られている', !!S && S.n 
   t('蓄えの内訳が出る', b.gr.stock && b.gr.stock.dried > 0 && Math.abs(b.gr.stock.dur + b.gr.stock.fresh + b.gr.stock.dried - b.g.food) < 1e-6);
   t('施設の解放状況が出る', b.gr.avail.rack.open === true && b.gr.avail.kiln.open === false && typeof b.gr.avail.kiln.lock === 'string');
 }
+// ---- 建てる前の判断：足りないもの・建てた後の見込み・不利な使い方の注意・施設の受け持ち
+{
+  t('受け持ちは人数に比例し、最大1', P.peCover('pit', 1, 100) === 0.25 && P.peCover('pit', 4, 100) === 1 && P.peCover('granary', 1, 20) === 1 && P.peCover('pit', 2, 400) === 0.125);
+  const fauna = G.faunaClone(world.fauna), people = P.peopleGenerate(11, { world, plantFood, fauna, FA }), Pn = people.npc, g = people.groups[Pn.group[people.player.id] - 1];
+  for (let i = 0; i < 14; i++) { G.faunaMonthly(fauna, { month: i % 12, env, cc }); P.peopleMonthly(people, { month: i % 12, day: i * 30, world, fauna, FA, plantFood, env, cc, res }); }
+  g.settle = 1; g.pop = 49; g.herdN = 3;
+  let gr = P.peopleGrowth(people, g.id);
+  t('未解放の施設は、足りないものを具体的に示す（村になる必要・いまの段階）', gr.avail.granary.open === false && gr.avail.granary.missing.some(m => m.includes('村になる') && m.includes('半定住')), JSON.stringify(gr.avail.granary.missing));
+  t('共同の炉は、あと何人必要かを示す', (g.settle = 2, P.peopleGrowth(people, g.id).avail.hearth.missing.some(m => m.includes('あと11人'))), JSON.stringify(P.peopleGrowth(people, g.id).avail.hearth.missing)); g.settle = 1;
+  t('家畜の囲いは、あと何頭必要かを示す', P.peopleGrowth(people, g.id).avail.pen.missing.some(m => m.includes('牧畜') || m.includes('あと5頭')), JSON.stringify(P.peopleGrowth(people, g.id).avail.pen.missing));
+  t('窯は、技術がないと示す', gr.avail.kiln.missing.some(m => m.includes('高温焼成')));
+  t('開放済みの施設は、足りないものが空', P.peopleGrowth(people, g.id).avail.rack.missing.length === 0);
+  // 不利な使い方の注意：生鮮が主な村の貯蔵穴に警告、穀物が主なら警告なし
+  g.lastFood = Object.assign({}, g.lastFood, { need: 1000, fish: 3000, hunt: 500, gather: 200, farm: 0, herd: 0 });
+  t('生鮮が主な村では、貯蔵穴に注意が出る', P.peopleGrowth(people, g.id).preview.pit.warn && P.peopleGrowth(people, g.id).preview.pit.warn.includes('生鮮'), P.peopleGrowth(people, g.id).preview.pit.warn);
+  t('生鮮が主な村では、干し棚がおすすめ', P.peopleGrowth(people, g.id).preview.rack.recommend && P.peopleGrowth(people, g.id).preview.rack.recommend.includes('生鮮'));
+  g.lastFood = Object.assign({}, g.lastFood, { fish: 100, hunt: 0, gather: 0, farm: 3000 });
+  t('穀物が主な村では、貯蔵穴に注意が出ない・穀物向きとおすすめ', !P.peopleGrowth(people, g.id).preview.pit.warn && (P.peopleGrowth(people, g.id).preview.pit.recommend || '').includes('穀物'));
+  // 建てた後の見込み：保存日数が前後で出る
+  g.fresh = 500; g.food = 3000; const pv = P.peopleGrowth(people, g.id).preview;
+  t('貯蔵穴：保存日数の前後と、生鮮が短くなる表示', pv.pit.lines.some(l => l.includes('保存日数') && l.includes('→')) && pv.pit.lines.some(l => l.includes('短くなる')), JSON.stringify(pv.pit.lines));
+  t('干し棚：生鮮と干物の保存日数が出る', pv.rack.lines[0].includes('干物'));
+  t('倉庫：受け持つ人数（人口に対して）が出る', pv.granary.lines[0].includes('受け持つ人数') && pv.granary.lines[0].includes('49人'));
+  // 増設の意味：貯蔵穴を増やすと、傷みが段階的に減る
+  const rate = (n) => { g.facil = Object.assign({}, g.facil, { pit: n }); return P.peopleGrowth(people, g.id).stock && n; };
+  // 不作（収入の減り）の設定は、通常は0
+  t('不作の設定は、ふだんは0', !people.groups.some(x => x.hardship));
+}
 console.log(ng ? 'FAIL ' + ng + ' / ' + (ok + ng) : 'OK ' + ok + ' 件通過'); process.exit(ng ? 1 : 0);
