@@ -1,50 +1,145 @@
 {
-  "name": "woh-original-horse-v2",
-  "version": 2,
+  "name": "woh-original-horse-battle-v1",
+  "version": 3,
   "owner": "World of History project",
-  "rights": "Original generated project asset. No third-party model or texture; project owner determines redistribution license.",
   "license": "LicenseRef-World-of-History-Original",
+  "rights": "Original procedural project asset; project owner determines redistribution license. No external models/textures or paid service.",
   "unit": "meter",
   "up": "Y",
   "forward": "Z",
-  "bones": 20,
-  "clips": [
-    "idle",
-    "walk",
-    "trot",
-    "canter",
-    "gallop"
+  "source": [
+    "prototypes/horse/model.mjs",
+    "prototypes/horse/motion.mjs",
+    "prototypes/horse-extras/motion.mjs",
+    "prototypes/horse-extras/rig-math.mjs",
+    "tools/build-horse-extras-assets.mjs",
+    "tools/export-horse-extras-glb.mjs"
   ],
+  "renderer": "prototypes/horse-extras/renderer.mjs",
+  "bones": 20,
   "lodTriangles": [
     2132,
     1064,
     174
   ],
-  "source": [
-    "prototypes/horse/model.mjs",
-    "prototypes/horse/motion.mjs",
-    "tools/build-horse-assets.mjs",
-    "tools/export-horse-glb.mjs"
+  "harnessTriangles": [
+    184,
+    120,
+    12
   ],
-  "export": "Direct GLB 2.0 exporter from the same runtime geometry and poses",
-  "blender": "4.3.2 mesh construction worked; evaluation/save stalled or crashed. No Blender export/source file is claimed.",
-  "validation": "Own structural/pose tests plus actual GPU-vs-CPU raster comparison, not external glTF Validator or game-dev CLI certification.",
-  "files": [
+  "clips": [
     {
-      "path": "woh-horse.glb",
-      "bytes": 324572,
-      "sha256": "8fdafa6a1e3c31377cbdfc1da2207a71e5c16b7bc74498306aa0706a7ae957e2"
+      "name": "idle",
+      "offset": 0,
+      "frames": 48,
+      "duration": 3,
+      "loop": true
     },
     {
-      "path": "horse.render.json",
-      "bytes": 600896,
-      "sha256": "6745444cf738431151c7bd3d39a7cdfe06c194588bf62d79b89a60623ccef92d"
+      "name": "walk",
+      "offset": 48,
+      "frames": 48,
+      "duration": 1.1,
+      "loop": true
+    },
+    {
+      "name": "trot",
+      "offset": 96,
+      "frames": 48,
+      "duration": 0.75,
+      "loop": true
+    },
+    {
+      "name": "canter",
+      "offset": 144,
+      "frames": 48,
+      "duration": 0.65,
+      "loop": true
+    },
+    {
+      "name": "gallop",
+      "offset": 192,
+      "frames": 48,
+      "duration": 0.42,
+      "loop": true
+    },
+    {
+      "name": "rear",
+      "frames": 24,
+      "duration": 2,
+      "loop": false,
+      "offset": 240
+    },
+    {
+      "name": "fall",
+      "frames": 24,
+      "duration": 1.5,
+      "loop": false,
+      "offset": 264
+    },
+    {
+      "name": "dead",
+      "frames": 1,
+      "duration": 0,
+      "loop": false,
+      "offset": 288
+    },
+    {
+      "name": "turn_l",
+      "frames": 24,
+      "duration": 1.6,
+      "loop": true,
+      "offset": 289
+    },
+    {
+      "name": "turn_r",
+      "frames": 24,
+      "duration": 1.6,
+      "loop": true,
+      "offset": 313
     }
   ],
   "animationTexture": {
     "width": 64,
-    "height": 256,
-    "framesPerClip": 48,
-    "occupiedRows": 240
-  }
+    "height": 512,
+    "usedRows": 337,
+    "remainingRows": 175,
+    "bytes": 524288,
+    "previousBytes": 262144,
+    "increaseBytes": 262144,
+    "format": "RGBAFloat, nearest sampling; 3 texels per bone, 64 texels per frame row"
+  },
+  "anchors": {
+    "saddle": [
+      0,
+      1.67,
+      0
+    ],
+    "hitch": [
+      0,
+      0.94,
+      -1.25
+    ]
+  },
+  "legacyInvariant": "Original five clips first240 rows and original three LOD meshes preserved; validation/horse-extras/legacy-invariants.json",
+  "export": "Direct GLB2.0 exporter; general quaternion channels. No Blender normalization needed or claimed.",
+  "validation": {
+    "unit": "tests/horse-extras.test.mjs and tests/horse-glb.test.mjs",
+    "browser": "tests/horse-battle-extras.browser.cjs",
+    "externalGLTFValidator": false,
+    "gameDevCLICertification": false,
+    "iOSHardware": false
+  },
+  "files": [
+    {
+      "path": "woh-horse.glb",
+      "bytes": 508764,
+      "sha256": "246d0d3fa7a523a6057fd48a3f47e44519b4601fbeea5836b4b5ee55f3178885"
+    },
+    {
+      "path": "horse.render.json",
+      "bytes": 1043958,
+      "sha256": "8d918fa1dd9caa3e8587d72bbf0b1fb24d8e42a94fc9c6cf08f5af10cdb1a18d"
+    }
+  ]
 }

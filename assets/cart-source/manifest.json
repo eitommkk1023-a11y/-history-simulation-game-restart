@@ -1,0 +1,166 @@
+{
+  "name": "woh-original-covered-wagon-v2",
+  "version": 2,
+  "owner": "World of History project",
+  "license": "LicenseRef-World-of-History-Original",
+  "rights": "Original procedural project asset; project owner determines redistribution license. No external models/textures or paid service.",
+  "unit": "meter",
+  "up": "Y",
+  "forward": "Z",
+  "source": [
+    "prototypes/horse-extras/cart-model.mjs",
+    "prototypes/horse-extras/mesh-utils.mjs",
+    "tools/export-cart-glb.mjs"
+  ],
+  "renderer": "prototypes/horse-extras/cart-renderer.mjs",
+  "lodTriangles": [
+    736,
+    312,
+    66
+  ],
+  "baseTriangles": [
+    624,
+    300,
+    58
+  ],
+  "canopyTriangles": [
+    112,
+    12,
+    8
+  ],
+  "passengerTriangles": [
+    312,
+    200,
+    24
+  ],
+  "passengerCapacity": 3,
+  "canopy": {
+    "part": 7,
+    "default": true
+  },
+  "bounds": [
+    [
+      -0.9,
+      0.9
+    ],
+    [
+      0,
+      2.70624
+    ],
+    [
+      -1.405,
+      2.435
+    ]
+  ],
+  "dimensions": [
+    1.8,
+    2.70624,
+    3.84
+  ],
+  "anchors": {
+    "hitch": [
+      0,
+      0.94,
+      2.4
+    ],
+    "horseHitch": [
+      0,
+      0.94,
+      -1.25
+    ],
+    "team": [
+      [
+        -0.6,
+        0,
+        0
+      ],
+      [
+        0.6,
+        0,
+        0
+      ]
+    ],
+    "single": [
+      [
+        0,
+        0,
+        0
+      ]
+    ],
+    "wheelRadius": 0.48,
+    "seats": [
+      {
+        "name": "driver",
+        "position": [
+          0,
+          1.52,
+          1.04
+        ],
+        "yaw": 0
+      },
+      {
+        "name": "passenger_l",
+        "position": [
+          -0.38,
+          1.52,
+          -0.65
+        ],
+        "yaw": 0
+      },
+      {
+        "name": "passenger_r",
+        "position": [
+          0.38,
+          1.52,
+          -0.65
+        ],
+        "yaw": 0
+      }
+    ]
+  },
+  "wheels": [
+    [
+      -0.77,
+      0.48,
+      0.9
+    ],
+    [
+      0.77,
+      0.48,
+      0.9
+    ],
+    [
+      -0.77,
+      0.48,
+      -0.9
+    ],
+    [
+      0.77,
+      0.48,
+      -0.9
+    ]
+  ],
+  "wheelMotion": "rotation.x = signed traveled distance / 0.48; front steer from hitch yaw; no bones",
+  "cargo": {
+    "0": "crates",
+    "1": "straw-bales",
+    "2": "passengers"
+  },
+  "teamSizes": [
+    1,
+    2
+  ],
+  "kinematics": "Simple flat-ground drawbar constraint. Full suspension, collision/overturning and rough terrain are not implemented or verified.",
+  "files": [
+    {
+      "path": "woh-wagon.glb",
+      "bytes": 224360,
+      "sha256": "f9285ffbbd97fe581c830e0f431a1b2882febc5eecb1fc8fce7e6b80354f3ab2"
+    },
+    {
+      "path": "wagon.render.json",
+      "bytes": 333199,
+      "sha256": "9915cf5870986091df4c2a1610de28a25d47b5b749aa769dbbda96e56ac59ba1"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "prototypes/horse/motion.mjs": "015dba1528560d0dbf16cfc381ad4ca120100354edd723799fd62072a56834ed",
+  "prototypes/horse/model.mjs": "54715cb91c269fe381ffb1e9c4878f91107e6169c3b2ffeea22d52216bcd4058",
+  "prototypes/horse/riding-controls.mjs": "459669f8a76640c0981a7c85c9e1ea74a267ccec507c95fb1a48e668ae2a106f",
+  "prototypes/horse/controller.mjs": "a025e98a08e50754602e45b8f63f473b2c181b461400027a010d3729f398dcf5",
+  "exports/World-of-History-horse-prototype-v5.html": "4ec274fda408276850b4bac23706e67ca29dc4def22ff93330381060bd36a726",
+  "assets/horse-source/horse.render.json": "6745444cf738431151c7bd3d39a7cdfe06c194588bf62d79b89a60623ccef92d"
+}

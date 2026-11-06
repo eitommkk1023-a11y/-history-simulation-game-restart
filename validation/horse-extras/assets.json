@@ -1,0 +1,109 @@
+{
+  "legacyClipRowsPreserved": true,
+  "usedRows": 337,
+  "textureBytes": 524288,
+  "increaseBytes": 262144,
+  "clips": [
+    {
+      "name": "idle",
+      "offset": 0,
+      "frames": 48,
+      "duration": 3,
+      "loop": true
+    },
+    {
+      "name": "walk",
+      "offset": 48,
+      "frames": 48,
+      "duration": 1.1,
+      "loop": true
+    },
+    {
+      "name": "trot",
+      "offset": 96,
+      "frames": 48,
+      "duration": 0.75,
+      "loop": true
+    },
+    {
+      "name": "canter",
+      "offset": 144,
+      "frames": 48,
+      "duration": 0.65,
+      "loop": true
+    },
+    {
+      "name": "gallop",
+      "offset": 192,
+      "frames": 48,
+      "duration": 0.42,
+      "loop": true
+    },
+    {
+      "name": "rear",
+      "frames": 24,
+      "duration": 2,
+      "loop": false,
+      "offset": 240
+    },
+    {
+      "name": "fall",
+      "frames": 24,
+      "duration": 1.5,
+      "loop": false,
+      "offset": 264
+    },
+    {
+      "name": "dead",
+      "frames": 1,
+      "duration": 0,
+      "loop": false,
+      "offset": 288
+    },
+    {
+      "name": "turn_l",
+      "frames": 24,
+      "duration": 1.6,
+      "loop": true,
+      "offset": 289
+    },
+    {
+      "name": "turn_r",
+      "frames": 24,
+      "duration": 1.6,
+      "loop": true,
+      "offset": 313
+    }
+  ],
+  "horseTriangles": [
+    2132,
+    1064,
+    174
+  ],
+  "harnessTriangles": [
+    184,
+    120,
+    12
+  ],
+  "cartTriangles": [
+    736,
+    312,
+    66
+  ],
+  "cartBaseTriangles": [
+    624,
+    300,
+    58
+  ],
+  "canopyTriangles": [
+    112,
+    12,
+    8
+  ],
+  "passengerTriangles": [
+    312,
+    200,
+    24
+  ],
+  "legacyRowsSha256": "9c9779870f9e7aa487259b1d90551975c745ca195617483f446e698f608011a1"
+}
