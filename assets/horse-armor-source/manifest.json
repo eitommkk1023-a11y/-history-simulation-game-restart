@@ -1,0 +1,33 @@
+{
+  "name": "woh-horse-armor-study-01",
+  "version": 1,
+  "units": "meters",
+  "slots": [
+    "head",
+    "neck",
+    "body"
+  ],
+  "styleValues": {
+    "0": "none",
+    "1": "cloth",
+    "2": "lamellar",
+    "3": "plate"
+  },
+  "baseHorseBranch": "codex/prototype-horse-v1",
+  "baseCommit": "c22febd8e13883ae33c638ad0c4e493c70010f50",
+  "generation": "original procedural JS; no external assets/services",
+  "sourceDigests": {
+    "assets/horse-source/horse.render.json": "8d918fa1dd9caa3e8587d72bbf0b1fb24d8e42a94fc9c6cf08f5af10cdb1a18d",
+    "assets/cart-source/wagon.render.json": "9915cf5870986091df4c2a1610de28a25d47b5b749aa769dbbda96e56ac59ba1",
+    "prototypes/horse-armor/model.mjs": "357664b2a4bfe9c7a46e1b1c65c7b78726fadba77d17880a72c45ca46a38de5f",
+    "assets/horse-armor-source/armor.render.json": "014c804b64a61f42aeced8e040f5ab68ebc7a01d6a6ec53065180d1b892e20b3"
+  },
+  "candidateHorseTriangles": [
+    4952,
+    2228,
+    234
+  ],
+  "htmlSHA256": "31f6431093ad18a2a0072c8d83af0ad7d3bca9fbe758ca09771ec74a94ee0eb0",
+  "canonicalPackageVerified": false,
+  "hardwareTested": false
+}

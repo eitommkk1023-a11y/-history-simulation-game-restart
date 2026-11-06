@@ -1,0 +1,60 @@
+{
+  "checks": [
+    "actual selectors create a mixed kit",
+    "unarmored preset clears all slots",
+    "all three armor styles change GPU pixels at the same horse pose",
+    "armor uses existing bones through four moving gaits rear turns fall and recovery",
+    "armor controls 667 remain in the viewport",
+    "armor controls 844 remain in the viewport",
+    "armor controls 1180 remain in the viewport",
+    "5000 armored horses keep the same draw batches",
+    "100 kit switches reuse geometry and attribute arrays",
+    "individual mixed kits are copied validated and uploaded independently",
+    "no browser or shader errors"
+  ],
+  "pixels": [
+    5910,
+    6006,
+    5845
+  ],
+  "poses": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+  ],
+  "crowd": {
+    "metrics": {
+      "placed": 5000,
+      "submitted": 5000,
+      "culled": 0,
+      "lods": [
+        0,
+        0,
+        5000
+      ],
+      "triangles": 1190004,
+      "horseDrawCalls": 2,
+      "harness": 1667
+    },
+    "allSelected": true
+  },
+  "memory": {
+    "stable": true,
+    "before": 41,
+    "after": 41
+  },
+  "individual": {
+    "kits": [
+      "0,1,2",
+      "1,2,3",
+      "3,0,1"
+    ],
+    "rejected": true
+  },
+  "errors": []
+}
