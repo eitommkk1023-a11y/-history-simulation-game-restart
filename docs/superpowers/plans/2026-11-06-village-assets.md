@@ -1,0 +1,15 @@
+# Village assets and menu07 implementation plan
+
+Single agent execution; user authorized a complete batch. No per-step approvals, no subagents.
+
+Goal: reusable instanced field/crop, livestock and facility assets plus a village tab on menu06. Main mechanics and integration remain owned by Claude.
+Base: main 7df2862213d1c60c92e59ddd23f87e2a65294ce0. Work on codex/prototype-village-v1 only. Work files isolated in /workspace/woh-village.
+Tech: existing Three.js r128, procedural geometry/materials, baked bone DataTexture. No external models, images, libraries or paid providers. Existing arch material definitions are read-only.
+
+- [x] Fields: fields.mjs exposes normalizePlot, plotHeight and createFields(THREE,scene,{capacity:200}); setPlots(rows) accepts specified fields plus heights:[local(-x,-z),(+x,-z),(-x,+z),(+x,+z)] as absolute world Y, cropHeight optional meters. Bilinear terrain shared by crop and soil. Three distinct shapes, 3 crop families, 5 stages, near/far instanced batches. Tests invalid inputs, corner interpolation, rotated plots and immutable updates.
+- [x] Livestock: livestock-model.mjs generates 4 body shapes, idle/graze/walk plus lie on bovine/caprine; renderer caches a matrix texture and uses per-instance state, scale, phase, coat. State mapping documented 0idle/1graze/2walk/3lie. Unsupported lie on pig/bird falls back idle. Capacity500. Test baked samples differ, finite transforms, valid rig and deterministic geometry; GPU confirmation and 500 animal batch budget.
+- [x] Facilities: facilities.mjs provides 8 roles, shared architecture materials and sizing. Unified instancing by role with near/far detail, optional roofKind. Partial/remains treatment for age states. Test all roles/fields/mappings and finite geometry.
+- [x] Menu07: preserve inventory/map/missions, add village tab with dummy snapshot and no simulation side effects. 874x380 single-screen three-column layout, 44px input targets, internal confirm/cancel dialog for ration/build/proposal. Distribution slider 0..100 with percentage, construction costs and days. Test all confirmed/canceled intents remain local and old tab navigation still works.
+- [ ] Delivery: separate village assets preview next number (01), menu07 standalone HTML; source/render JSON and reproducible builder. Unit and Chromium tests, visible screenshots, CPU update/render-submit ms and rAF interval separately (GPU timer unsupported reported). Benchmark 200 plots +500 animals+facilities, measured draw/triangles/texture bytes. README adapter examples, test boundaries, hashes/provenance and hardware limitations. Commit assets and final UI/evidence as coherent stages using lease-protected updates. Verify no existing main files changed except documented added files; no main writes or merge.
+
+Review focus: y corners missing/NaN; exact plot edges and rounded garden footprint; invalid states and counts; 874x380 no scrolling or obscured actions; shader and unit-sample agreement for animal motion. Validate these in the owning unit/browser tests. No world saves or mechanics are introduced.
