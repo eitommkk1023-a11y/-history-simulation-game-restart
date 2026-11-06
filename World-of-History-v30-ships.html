@@ -16231,7 +16231,7 @@ html.shipUiHidden #shipEye{left:calc(8px + env(safe-area-inset-left));opacity:.4
       ...Object.entries({ 'pinta-1492': 'ピンタ1492 横帆', 'pinta-1492-lateen': 'ピンタ1492 ラテン', galleon: 'ガレオン', galley: 'ガレー' }).map(([d, n]) => $('button', { textContent: n, onclick: () => spawn(d) }))]);
     ui.list = $('div'); ui.ctrl = $('div', { className: 'btns' }); ui.info = $('div', { className: 'info' });
     ui.ladders = $('div', { id: 'shipLadders' }); ui.bar = $('div', { id: 'shipBar' }, [ui.info, ui.ctrl]);
-    ui.panel.append(ui.spawn, ui.list);
+    ui.bench = $('div', { className: 'info', style: 'margin-top:6px;user-select:text;font-size:11px;color:#9fc4de' }); ui.panel.append(ui.spawn, ui.list, $('button', { textContent: '性能測定(6秒)', onclick: benchmark }), ui.bench);
     document.body.append(css, ui.btn, ui.eye, ui.panel, ui.bar, ui.ladders, ui.toast);
     try { setUiHidden(localStorage.getItem('woh-ship-ui-hidden') === '1'); } catch (_) { /* storage unavailable */ }
     layoutShipUi(); setInterval(layoutShipUi, 400); addEventListener('resize', layoutShipUi);
@@ -16254,6 +16254,15 @@ html.shipUiHidden #shipEye{left:calc(8px + env(safe-area-inset-left));opacity:.4
     Object.assign(ui.panel.style, { top: pTop + 'px', left: pLeft + 'px', maxHeight: Math.max(80, barTop - pTop - 8) + 'px' });
     Object.assign(ui.ladders.style, { left: barLeft + 'px', bottom: (barBottom + (ui.bar.offsetHeight || 60) + 6) + 'px' });
     ui.toast.style.top = ((compass ? compass.bottom : 48) + 6) + 'px';
+  }
+  /** Performance check for real devices: samples ~6 s of frames in whatever view is current and reports it as text (copyable). */
+  function benchmark() {
+    if (benchmark.run) return; benchmark.run = true; const ts = [], t0 = performance.now(); ui.bench.textContent = '測定中…（6秒、そのまま動かさずに）';
+    const tick = (t) => { ts.push(t); if (t - t0 < 6000) { requestAnimationFrame(tick); return; }
+      const d = ts.slice(1).map((v, i) => v - ts[i]).sort((a, b) => a - b), avg = d.reduce((a, b) => a + b, 0) / d.length, p95 = d[Math.floor(d.length * 0.95)], worst = d[d.length - 1], inf = nat.renderer.info.render;
+      const m = boarded && meshes.get(boarded), where = boarded ? (m?.cutaway ? '船内(下層)' : '船上(甲板)') + (globalThis.__wohFirstPerson ? '・一人称' : '・三人称') : '船外';
+      ui.bench.textContent = `性能(${where}) 平均${(1000 / avg).toFixed(1)}fps／95%点${p95.toFixed(1)}ms／最悪${worst.toFixed(0)}ms／描画${inf.calls}回・三角形${(inf.triangles / 1000).toFixed(0)}k／船${fleet?.list().length ?? 0}隻／画面${innerWidth}x${innerHeight}×${devicePixelRatio}`; benchmark.run = false; };
+    requestAnimationFrame(tick);
   }
   function refreshList() {
     if (!ui.list) return;
