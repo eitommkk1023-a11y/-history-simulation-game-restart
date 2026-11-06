@@ -36,3 +36,8 @@ test('calms reduce the wind', () => {
   for (let i = 0; i < 300; i++) min = Math.min(min, f.info(-100000 - i * 1000, 0).speed); day = 0.5; assert.ok(min < 3, `min ${min}`);
 });
 test('Beaufort scale', () => { assert.equal(beaufort(0), 0); assert.equal(beaufort(4.5), 3); assert.equal(beaufort(20), 8); assert.equal(beaufort(40), 12); });
+
+test('game weather drives storms when given (random cells off)', () => {
+  const f = createWindField({ baseWind: () => ({ x: -6, y: 0 }), elev: () => -20, dayAt: () => 1, seed: 7, params: { calmChance: 0 }, gameWeather: (X) => (X > 0 ? { storm: 0.8, rain: 1, label: '嵐' } : null) });
+  assert.ok(f.info(-1000, 0).speed - 6 < 1e-9); const w = f.info(1000, 0); assert.ok(w.speed > 14 && w.label === '嵐');
+});

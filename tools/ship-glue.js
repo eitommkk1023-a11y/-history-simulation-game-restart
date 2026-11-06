@@ -110,7 +110,13 @@
     const elevAt = (X, Y) => { const xM = ref.xM + X, yM = ref.yM - Y, k = Math.round(xM / 20) + ',' + Math.round(yM / 20); let e = ecache.get(k); if (e !== undefined) return e; e = -1; if (xM >= 0 && yM >= 0 && xM <= T.widthM && yM <= T.heightM) { try { e = T.sampleBase(xM, yM).baseElevationM; } catch (_) { e = -1; } } if (ecache.size > 20000) ecache.clear(); ecache.set(k, e); return e; };
     let seedN = 1; for (const ch of String(lastSeed)) seedN = (Math.imul(seedN, 31) + ch.charCodeAt(0)) | 0;
     windField = Ship.createWindField({ baseWind: base.wind, elev: elevAt, seed: seedN, toWorld: (X, Y) => ({ x: ref.xM + X, y: ref.yM - Y }),
-      dayAt: () => (globalThis.__geo?.clock?.day ?? 0) + 0.3 + simT / 86400 }); // D: a ship-time day cycle (86400 s); the game has no time of day yet
+      dayAt: () => (globalThis.__geo?.clock?.day ?? 0) + 0.3 + simT / 86400,
+      gameWeather: (X, Y) => { // the game's own daily weather (read-only): 0 clear, 1 cloudy, 2 rain, 3 snow, 4 storm
+        const sim = globalThis.__geo?.sim; if (!sim?.kind) return null;
+        const bx = (ref.xM + X) / mpc, by = (ref.yM - Y) / mpc, cx = Math.min(sim.w - 1, Math.max(0, Math.floor(bx / sim.step))), cy = Math.min(sim.h - 1, Math.max(0, Math.floor(by / sim.step))), c = cy * sim.w + cx, kind = sim.kind[c];
+        const storm = kind === 4 ? 0.6 + 0.4 * Math.min(1, sim.storm?.[c] ?? 0) : kind === 2 || kind === 3 ? Math.min(0.3, (sim.P[c] ?? 0) / 60 * 0.3) : 0;
+        return { storm, rain: kind === 2 || kind === 3 || kind === 4 ? 1 : 0, label: ['晴れ', 'くもり', '雨', '雪', '嵐'][kind] };
+      } }); // D: a ship-time day cycle (86400 s); the game has no time of day yet
     env = {
       wind: (X, Y, t) => windField.wind(X, Y, t), current: base.current, seabed: base.seabed,
       depth(X, Y) {
@@ -480,7 +486,7 @@ html.shipUiHidden #shipEye{left:calc(8px + env(safe-area-inset-left));opacity:.4
     if (!boarded || !fleet?.has(boarded)) { ui.info.textContent = ''; return; }
     const v = fleet.get(boarded).vessel, s = v.snapshot(), f = v.forces(env), c = ctl[boarded];
     const wi = windField.info(v.state.X, v.state.Y, 0), w = wi, wf = wi.fromDeg, arrow = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'][Math.round(((wf + 180) % 360) / 45) % 8];
-    const tag = wi.storm > 0.3 ? '／嵐の中' : wi.calm > 0.3 ? '／凪' : wi.shelter < 0.8 ? '／陸の風下で風が弱い' : '';
+    const tag = wi.storm > 0.5 ? `／${wi.label === '嵐' ? '嵐' : '荒天'}の中` : wi.storm > 0.3 ? '／荒れ模様' : wi.calm > 0.3 ? '／凪' : wi.shelter < 0.8 ? '／陸の風下で風が弱い' : '';
     const wx = weatherNear(v.state.X, v.state.Y); const wxTxt = wx && !tag ? `／${wx.kind === 'storm' ? '嵐' : '凪'}が${wx.dir}約${Math.round(wx.km)}km` : '';
     const cap = fleet.get(boarded).captain, dd = cap?.destination && Math.hypot(cap.destination.X - v.state.X, cap.destination.Y - v.state.Y), eta = dd ? Math.round(dd / Math.max(0.8, s.speedOverGround) / 60) : 0;
     const capTxt = cap && ['sailing', 'arriving'].includes(cap.mode) ? `／航海中 残り${dd > 1000 ? (dd / 1000).toFixed(1) + 'km' : Math.round(dd) + 'm'}（約${eta}分）${cap.reef < 1 ? '／帆を絞っている' : ''}` : cap?.mode === 'arrived' ? '／到着' : '';

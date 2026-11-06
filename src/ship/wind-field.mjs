@@ -28,10 +28,11 @@ export const beaufort = (s) => { let b = 0; while (b < BEAUFORT.length && s >= B
 
 /**
  * @param {{ baseWind:(X:number,Y:number,t:number)=>{x:number,y:number}, elev:(X:number,Y:number)=>number,
- *           dayAt?:(t:number)=>number, toWorld?:(X:number,Y:number)=>{x:number,y:number}, seed?:number, params?:object }} o
+ *           gameWeather?:(X:number,Y:number)=>{storm:number,rain:number,label?:string}|null, dayAt?:(t:number)=>number, toWorld?:(X:number,Y:number)=>{x:number,y:number}, seed?:number, params?:object }} o
+ *  gameWeather: when given, storms come from the game's own weather (read-only) and the random storm cells are off.
  *  elev: ground height in metres, > 0 on land (negative or 0 = sea). toWorld: stable world metres (so weather cells do not move when the ship frame does).
  */
-export function createWindField({ baseWind, elev, dayAt = () => 0, toWorld = (X, Y) => ({ x: X, y: Y }), seed = 1, params = {} }) {
+export function createWindField({ baseWind, elev, dayAt = () => 0, toWorld = (X, Y) => ({ x: X, y: Y }), seed = 1, params = {}, gameWeather = null }) {
   const P = { ...WIND_PARAMS, ...params }, sd = seed | 0, isLand = (X, Y) => elev(X, Y) > 0.5;
   const coastCache = new Map(), lee = new Map();
   const key = (X, Y, g) => `${Math.round(X / g)},${Math.round(Y / g)}`;
@@ -64,7 +65,8 @@ export function createWindField({ baseWind, elev, dayAt = () => 0, toWorld = (X,
       };
       storm = Math.max(storm, kind(11, P.stormChance, P.stormRadiusKm)); calm = Math.max(calm, kind(31, P.calmChance, P.calmRadiusKm));
     }
-    return { storm: storm * env, calm: calm * env };
+    if (gameWeather) { const g = gameWeather(X, Y); storm = g ? Math.min(1, Math.max(0, g.storm)) : 0; return { storm, calm: calm * env, label: g?.label ?? null }; }
+    return { storm: storm * env, calm: calm * env, label: null };
   }
 
   function info(X, Y, t = 0) {
@@ -73,13 +75,13 @@ export function createWindField({ baseWind, elev, dayAt = () => 0, toWorld = (X,
     const phase = Math.sin(2 * Math.PI * (day - Math.floor(day) - 0.25)), amp = P.breezeMax * Math.min(1, c.frac * 2) * phase;
     let x = b.x + c.dx * amp, y = b.y + c.dy * amp; // dx,dy point toward land: daytime air moves toward land
     const f = shelter(X, Y, x, y); x *= f; y *= f;
-    const { storm, calm } = weather(X, Y, day); let s = Math.hypot(x, y);
+    const { storm, calm, label } = weather(X, Y, day); let s = Math.hypot(x, y);
     if (s > 1e-9 || storm > 0) {
       const ux = s > 1e-9 ? x / s : b.x / (Math.hypot(b.x, b.y) || 1), uy = s > 1e-9 ? y / s : b.y / (Math.hypot(b.x, b.y) || 1);
       const gale = Math.max(s * P.stormGain, P.stormMinSpeed), s2 = (s * (1 - storm) + gale * storm) * (1 - (1 - P.calmFactor) * calm);
       x = ux * s2; y = uy * s2; s = s2;
     }
-    return { x, y, speed: s, fromDeg: ((Math.atan2(-x, -y) * 180 / Math.PI) % 360 + 360) % 360, beaufort: beaufort(s), base: b, breeze: amp, shelter: f, storm, calm };
+    return { x, y, speed: s, fromDeg: ((Math.atan2(-x, -y) * 180 / Math.PI) % 360 + 360) % 360, beaufort: beaufort(s), base: b, breeze: amp, shelter: f, storm, calm, label };
   }
   const wind = (X, Y, t = 0) => { const i = info(X, Y, t); return { x: i.x, y: i.y }; };
   return { wind, info, weather: (X, Y, t = 0) => weather(X, Y, dayAt(t)), params: P };
