@@ -18586,7 +18586,7 @@ const Ship = Object.assign({}, M_sea_state, M_hull_geometry, M_mass, M_hydrostat
   }
   function board(id) {
     const rec = fleet.get(id), m = meshes.get(id); if (!m) return;
-    boarded = id; lastPlaced = null; if (m.interior) m.pos = m.interior.startPosition(); document.getElementById('standardMode')?.dispatchEvent(new Event('pointerdown')); /* close the game's developer menu */ refreshList(); toast(`${id} に乗った（移動で甲板を歩けます）`);
+    boarded = id; lastPlaced = null; if (m.interior) m.pos = m.interior.startPosition(); document.getElementById('rpgClose')?.click(); document.getElementById('standardMode')?.dispatchEvent(new Event('pointerdown')); /* close the game's menu */ refreshList(); toast(`${id} に乗った（移動で甲板を歩けます）`);
   }
   /** Step off without moving the player (they were moved by the game). */
   function leaveShip(msg) {
@@ -18787,7 +18787,21 @@ html.shipUiHidden #shipEye{opacity:.5}
     ui.dev = $('details', { className: 'shipSec shipui', open: true }, [$('summary', { textContent: '⛵ 船システム' })]);
     ui.spawn = $('div'); ui.list = $('div'); ui.crewBox = $('div'); ui.bench = $('div', { className: 'sub', style: 'user-select:text;margin-top:4px' });
     ui.dev.append(ui.spawn, ui.list, ui.crewBox, $('div', { className: 'row' }, [$('button', { className: 'shipbtn', textContent: '性能測定(6秒)', onclick: benchmark }), $('button', { className: 'shipbtn', textContent: '👁 船UI 表示/非表示', onclick: () => setUiHidden(!uiHidden) })]), ui.bench);
-    const mount = () => { const dp = document.getElementById('developerPane') ?? document.getElementById('developerPanel'); if (dp && !ui.dev.isConnected) dp.append(ui.dev); };
+    // Host: the game's menu gets a "船(開発者)" tab (dev mode only). Older games without that menu: the developer pane.
+    const mount = () => {
+      if (ui.dev.isConnected) return;
+      const screen = document.getElementById('rpgScreen'), nav = screen?.querySelector('.rpg-tabs'), foot = screen?.querySelector('.rpg-footer');
+      if (nav && foot) {
+        const tabBtn = $('button', { className: 'rpg-tab dev-only', id: 'rpgTab-ship', textContent: '船(開発者)', role: 'tab' }), page = $('section', { className: 'rpg-panel', id: 'rpgPage-ship', hidden: true }, [$('div', { className: 'scrollable', id: 'rpgShip', style: 'padding:8px;overflow:auto;max-height:100%' }, [ui.dev])]);
+        page.setAttribute('role', 'tabpanel'); tabBtn.setAttribute('aria-selected', 'false'); tabBtn.tabIndex = -1; nav.append(tabBtn); foot.before(page);
+        const closeMine = () => { page.hidden = true; tabBtn.setAttribute('aria-selected', 'false'); };
+        tabBtn.onclick = () => { for (const pn of screen.querySelectorAll('.rpg-panel')) pn.hidden = pn !== page; for (const t of nav.querySelectorAll('.rpg-tab')) t.setAttribute('aria-selected', String(t === tabBtn)); refreshList(); };
+        nav.addEventListener('click', (e) => { if (e.target.closest('.rpg-tab') && e.target.closest('.rpg-tab') !== tabBtn) closeMine(); }, true);
+        new MutationObserver(() => { if (screen.hidden) closeMine(); }).observe(screen, { attributes: true, attributeFilter: ['hidden'] });
+        return;
+      }
+      const dp = document.getElementById('developerPane') ?? document.getElementById('developerPanel'); if (dp) dp.append(ui.dev);
+    };
     mount(); setInterval(() => { mount(); document.body.classList.toggle('woh-ship-on', devOn() && !!boarded && !!fleet?.has(boarded)); if (!devOn() && boarded) disembark(); }, 500);
     ui.spawn.append($('div', { className: 'sub', textContent: '船を出す(近くの海へ)' }), ...Object.entries({ 'pinta-1492': 'ピンタ1492 横帆', 'pinta-1492-lateen': 'ピンタ1492 ラテン', galleon: 'ガレオン', galley: 'ガレー' }).map(([d, n]) => $('button', { className: 'shipbtn', textContent: n, onclick: () => { spawn(d); } })));
     layoutShipUi(); setInterval(layoutShipUi, 400); addEventListener('resize', layoutShipUi);
