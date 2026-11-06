@@ -171,3 +171,4 @@ vessel.step(0.1, env);                  // env は {wind, current, depth, seabed
 
 **未確認**：NPC（周辺の住民の3D表示）と船が同じ場所にいる場面（海上にはNPCがいない）、集落や焚き火などの建築物のある海岸での接岸、本体の保存スロットを使った読み込み（`__geo.loadFrom`）、本体の睡眠・食事・持ち物の操作と船の関係。
 - 船UIの配置は本体HUD(v31)の要素を実測して避ける(layoutShipUi)。
+- 船団はゲーム本体の記録(IndexedDB)の player.ships に保存される(__wohPlayerSave を包み、__wohNative.pendingPlayer の書き込みを捕捉。ゲーム本体は無改造)。古い記録(shipsなし)を読むと船なし、記録を経ない世界は従来のlocalStorageにフォールバック。

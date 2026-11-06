@@ -15895,12 +15895,12 @@ const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_p
   'use strict';
   const DEG = Math.PI / 180, KEY_PREFIX = 'woh-ships-';
   const EVT = { captain_route_planned: '航路を決めた', captain_no_route: '', captain_tack: '帆の向きを替えた', captain_reef: '帆を絞った', captain_arriving: '目的地に近づいた', captain_arrived: '到着した', captain_replan: '浅瀬を避けて航路を引き直した', captain_cancelled: '航海をやめた', grounded: '座礁した', refloated: '離礁した', anchor_dropped: '錨を下ろした', anchor_raised: '錨を上げた', anchor_dragging: '錨が走っている', anchor_parted: '錨索が切れた' };
-  const dbg = {}; let pendingBoard = null, pendingSince = 0, lastPlaced = null, uiHidden = false, dwell = 0, renderError = null, ladderSig = '', pickMode = false, destMarker = null, routeLine = null, cp, nat, THREE_, S = null, fleet = null, env = null, ref = null, ctl = {}, meshes = new Map(), boarded = null, speedX = 1, lastT = null, saveAcc = 0, trimAcc = 0, lastSeed = null;
+  const dbg = {}; let savedShips = null, pendingBoard = null, pendingSince = 0, lastPlaced = null, uiHidden = false, dwell = 0, renderError = null, ladderSig = '', pickMode = false, destMarker = null, routeLine = null, cp, nat, THREE_, S = null, fleet = null, env = null, ref = null, ctl = {}, meshes = new Map(), boarded = null, speedX = 1, lastT = null, saveAcc = 0, trimAcc = 0, lastSeed = null;
   const REASON = { destination_too_shallow: 'そこは浅くて行けない', blocked: '回り込む道がない', search_limit: '遠すぎて航路を決められない' };
   const ui = {};
   const $ = (tag, props = {}, kids = []) => { const e = Object.assign(document.createElement(tag), props); for (const k of kids) e.append(k); return e; };
 
-  const boot = setInterval(() => { cp = globalThis.__chunkPreview; nat = globalThis.__wohNative; THREE_ = globalThis.THREE; if (cp && nat?.scene && THREE_ && typeof Ship !== 'undefined') { clearInterval(boot); nat.renderer.localClippingEnabled = true; buildHud(); patchRender(); patchWalker(); requestAnimationFrame(frame); } }, 500);
+  const boot = setInterval(() => { cp = globalThis.__chunkPreview; nat = globalThis.__wohNative; THREE_ = globalThis.THREE; if (cp && nat?.scene && THREE_ && typeof Ship !== 'undefined') { clearInterval(boot); nat.renderer.localClippingEnabled = true; installSaveBridge(); buildHud(); patchRender(); patchWalker(); requestAnimationFrame(frame); } }, 500);
 
   // Read-only handles for tests and debugging.
   globalThis.__wohShips = { dbg, get renderError() { return renderError && String(renderError.stack || renderError).slice(0, 400); }, mesh: (id) => meshes.get(id), Ship, get lastSeed() { return lastSeed; }, get fleet() { return fleet; }, get env() { return env; }, get ref() { return ref; }, get boarded() { return boarded; }, spawn: (d) => spawn(d), board: (id) => board(id), disembark: () => disembark() };
@@ -15934,6 +15934,21 @@ const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_p
 
   function toast(text) { ui.toast.textContent = text; ui.toast.style.opacity = 1; clearTimeout(toast.t); toast.t = setTimeout(() => { ui.toast.style.opacity = 0; }, 3500); }
 
+  /**
+   * Ships in the game's own save/load. The game already stores a player block (__wohPlayerSave) and hands it back as
+   * __wohNative.pendingPlayer on load, so the fleet travels with it: no edit of the game itself is needed.
+   * (Our own localStorage copy stays as a fallback for worlds that were never saved through the game's menu.)
+   */
+  function installSaveBridge() {
+    const orig = typeof window.__wohPlayerSave === 'function' ? window.__wohPlayerSave : null;
+    window.__wohPlayerSave = () => {
+      const p = orig ? orig() : null;
+      if (!p || !fleet || !ref) return p;
+      try { return { ...p, ships: { fleet: fleet.serialize(), ref, ctl, boarded, seed: lastSeed } }; } catch (_) { return p; }
+    };
+    let held = nat.pendingPlayer;
+    Object.defineProperty(nat, 'pendingPlayer', { configurable: true, enumerable: true, get: () => held, set: (v) => { held = v; if (v && typeof v === 'object') savedShips = { ships: v.ships ?? null }; } });
+  }
   // ---------- world / environment ----------
   function attach() {
     S = cp.state; fleet = null; env = null; ref = null; ctl = {}; boarded = null;
@@ -15945,7 +15960,9 @@ const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_p
     fleet = Ship.createFleet({ nearRadiusM: 1500, farRadiusM: 20000 });
     for (const [id, d] of Object.entries(Ship.sampleDesigns)) fleet.registerDesign(id, d);
     try {
-      const raw = localStorage.getItem(KEY_PREFIX + lastSeed), data = raw && JSON.parse(raw);
+      let data;
+      if (savedShips) { data = savedShips.ships && String(savedShips.ships.seed ?? lastSeed) === lastSeed ? savedShips.ships : null; savedShips = null; } // the game's own save was loaded: its ships (or none) win
+      else { const raw = localStorage.getItem(KEY_PREFIX + lastSeed); data = raw && JSON.parse(raw); }
       if (data?.fleet && data.ref) { const r = fleet.restore(data.fleet, { current: Ship.sampleDesigns }); ref = data.ref; ctl = data.ctl ?? {}; pendingBoard = data.boarded ?? null; pendingSince = performance.now(); makeEnv(); toast(`船 ${r.restored} 隻を読み込んだ` + (r.skipped.length ? `（古い船 ${r.skipped.length} 隻は読み込めず外した）` : '')); }
     } catch (e) { console.warn('ship restore failed:', e && e.message); fleet = Ship.createFleet(); for (const [id, d] of Object.entries(Ship.sampleDesigns)) fleet.registerDesign(id, d); ref = null; }
     refreshList();
