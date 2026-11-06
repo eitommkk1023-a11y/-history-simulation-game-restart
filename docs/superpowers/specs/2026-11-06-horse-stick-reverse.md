@@ -1,0 +1,11 @@
+# Horse prototype05: stick-only gait commands and reverse
+
+User requests stick-only gait changes plus reverse; explicitly chose one gait increase per forward gesture. Single-agent, prototype-only; do not integrate or write main. No new library/service/paid asset. Three rear gestures (not pull depth) for brake/brake/stop, four gaits, camera/foot separation, original appearance and earlier HTML remain.
+
+Forward gesture (center then forward, no repeated advance while held) selects walk→trot→canter→gallop. Forward gait remains latched on release. Remove accelerator UI and Shift binding. Forward edge uses 18% threshold and 12% re-arm margin. Existing left/right rein steering stays.
+
+Rear gestures while moving forward each count once, regardless of depth: from top gear 4→3→2→0. Holding or varying depth never repeats a gesture. Neutral re-arms it. Starting at lower gear stops sooner if the gear reaches zero. Forward gesture resets the brake sequence. The third brake latches full stopping effort even after release. Continuing to hold after stopping cannot automatically reverse. Only a fresh rear gesture made while physically stopped may enter reverse. Initial stopped horse may reverse on its first rear gesture. Reverse is slow (0.8m/s), held-only, release to stop. Forward while reversing stops first and needs a fresh gesture after stopping to start forward. Space, collision, blur, overview and dismount cancel both directions. These reversal choices are implementation defaults to avoid an abrupt direction jump.
+
+Controls pass actual signed speed into command state. Controller supports signed velocity with absolute-distance collision substeps, slope checks, no instant crossing through zero. Reverse poses use the existing walk cycle with phase progressing backward; actual skeletal mode remains walk so existing GPU clips stay valid. This is a prototype reverse motion, not a dedicated real-horse rein-back animation. No new clip or larger texture.
+
+Deliver standalone HTML05, update guide/status, verify forward gestures, held input, braking and reverse interlocks, rear collision/slope, signed phase/contact, release/space/lifecycle, touch with independent camera, foot movement and 3 landscape sizes. Inspect rear movement and confirm all shaders draw. Save prototype branch only.

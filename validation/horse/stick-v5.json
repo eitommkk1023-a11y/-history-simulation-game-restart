@@ -1,0 +1,247 @@
+{
+  "checks": [
+    "no accelerator button or alternate Shift gait action",
+    "Shift does not change gait",
+    "forward touch selects and holds walk",
+    "forward touch selects and holds trot",
+    "forward touch selects and holds canter",
+    "forward touch selects and holds gallop",
+    "neutral retains forward gallop",
+    "three rear gestures brake, brake, stop independent of depth",
+    "holding third brake never automatically reverses",
+    "fresh rear touch reverses slowly with unchanged facing",
+    "reverse walks with backward phase and a reverse HUD label",
+    "reverse stance feet stay planted on straight flat ground",
+    "reverse and camera use independent fingers",
+    "releasing rear stops reverse without forward drift",
+    "forward during reverse brakes first and does not automatically depart",
+    "fresh forward after stopping starts walk",
+    "reverse obstacle cancels command without tunneling or held restart",
+    "view switch cancels captured reverse gesture until a new touch",
+    "reverse dismount waits for stop",
+    "reverse dismount places rider safely",
+    "foot screen-relative left/right survives",
+    "hidden info retains stick, riding state and mount control",
+    "landscape 667x375 fits",
+    "landscape 844x390 fits",
+    "landscape 1180x820 fits",
+    "overview and focus loss clear both directions",
+    "rapid forward strokes between physics ticks are not lost",
+    "W press/release selects gait 1",
+    "W press/release selects gait 2",
+    "S reverses at rest",
+    "S release stops reverse",
+    "no page/shader errors"
+  ],
+  "gestures": [
+    {
+      "gear": 1,
+      "mode": "walk",
+      "held": 1,
+      "released": 1
+    },
+    {
+      "gear": 2,
+      "mode": "trot",
+      "held": 2,
+      "released": 2
+    },
+    {
+      "gear": 3,
+      "mode": "canter",
+      "held": 3,
+      "released": 3
+    },
+    {
+      "gear": 4,
+      "mode": "gallop",
+      "held": 4,
+      "released": 4
+    }
+  ],
+  "cruise": {
+    "speed": 19.266536612606917,
+    "gear": 4
+  },
+  "brakes": [
+    {
+      "y": -0.3,
+      "expected": 3,
+      "selected": 3,
+      "held": 3
+    },
+    {
+      "y": -0.9,
+      "expected": 2,
+      "selected": 2,
+      "held": 2
+    },
+    {
+      "y": -0.25,
+      "expected": 0,
+      "selected": 0,
+      "held": 0
+    }
+  ],
+  "reverse": {
+    "gear": -1,
+    "speed": -0.8,
+    "z": -42.42562347372968,
+    "yaw": 0,
+    "phase": 37.770142359231784,
+    "mode": "walk",
+    "label": "後退（保持中）"
+  },
+  "stance": {
+    "max": 7.105427357601002e-15,
+    "n": 73
+  },
+  "collision": {
+    "detected": true,
+    "z": -300.4903935133664,
+    "heldStopped": true
+  },
+  "lifecycle": {
+    "overview": true,
+    "blur": true
+  },
+  "foot": [
+    1.5999999999999976,
+    1.5999999999999976,
+    1.5999999999985446,
+    1.5999999999985446,
+    1.599999999999998,
+    1.599999999999998,
+    1.5999999999985446,
+    1.5999999999985446
+  ],
+  "layouts": [
+    {
+      "width": 667,
+      "height": 375,
+      "rects": {
+        "top": {
+          "x": 12,
+          "y": 7,
+          "right": 655,
+          "bottom": 43
+        },
+        "card": {
+          "x": 12,
+          "y": 55,
+          "right": 204,
+          "bottom": 185
+        },
+        "stick": {
+          "x": 26,
+          "y": 255,
+          "right": 134,
+          "bottom": 363
+        },
+        "driveHint": {
+          "x": 463,
+          "y": 312,
+          "right": 573,
+          "bottom": 361
+        },
+        "mount": {
+          "x": 583,
+          "y": 297,
+          "right": 647,
+          "bottom": 361
+        },
+        "rideMode": {
+          "x": 473,
+          "y": 254,
+          "right": 563,
+          "bottom": 280
+        }
+      }
+    },
+    {
+      "width": 844,
+      "height": 390,
+      "rects": {
+        "top": {
+          "x": 12,
+          "y": 7,
+          "right": 832,
+          "bottom": 43
+        },
+        "card": {
+          "x": 12,
+          "y": 55,
+          "right": 204,
+          "bottom": 185
+        },
+        "stick": {
+          "x": 26,
+          "y": 270,
+          "right": 134,
+          "bottom": 378
+        },
+        "driveHint": {
+          "x": 640,
+          "y": 327,
+          "right": 750,
+          "bottom": 376
+        },
+        "mount": {
+          "x": 760,
+          "y": 312,
+          "right": 824,
+          "bottom": 376
+        },
+        "rideMode": {
+          "x": 650,
+          "y": 269,
+          "right": 740,
+          "bottom": 295
+        }
+      }
+    },
+    {
+      "width": 1180,
+      "height": 820,
+      "rects": {
+        "top": {
+          "x": 12,
+          "y": 10,
+          "right": 1168,
+          "bottom": 52
+        },
+        "card": {
+          "x": 12,
+          "y": 65,
+          "right": 234,
+          "bottom": 216.78125
+        },
+        "stick": {
+          "x": 26,
+          "y": 678,
+          "right": 148,
+          "bottom": 800
+        },
+        "driveHint": {
+          "x": 966,
+          "y": 749,
+          "right": 1076,
+          "bottom": 798
+        },
+        "mount": {
+          "x": 1088,
+          "y": 726,
+          "right": 1160,
+          "bottom": 798
+        },
+        "rideMode": {
+          "x": 976,
+          "y": 691,
+          "right": 1066,
+          "bottom": 717
+        }
+      }
+    }
+  ],
+  "errors": []
+}
