@@ -518,6 +518,8 @@
     { id: 'cloth',  text: '毛皮の衣か草の外套を作る',   need: 1,  have: st => (st.total.fur || 0) + (st.total.cloak || 0) },
     { id: 'skin',   text: '水を汲んで持ち歩く',        need: 1,  have: st => (st.n || {}).fill || 0 },
   ];
+  // 全目標の一覧（メニューの「ミッション」用）。id・text・need・have（need で頭打ち）・done
+  function goalList(st) { return GOALS.map(g => { const h = Math.min(g.need, g.have(st)); return { id: g.id, text: g.text, need: g.need, have: h, done: h >= g.need }; }); }
   // 順番に、最初の未達成の目標を返す。done＝達成した数、all＝全部達成
   function goals(st) {
     let done = 0;
@@ -646,6 +648,6 @@
     return function () { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   }
 
-  const api = { clothOf, clothFactor, CLOTH, ROT, rot, takeRotted, dry, DRY, carryCap, fillWater, drinkCarried, injured, hurt, treat, bestWeapon, applyHunt, WEAPON, HUNT_RISK, dyingLeft, takeDeath, firstAid, inherit, DYING_DAYS, RECOVER_HP, setEnv, rest, staminaCap, staminaStep, jumpCost, drink, vitalsInfo, HP_MAX, SP_MAX, WATER_MAX, setCommons, atCommons, ownFireActive, standingInfo, gainStanding, giveToGroup, ration, share, learn, talk, nearCamp, KCAL_PER_KG, goals, GOALS, slotsOf, HOME_NEED, HOME_DAYS, HOME_REACH, STORE_SLOTS, homeStatus, nearHome, homeNeedText, buildHome, demolishHome, storePut, storeTake, storeList, storeRoom, sleep, SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
+  const api = { goalList, clothOf, clothFactor, CLOTH, ROT, rot, takeRotted, dry, DRY, carryCap, fillWater, drinkCarried, injured, hurt, treat, bestWeapon, applyHunt, WEAPON, HUNT_RISK, dyingLeft, takeDeath, firstAid, inherit, DYING_DAYS, RECOVER_HP, setEnv, rest, staminaCap, staminaStep, jumpCost, drink, vitalsInfo, HP_MAX, SP_MAX, WATER_MAX, setCommons, atCommons, ownFireActive, standingInfo, gainStanding, giveToGroup, ration, share, learn, talk, nearCamp, KCAL_PER_KG, goals, GOALS, slotsOf, HOME_NEED, HOME_DAYS, HOME_REACH, STORE_SLOTS, homeStatus, nearHome, homeNeedText, buildHome, demolishHome, storePut, storeTake, storeList, storeRoom, sleep, SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohForage = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

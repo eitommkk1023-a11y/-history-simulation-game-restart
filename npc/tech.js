@@ -40,6 +40,7 @@
     { id: 'herd', ax: 'food', jp: '牧畜', req: [], need: p => rd(p, 'herd'), adopt: c => 0.5 + 0.2 * c[CULT.PATRI], v: 'herd' },
     // 素材
     { id: 'pottery', ax: 'material', jp: '土器', req: [], need: p => p.clay > 0.15 ? 1 : 0, adopt: c => 0.9 },
+    { id: 'kiln', ax: 'material', jp: '高温焼成', req: ['pottery', 'chiefdom'], minPop: 300, need: p => p.clay > 0.3 ? 1 : 0, adopt: c => 0.3 + 0.2 * c[CULT.EXOG] },   // 窯。高度な技術で、この時代には現れないこともある
     { id: 'copper', ax: 'material', jp: '銅', req: [], need: p => rd(p, 'copper'), adopt: c => 0.55 + 0.2 * c[CULT.EXOG] - 0.15 * c[CULT.ELDER] },
     { id: 'bronze', ax: 'material', jp: '青銅', req: ['copper', 'pottery'], need: p => rd(p, 'tin'), adopt: c => 0.45 + 0.25 * c[CULT.EXOG] - 0.1 * c[CULT.ELDER], v: 'cast' },
     { id: 'iron', ax: 'material', jp: '鉄', req: ['pottery'], need: p => both(rd(p, 'iron'), Math.max(rd(p, 'coal'), p.wood > 0.45 ? 1 : 0)), adopt: c => 0.4 + 0.25 * c[CULT.EXOG] - 0.1 * c[CULT.ELDER], v: 'cast' },

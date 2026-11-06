@@ -7,6 +7,7 @@
 (function (root) {
 const Npc = typeof require !== 'undefined' ? require('./npc-core.js') : root.WohNpc;
 const Arch = typeof require !== 'undefined' ? require('./arch-gen.js') : root.WohArch, Settle = typeof require !== 'undefined' ? require('./settle-layout.js') : root.WohSettle;
+const Nation = typeof require !== 'undefined' ? require('./nation.js') : root.WohNation, Tech = typeof require !== 'undefined' ? require('./tech.js') : root.WohTech;
 const { Population, NJOB, NSKILL, SI, mix, SOC_K } = Npc, NONE = 0xffffffff, ALIVE = 0x7fffffff;
 
 // ---------------------------------------------------------------- 設定値
@@ -54,6 +55,17 @@ const PE = {
   HUNT_TIME: 'dawn',                              // 狩りの時間帯（鹿は薄明薄暮性）［仮］
   // 蓄え
   SPOIL: [0.08, 0.14],                            // 1か月に腐る割合＝a＋b×(気温/25℃)［仮］
+  // 農耕・牧畜（技術の層 nation.js で、民族が「栽培」「牧畜」を持つと使える）［仮］
+  FARM_RATE: 12,                                  // 熟練した農民1人・1日の最大収穫（kg。成長期の月のみ。肥沃な土地・技術で増える）
+  FARM_LEARN_YEARS: 80,                           // 農耕を始めて、技能が最大になるまでの年数
+  FARM_VALUE: 1, HERD_VALUE: 1.4,                 // 働き手の割り振りで、農産物・畜産物 1kg を採集物の何kg分と見るか
+  HERD_KG: 5, HERD_PER: 20, HERD_GROW: 0.012,     // 家畜1頭・1か月の食料（乳・肉。kg）／牧人1人が世話できる頭数／1か月の増え方
+  HERD_CAP: [10, 400],                            // 牧草地で支えられる頭数＝a＋b×草地の割合
+  FARM_STORE: 1.2,                                // 農産物の割合が高いほど、蓄えられる量（倍）
+  // 蓄えは3種類：穀物・根・木の実（長持ち）／生鮮（肉・魚・貝・果実・乳。すぐ傷む）／干物・燻製。1か月の傷み＝a＋b×(気温/25℃)［仮。個人の持ち物の表と同じ考え方］
+  SPOIL_DUR: [0.015, 0.02], SPOIL_FRESH: [0.15, 0.15], SPOIL_DRIED: [0.006, 0.006],
+  GATHER_DURABLE: 0.55,                           // 採集で得た食料のうち、長持ちする（根・木の実・草の実）割合
+  RACK_KG: 200, RACK_YIELD: 0.8,                  // 干し棚1つが、1か月に干物へ変える生鮮の量（kg）と、干物になる割合
   STORE_MONTHS: 4,                                // 蓄えられる上限（必要量の何か月分。移動生活なので少ない）［仮］
   // ---- 人口：年齢別の死亡（年あたりの基本ハザード）［研究：Gurven & Kaplan 2007 の狩猟採集民の生命表に近づけた］
   // 乳児死亡 約20%、15歳までの生存 約55〜60%、40歳から死亡率が約 6.5%/年 ずつ増える（ゴンペルツ）
@@ -417,7 +429,8 @@ function peLeaders(people, ev, rel, force, yearly, silent) {
 }
 // ---------------------------------------------------------------- 提案：集団の方針・移住をプレイヤーの人物が提案する
 // 集団の成人（最大30人を抽出）が、それぞれ賛成か反対かを判断する。必要な賛成：首長の提案は40%、一般の人は50%、首長が反対しているときは+10ポイント
-const PROPOSALS = [['hunt', '方針：狩猟を優先'], ['gather', '方針：採集を優先'], ['fish', '方針：漁を優先'], ['auto', '方針：自動に戻す'], ['migrate', '移住：今いる場所へ']];
+const PROPOSALS = [['hunt', '方針：狩猟を優先'], ['gather', '方針：採集を優先'], ['fish', '方針：漁を優先'], ['farm', '方針：農耕を優先'], ['herd', '方針：牧畜を優先'], ['auto', '方針：自動に戻す'], ['share0', '分配：各世帯で持つ'], ['share25', '分配：収穫の25%を分ける'], ['share50', '分配：収穫の半分を分ける'], ['migrate', '移住：今いる場所へ']];
+const SHARE_OF = { share0: 0, share25: 0.25, share50: 0.5 };
 const PROP_NEED = { leader: 0.4, member: 0.5, leaderOppose: 0.1 };
 const PROP_VOTERS = 30, PROP_COOLDOWN = 60;
 function peVoterScore(people, v, proposer, kind, g, dist) {
@@ -432,8 +445,9 @@ function peVoterScore(people, v, proposer, kind, g, dist) {
     sc += 38 * Math.min(1, g.hunger / 4) - (g.hunger === 0 ? 22 : 0) - cautious * 1.2 + curious - dist / 6;
     if (P.house[v] !== NONE && P.house[v] === P.house[proposer]) sc += 4;
   } else {
-    const focus = kind === 'gather' ? 1 : kind === 'hunt' ? 2 : kind === 'fish' ? 3 : 0;
-    if (focus) sc += jb === focus ? 35 : (jb >= 1 && jb <= 3 ? -10 : 0);
+    const focus = kind === 'gather' ? 1 : kind === 'hunt' ? 2 : kind === 'fish' ? 3 : kind === 'farm' ? 9 : kind === 'herd' ? 10 : 0;
+    if (focus) sc += jb === focus ? 35 : ((jb >= 1 && jb <= 3) || jb === 9 || jb === 10 ? -10 : 0);
+    if (kind in SHARE_OF) { const lv = SHARE_OF[kind], cur = g.share || 0; sc += (lv > cur ? 1 : lv < cur ? -1 : 0) * ((g.fed < 0.9 || g.hunger > 0 ? 14 : -4) + (jb >= 1 && jb <= 3 || jb === 9 ? -6 : 4)); }
     sc += (g.hunger >= 2 ? 10 : 0) - cautious;
   }
   return sc + (rnd() - 0.5) * 16;
@@ -453,7 +467,11 @@ function peopleProposal(people, kind, ctx) {
     target = peDryNear(S, ctx.world, ctx.world.riverPts[k * 3], ctx.world.riverPts[k * 3 + 1]);
     if (peSeaBetween(S, ctx.world, g.x, g.y, target.x, target.y)) return { ok: false, reason: 'sea' };
     dist = Math.hypot(target.x - g.x, target.y - g.y); if (dist < 6) return { ok: false, reason: 'near' };
-  } else if (g.policy === kind) return { ok: false, reason: 'same' };
+  } else if (kind in SHARE_OF) { if ((g.share || 0) === SHARE_OF[kind]) return { ok: false, reason: 'same' }; }
+  else {
+    if ((kind === 'farm' || kind === 'herd') && !peTechOf(people, g.ethId)[kind]) return { ok: false, reason: 'noTech' };
+    if (g.policy === kind) return { ok: false, reason: 'same' };
+  }
   // 投票（成人から最大30人）
   const L = P.members[g.id], adults = []; for (const v of L) if (P.death[v] === ALIVE && P.group[v] === g.id && v !== me && P.age(v) >= P.adultAge(v)) adults.push(v);
   const voters = []; const pool = adults.slice(); for (let i = 0; i < PROP_VOTERS && pool.length; i++) { const k = Math.floor(P.random() * pool.length); voters.push(pool[k]); pool[k] = pool[pool.length - 1]; pool.pop(); }
@@ -463,7 +481,7 @@ function peopleProposal(people, kind, ctx) {
   let leaderOppose = false; if (!isLeader && g.leader >= 0 && P.death[g.leader] === ALIVE) leaderOppose = peVoterScore(people, g.leader, me, kind, g, dist) <= 0;
   const need = isLeader ? PROP_NEED.leader : PROP_NEED.member + (leaderOppose ? PROP_NEED.leaderOppose : 0), passed = support >= need;
   pl.proposalReady = P.day + PROP_COOLDOWN * (passed ? 1 : 2);
-  if (passed) { if (kind === 'migrate') { g.moveTo = { x: target.x, y: target.y, by: 'player' }; } else g.policy = kind; }
+  if (passed) { if (kind === 'migrate') { g.moveTo = { x: target.x, y: target.y, by: 'player' }; } else if (kind in SHARE_OF) g.share = SHARE_OF[kind]; else g.policy = kind; }
   return { ok: true, passed, kind, support, need, voters: voters.length, isLeader, leaderOppose, group: g.id, eth: g.ethId, x: g.x, y: g.y };
 }
 // ---------------------------------------------------------------- プレイヤーの人物と、文化ごとの継承
@@ -657,7 +675,8 @@ function peopleHouseholds(people, gid) {
 // 暮らしの割合（採集・狩り・漁・道具づくり）：集落に何が必要かを決める。農耕・牧畜・交易は、条件のある集団のときだけ（まだ実装されていない生業の接続口）
 function peopleEconomy(people, gid) {
   const P = people.npc, pop = Math.max(1, (people.groups[gid - 1] || {}).pop || 1), c = (j) => P.gcount[gid * NJOB + j] / pop, fl = P.gflags[gid];
-  return { gather: c(1), hunt: c(2), fish: c(3), tool: c(4), farm: !!(fl & 1) && c(9) > 0, herd: !!(fl & 2) && c(10) > 0, trade: !!(fl & 4) && c(11) > 0 };
+  const g = people.groups[gid - 1] || {};
+  return { gather: c(1), hunt: c(2), fish: c(3), tool: c(4), farm: !!(fl & 1) && c(9) > 0, herd: !!(fl & 2) && c(10) > 0, trade: !!(fl & 4) && c(11) > 0, farmLv: g.fieldLv || 0, herdN: Math.round(g.herdN || 0) };
 }
 // 建築伝統の元になる民族：分裂した民族は親の、融合した民族は主な親の系統を受け継ぐ
 function peRootEth(people, id) { let e = people.ethnicities[id - 1], n = 0; while (e && e.parents && e.parents.length && n++ < 50) e = people.ethnicities[e.parents[0] - 1]; return e ? e.id : id; }
@@ -783,6 +802,7 @@ function peopleGenerate(seed, W) {
   peNeighbors(people);
   for (const g of people.groups) peSettleHistInit(people, g, sd);   // 集落の歴史（成立年代・衰退・防衛・建築技術）。開始前の歴史は一日ずつ計算せず、成立年代から決める
   peopleCreatePlayer(people, sd);
+  peNationEnsure(people, W.world);
   return people;
 }
 function peNewGroup(people, ethId, x, y) {
@@ -816,7 +836,7 @@ function peGroupPlan(people, g, ctx, S, sc, workers, knowG, knowF, knowH) {
   const world = ctx.world, cc = S.cc, n = S.n, month = ctx.month, res = ctx.res || world.resources, env = sc.huntCtx.env;
   const travel = g.moveTo ? PE.MOVE_FOOD : 1;
   const nc = peTerritory(S, g), out = S.tmp5, PW = PE.PLANT_W, rcell = res.cell;
-  let availG = 0, availF = 0; const sp = sc.species.map(x => Object.assign({ bestCell: -1, bestD: 0 }, x));
+  let availG = 0, availF = 0, grassSum = 0, tsSum = 0; const sp = sc.species.map(x => Object.assign({ bestCell: -1, bestD: 0 }, x));
   for (let i = 0; i < nc; i++) {
     const c = PE_TC[i];
     if (S.stamp[c] !== S.tick) {
@@ -828,6 +848,7 @@ function peGroupPlan(people, g, ctx, S, sc, workers, knowG, knowF, knowH) {
     }
     availG += S.plantLeft[c] * PE_TS[i];
     availF += S.fishLeft[c] * PE_TS[i];
+    grassSum += env.grass[c] / 255 * PE_TS[i]; tsSum += PE_TS[i];
     for (const x of sp) if (x.dens[c] > x.bestD) { x.bestD = x.dens[c]; x.bestCell = c; }
   }
   const kH = PE.HUNT_SKILL[0] + PE.HUNT_SKILL[1] * knowH, days = PE.WORK_DAYS;
@@ -848,25 +869,34 @@ function peGroupPlan(people, g, ctx, S, sc, workers, knowG, knowF, knowH) {
   const bestSpecies = (h) => { let b = null, bv = 0; for (const x of sp) { const v = x.yield(h); if (v > bv) { bv = v; b = x; } } return b; };
   const yH = (h) => { const b = bestSpecies(h); return b ? b.yield(h) : 0; };
   const yG = (h) => sat(h * days * rateG, availG), yF = (h) => sat(h * days * rateF, availF);
-  const L = { hunt: 0, gather: 0, fish: 0 }, fn = { hunt: (h) => yH(h) * PE.MEAT_VALUE, gather: yG, fish: yF };
+  // 農耕・牧畜：民族が技術を持つときだけ。農耕は成長期（気温）に収穫が出る。割り振りは年平均で見て、実際の収穫は月ごと
+  const tech = peTechOf(people, g.ethId), fq = peFarmEnv(S, world, ctx, g, month, tsSum > 0 ? grassSum / tsSum : 0, tech.farmSince);
+  const fMult = tech.mult * (1 + 0.12 * peFacil(g).field);
+  const yFarm = tech.farm ? (h) => h * days * PE.FARM_RATE * fq.know * fq.q * fq.sf * fMult : () => 0;
+  const farmAvg = tech.farm ? (h) => h * days * PE.FARM_RATE * fq.know * fq.q * fq.sfAvg * fMult : () => 0;
+  const herdN = tech.herd ? (g.herdN || 0) : 0, herdQ = 0.5 + 0.5 * peClamp01(fq.grass * 2.5) * (fq.T < 0 ? 0.6 : 1);
+  const yHerd = (h) => herdN > 0 ? Math.min(herdN, PE.HERD_PER * h + 3) * PE.HERD_KG * herdQ : 0;
+  const L = { hunt: 0, gather: 0, fish: 0, farm: 0, herd: 0 }, fn = { hunt: (h) => yH(h) * PE.MEAT_VALUE, gather: yG, fish: yF };
+  if (tech.farm) fn.farm = (h) => farmAvg(h) * PE.FARM_VALUE;
+  if (herdN > 0) fn.herd = (h) => yHerd(h) * PE.HERD_VALUE;
   let rest = workers;
   if (g.policy && g.policy !== 'auto' && L[g.policy] !== undefined) { L[g.policy] = workers * PE.POLICY_SHARE; rest -= L[g.policy]; }
   const chunk = workers / PE.LABOR_CHUNKS;
   while (rest > 1e-9 && chunk > 0) {
     const d = Math.min(chunk, rest);
     let bk = 'gather', bv = -1;
-    for (const k of ['gather', 'fish', 'hunt']) { const v = fn[k](L[k] + d) - fn[k](L[k]); if (v > bv) { bv = v; bk = k; } }
+    for (const k in fn) { const v = fn[k](L[k] + d) - fn[k](L[k]); if (v > bv) { bv = v; bk = k; } }
     L[bk] += d; rest -= d;
   }
-  return { L, yH, yG, yF, availG, availF, nc, kH, bestSpecies, travel };
+  return { L, yH, yG, yF, yFarm, yHerd, tech, fq, herdN, availG, availF, nc, kH, bestSpecies, travel };
 }
 // 仕事の必要度：食料を得る仕事は、最適な割り振りに合わせる（残りの 15% は道具・建築・運搬・治療・警備）
 function peSetDemand(people, g, pl) {
-  const P = people.npc, d = P.gdemand.subarray(g.id * NJOB, g.id * NJOB + NJOB), L = pl.L, t = (L.hunt + L.gather + L.fish) || 1;
+  const P = people.npc, d = P.gdemand.subarray(g.id * NJOB, g.id * NJOB + NJOB), L = pl.L, t = (L.hunt + L.gather + L.fish + L.farm + L.herd) || 1;
   const fl = P.gflags[g.id];
   d.fill(0); d[1] = 0.85 * L.gather / t; d[2] = 0.85 * L.hunt / t; d[3] = 0.85 * L.fish / t;
   d[4] = .04; d[5] = .03; d[6] = .02; d[7] = .03; d[8] = .03;
-  d[9] = (fl & 1) ? .2 : 0; d[10] = (fl & 2) ? .1 : 0; d[11] = (fl & 4) ? .05 : 0;
+  d[9] = (fl & 1) ? 0.85 * L.farm / t : 0; d[10] = (fl & 2) ? 0.85 * L.herd / t : 0; d[11] = (fl & 4) ? .05 : 0;
 }
 
 // ---------------------------------------------------------------- プレイヤーの移住先の指定（UI から）
@@ -892,6 +922,7 @@ function peopleMonthly(people, ctx) {
   const rng = ctx.rng || peRng(people.rngState);
   const ev = [], month = ctx.month;
   if (ctx.day !== undefined) P.day = ctx.day;
+  peNationEnsure(people, world); peTechFlags(people); ctx.nationYear = people.nation ? people.nation.year : 0;
   peApplyActivity(people);
   { const pl = people.player; if (pl && pl.id >= 0 && P.death[pl.id] === ALIVE) people.playerEth = P.eth[pl.id] || P.groupEth[P.group[pl.id]]; }   // プレイヤーの民族は、人物の主な民族に従う
   S.tick++;
@@ -909,7 +940,7 @@ function peopleMonthly(people, ctx) {
   peopleSuccession(people, ev);   // プレイヤーの人物が亡くなっていれば、その文化の決まりで継承
   peApplyActivity(people);
   peLeaders(people, ev, rel, false, month === 0, false);   // 首長：いなくなった集団は決め直し、年に1回は見直す
-  if (month === 6) peEthYear(people, ev, rel);   // 民族の形成・分裂・融合（年に1回）
+  if (month === 6) { peEthYear(people, ev, rel); peNationYear(people, ev, rel); }   // 民族の形成・分裂・融合と、技術の広がり（年に1回）
   // 分裂
   for (const g of alive) {
     if (!g.alive || g.moveTo) continue;
@@ -1021,6 +1052,156 @@ function peTravel(people, g, S, world, ev, rel) {
   g.x = nx; g.y = ny;
 }
 
+// ---------------------------------------------------------------- 農耕・牧畜（技術の層との接続）
+// 技術の層：民族ごとの技術（nation.js）。最初の月に作り、年に1度進める。新しい民族は親の技術を受け継ぐ
+function peNationSites(people) {
+  const m = new Map();
+  for (const g of people.groups) { if (!g.alive || !g.cult) continue; let o = m.get(g.ethId); if (!o) m.set(g.ethId, o = { x: 0, y: 0, pop: 0, cult: new Array(CULT_DIMS).fill(0) }); const w = Math.max(1, g.pop); o.x += g.x * w; o.y += g.y * w; o.pop += g.pop; for (let k = 0; k < CULT_DIMS; k++) o.cult[k] += g.cult[k] * w; }
+  for (const o of m.values()) { const w = Math.max(1, o.pop); o.x /= w; o.y /= w; for (let k = 0; k < CULT_DIMS; k++) o.cult[k] /= w; }
+  return m;
+}
+function peNationEnsure(people, world) {
+  if (people.nation || !Nation) return;
+  if (people.nationSave) { try { people.nation = Nation.load(world, people.nationSave); } catch (e) { people.nation = null; } people.nationSave = null; if (people.nation) return; }
+  const sites = peNationSites(people), eths = [];
+  for (const e of people.ethnicities) { const o = sites.get(e.id); if (e.alive && o) eths.push({ id: e.id, x: o.x, y: o.y, pop: o.pop, cult: o.cult }); }
+  people.nation = Nation.create(world, people.npc.seed, eths, { capacity: eths.length * 3 + 16 });
+}
+function peNationYear(people, ev, rel) {
+  const S = people.nation; if (!S) return;
+  const sites = peNationSites(people);
+  for (const e of people.ethnicities) { const o = sites.get(e.id); if (!e.alive || !o) continue; if (!S.idx.has(e.id)) Nation.spawn(S, { id: e.id, x: o.x, y: o.y, pop: o.pop, cult: o.cult }, e.parent); const i = S.idx.get(e.id); S.pop[i] = Math.max(10, o.pop); S.cult[i] = o.cult; }
+  const speed = people.ethSpeed || 1, steps = Math.max(1, Math.round(speed)), before = S.log.length;
+  for (let k = 0; k < steps; k++) Nation.step(S);
+  for (let k = before; k < S.log.length; k++) {   // 新しい技術が生まれた：その民族が世界で初めて、の出来事
+    const l = S.log[k], e = S.eths[l.eth], o = sites.get(e.id), mine = people.playerEth === e.id;
+    if (!o) continue; ev.push({ type: 'techFirst', imp: mine ? 2 : 1, relevant: mine || rel(e.id), eth: e.id, node: l.node, x: Math.round(o.x), y: Math.round(o.y) });
+  }
+}
+// 民族が持っている農耕・牧畜の技術と、収穫への効き（乗数）
+function peTechOf(people, ethId) {
+  const S = people.nation, o = { farm: false, herd: false, kiln: false, mult: 1, farmSince: -1 }; if (!S) return o;
+  const h = (n) => Nation.hasNode(S, ethId, n);
+  o.farm = h('cultivate'); o.herd = h('herd'); o.kiln = h('kiln');
+  if (o.farm) { o.farmSince = Nation.sinceNode(S, ethId, 'cultivate'); o.mult = 1 + (h('irrigate') ? 0.35 : 0) + (h('rotation') ? 0.2 : 0) + (h('draft') ? 0.15 : 0) + (h('iron') ? 0.1 : 0); }
+  return o;
+}
+// 農耕の環境：成長期の係数（月・年平均）、土地の肥沃さ、技能（始めてからの年数）、草地の割合
+function peFarmEnv(S, world, ctx, g, month, grass, farmSince) {
+  const cc = S.cc, n = S.n, home = peCellOf(S, g.x, g.y), tm = (m) => cc.tMean[m * n + home] / 10 + (ctx.tOff || 0), sfOf = (T) => peClamp01((T - 4) / 10);
+  const T = tm(month); let avg = 0; for (let m = 0; m < 12; m++) avg += sfOf(tm(m)); avg /= 12;
+  const gr = world.resources && world.resources.grid; let f = 0.25;
+  if (gr) { const cx = Math.max(0, Math.min(gr.w - 1, Math.floor(g.x / gr.step))), cy = Math.max(0, Math.min(gr.h - 1, Math.floor(g.y / gr.step))); let s = 0, c = 0; for (let j = Math.max(0, cy - 1); j <= Math.min(gr.h - 1, cy + 1); j++) for (let i = Math.max(0, cx - 1); i <= Math.min(gr.w - 1, cx + 1); i++) { s += gr.fertility[j * gr.w + i]; c++; } f = c ? s / c / 255 : 0.25; }
+  const yrs = farmSince >= 0 ? Math.max(0, (ctx.nationYear || 0) - farmSince) : 0;
+  return { sf: sfOf(T), sfAvg: avg, q: 0.3 + 0.9 * peClamp01(f / 0.5), know: 0.35 + 0.65 * peClamp01(yrs / PE.FARM_LEARN_YEARS), grass: grass || 0, T };
+}
+// 畑の季節（見た目用）：0耕土 1芽 2伸長 3実り 4刈り跡。成長期（気温）が来ると芽吹き、積もった成長で伸びて実り、成長期が終わると刈り跡になる
+function peCropCycle(g, sf, farm) {
+  if (!farm) { g.cropStage = undefined; return; }
+  if (sf < 0.05) {
+    if (g.cropGrow > 0) { g.cropStage = 4; g.cropProg = 0; g.cropGrow = 0; g.cropOff = 0; }
+    else { g.cropOff = (g.cropOff || 0) + 1; if (g.cropOff >= 2) g.cropStage = 0; else if (g.cropStage === undefined) g.cropStage = 0; g.cropProg = Math.min(1, (g.cropOff || 0) / 4); }
+  } else {
+    g.cropGrow = (g.cropGrow || 0) + sf; const x = g.cropGrow;
+    if (x < 1) { g.cropStage = 1; g.cropProg = x; } else if (x < 3) { g.cropStage = 2; g.cropProg = (x - 1) / 2; } else { g.cropStage = 3; g.cropProg = Math.min(1, (x - 3) / 2); }
+  }
+}
+// 家畜：牧草地で支えられる頭数に向かって増える。技術を得た最初の月に、小さな群れを持つ
+function peHerdStep(g, pl, pop) {
+  const fq = pl.fq, cap = (PE.HERD_CAP[0] + PE.HERD_CAP[1] * peClamp01(fq.grass * 1.5)) * (1 + 0.4 * peFacil(g).pen);
+  if (!g.herdN) g.herdN = Math.max(6, Math.round(pop * 0.12));
+  g.herdN += g.herdN * PE.HERD_GROW * (1 - g.herdN / cap) * (fq.T < -5 ? 0.3 : 1);
+  if (g.herdN > cap * 1.05) g.herdN = cap * 1.05;
+}
+// 集団の「村の成長」の見立て（画面用）：段階・農民・牧人・家畜・農産物の割合・蓄え
+const GROWTH_LABELS = ['野営地', '半定住', '村', '大きな村'];
+function peopleGrowth(people, gid) {
+  const g = people.groups[gid - 1]; if (!g) return null;
+  const P = people.npc, tech = peTechOf(people, g.ethId), settle = g.settle || 0, pop = g.pop || 0;
+  const stage = settle === 2 && pop >= 120 && (g.farmFrac || 0) > 0.3 ? 3 : settle;
+  const cnt = (j) => P.gcount[gid * NJOB + j];
+  const need = g.lastFood ? g.lastFood.need : 0;
+  return { stage, label: GROWTH_LABELS[stage], pop, farm: tech.farm, herd: tech.herd, farmers: cnt(9), herders: cnt(10), herdN: Math.round(g.herdN || 0), farmFrac: g.farmFrac || 0, share: g.share || 0, policy: g.policy || 'auto', facil: Object.assign({}, peFacil(g)), avail: peFacilAvail(people, g), stock: { dur: Math.max(0, g.food - (g.fresh || 0) - (g.dried || 0)), fresh: g.fresh || 0, dried: g.dried || 0 }, build: g.build ? { kind: g.build.kind, left: g.build.left } : null, storeDays: need > 0 ? Math.round(30 * g.food / need) : 0,
+    income: g.lastFood ? { hunt: g.lastFood.hunt, gather: g.lastFood.gather, fish: g.lastFood.fish, farm: g.lastFood.farm || 0, herd: g.lastFood.herd || 0, need } : null };
+}
+// ---------------------------------------------------------------- 村の技術・技能の集計（表示用。新しい数値や制度は作らず、いま管理しているものを集めて見せる）
+// 管理しているもの：①技術（民族が持つ。その民族の人は「知っている」）②技能（個人ごとの 0〜255。仕事ごとに11種。使うほど伸びる）。
+// 「熟練者」＝その技術に結びつく仕事の技能が TECH_PRACTICE_MIN 以上の人。結びつきは下の表（表示用の対応）。技能と結びつかない技術（組織・記録の一部）は、熟練は管理していない。
+const TECH_SKILL = { cultivate: 8, irrigate: 8, rotation: 8, herd: 9, draft: 9, pottery: 3, copper: 3, bronze: 3, iron: 3, steel: 3, goldwork: 3, kiln: 3, metalarms: 3, waterwheel: 4, fort: 4, dugout: 5, seafaring: 5, cart: 5, tally: 10, script: 10, bow: 1 };
+const TECH_PRACTICE_MIN = 30;
+const TECH_AX = { food: '食料', material: '素材・加工', energy: '動力', transport: '輸送', record: '記録', organize: '組織', military: '軍事' };
+function peopleTechSummary(people, gid) {
+  const P = people.npc, S = people.nation, g = people.groups[gid - 1]; if (!g || !S || !Tech) return null;
+  const members = [], names = Npc.JOBS.map(j => j.skill).slice(1);
+  for (const i of P.members[gid] || []) {
+    if (P.death[i] !== ALIVE || P.group[i] !== gid) continue;   // 生存者で、いまこの村に所属する人だけ（死亡・離脱は入らない）
+    const age = Math.floor(P.age(i)); if (age < 10) continue;
+    const eth = P.eth[i] || P.groupEth[gid], sk = []; for (let k = 0; k < NSKILL; k++) sk.push(P.skills[i * NSKILL + k]);
+    const known = []; for (const n of Tech.NODES) if (Nation.hasNode(S, eth, n.id)) known.push(n.id);
+    members.push({ id: i, age, job: P.job[i], eth, skills: sk, known });
+  }
+  const techs = [];
+  for (const n of Tech.NODES) {
+    const si = TECH_SKILL[n.id], holders = [];
+    let knowers = 0;
+    for (const m of members) if (m.known.includes(n.id)) { knowers++; if (si !== undefined && m.skills[si] >= TECH_PRACTICE_MIN) holders.push({ id: m.id, skill: m.skills[si] }); }
+    if (!knowers) continue;
+    holders.sort((a, b) => b.skill - a.skill);
+    techs.push({ id: n.id, name: n.jp, ax: n.ax, cat: TECH_AX[n.ax] || n.ax, knowers, practiced: holders.length, top: holders.length ? holders[0].skill : 0, holders, skillName: si !== undefined ? names[si] : null, solo: si !== undefined && holders.length === 1 });
+  }
+  return { gid, count: members.length, members, techs, skillNames: names, min: TECH_PRACTICE_MIN };
+}
+function peDefaultTechs() { return Tech ? Tech.NODES.map(n => ({ id: n.id, name: n.jp, ax: n.ax })) : []; }
+
+// 技術を民族に与える（開発・試験用）
+function peopleGrantTech(people, ethId, node) { const S = people.nation; if (!S || !S.idx.has(ethId)) return false; return Nation.adoptNode(S, ethId, node, S.year); }
+// 技術に合わせて、集団に農民・牧人の職が開く
+function peTechFlags(people) {
+  const P = people.npc, memo = new Map();
+  for (const g of people.groups) { if (!g.alive) continue; let t = memo.get(g.ethId); if (!t) memo.set(g.ethId, t = peTechOf(people, g.ethId)); P.gflags[g.id] = (P.gflags[g.id] & 4) | (t.farm ? 1 : 0) | (t.herd ? 2 : 0); }
+}
+
+// ---------------------------------------------------------------- 村の施設（指導者が建てる）
+// 材料は、あなたの持ち物（暮らしの持ち物）から。建てるには月数がかかり、集団の人数が足りないと進まない。効果は施設ごとに数に応じて増える（上限あり）
+const FACIL = {
+  pit: { name: '貯蔵穴', cost: { stone: 3, fiber: 4 }, months: 2, max: 3, role: 'storage_pit', info: '穀物・根・木の実が腐りにくい（×0.7）。生鮮は逆に傷みやすい（×1.3）。蓄えられる量+25%', lock: '半定住以上（動かない集団）', when: (g) => (g.settle || 0) >= 1 },
+  rack: { name: '干し棚', cost: { firewood: 6, fiber: 6, rope: 1 }, months: 1, max: 4, role: 'drying_rack', info: '生鮮の肉・魚・果実を、1つで月に約200kgぶん干物に変える（寒い月は半分）。野営地でも建てられる（分解できる）', lock: '集団が移動中でないこと', when: (g) => true },
+  granary: { name: '倉庫', cost: { firewood: 8, fiber: 10, rope: 2 }, months: 3, max: 3, role: 'raised_storehouse', info: '穀物・根・木の実が腐りにくい（×0.6）、干物も少し（×0.8）。蓄えられる量+50%', lock: '村で、栽培を持つか、農産物が食料の3割以上', when: (g, t) => g.settle === 2 && (t.farm || (g.farmFrac || 0) >= 0.3) },
+  well: { name: '井戸', cost: { stone: 6, rope: 2, firewood: 3 }, months: 2, max: 2, role: 'well', info: '疫病が広がりにくくなる（1つにつき-25%）', lock: '半定住以上', when: (g) => (g.settle || 0) >= 1 },
+  pen: { name: '家畜の囲い', cost: { firewood: 10, fiber: 6, rope: 2 }, months: 2, max: 3, role: 'livestock_pen', info: '養える家畜が増える（1つにつき+40%）', lock: '牧畜を持ち、半定住以上で、家畜が8頭以上', when: (g, t) => t.herd && (g.settle || 0) >= 1 && (g.herdN || 0) >= 8 },
+  hearth: { name: '共同の炉', cost: { stone: 8, firewood: 4 }, months: 2, max: 1, role: 'communal_hearth', info: '生鮮が傷みにくい（×0.7）。食料が足りないとき、飢える人が少し減る', lock: '村で、人口60人以上', when: (g) => g.settle === 2 && (g.pop || 0) >= 60 },
+  field: { name: '畑の拡張', cost: { stone: 4, fiber: 6 }, months: 4, max: 3, role: 'field', info: '農耕の収穫が増える（1つにつき+12%）', lock: '栽培を持ち、半定住以上', when: (g, t) => t.farm && (g.settle || 0) >= 1 },
+  kiln: { name: '窯', cost: { clay: 10, stone: 6, firewood: 6 }, months: 4, max: 2, role: 'pottery_kiln', info: '高温焼成の窯（土器の品質は次の段階で効かせる）', lock: '技術「高温焼成」を持ち、半定住以上', when: (g, t) => t.kiln && (g.settle || 0) >= 1 },
+};
+function peFacil(g) { const f = g.facil || (g.facil = {}); for (const k in FACIL) if (f[k] === undefined) f[k] = 0; return f; }
+// 施設ごとに、いま使えるか（技術・村の段階・人口など）。画面用
+function peFacilAvail(people, g) { const t = peTechOf(people, g.ethId), o = {}; for (const k in FACIL) o[k] = { open: !!FACIL[k].when(g, t), lock: FACIL[k].lock }; return o; }
+// 建てられるか（材料の不足は呼び出し側で調べる）
+function peopleBuildCheck(people, kind) {
+  const F = FACIL[kind], pl = people.player; if (!F) return { ok: false, reason: 'unknown' };
+  if (!pl || pl.over || pl.id < 0) return { ok: false, reason: 'noPlayer' };
+  const P = people.npc, g = people.groups[P.group[pl.id] - 1]; if (!g || !g.alive) return { ok: false, reason: 'noGroup' };
+  if (P.age(pl.id) < P.adultAge(pl.id)) return { ok: false, reason: 'minor' };
+  if (g.moveTo) return { ok: false, reason: 'moving' };
+  if (!F.when(g, peTechOf(people, g.ethId))) return { ok: false, reason: 'locked', why: F.lock };
+  if (g.build) return { ok: false, reason: 'busy', kind: g.build.kind };
+  if (peFacil(g)[kind] >= F.max) return { ok: false, reason: 'max' };
+  if ((g.pop || 0) < 15) return { ok: false, reason: 'small' };
+  return { ok: true, group: g, cost: F.cost, months: F.months };
+}
+function peopleBuildStart(people, kind) {
+  const r = peopleBuildCheck(people, kind); if (!r.ok) return r;
+  r.group.build = { kind, left: FACIL[kind].months }; return { ok: true, kind, months: FACIL[kind].months, group: r.group.id };
+}
+function peBuildStep(people, g, ev, rel) {
+  const b = g.build; if (!b) return; if (g.moveTo) return;
+  if ((g.pop || 0) >= 15 && g.fed > 0.5) b.left -= 1;
+  if (b.left > 0) return;
+  peFacil(g)[b.kind]++; g.build = null; if ((g.settle || 0) >= 1) g.layout = null;
+  const mine = people.player && people.player.id >= 0 && people.npc.group[people.player.id] === g.id;
+  ev.push({ type: 'built', imp: mine ? 2 : 1, relevant: mine || rel(g.ethId), group: g.id, eth: g.ethId, kind: b.kind, x: g.x, y: g.y });
+}
+
 function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
   const P = people.npc, hz = peEnsureGroups(people), world = ctx.world, cc = S.cc, n = S.n, month = ctx.month, id = g.id;
   const pop = st.pop[id];
@@ -1036,8 +1217,10 @@ function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
   peSetDemand(people, g, pl);   // 仕事の必要度は、期待される収穫から（人々は少しずつ、足りない仕事へ移る）
   // ---- 実際の働き手：仕事（採集者・狩人・漁師）に就いている人。仕事に就いていない10〜13歳や、他の仕事の人は一部が採集を手伝う
   const labG = st.lab[id * NJOB + 1], labH = st.lab[id * NJOB + 2], labF = st.lab[id * NJOB + 3];
-  const helpers = Math.max(0, workers - labG - labH - labF);
-  const L = { hunt: labH, gather: labG + helpers * PE.HELPER_SHARE, fish: labF };
+  const labA = st.lab[id * NJOB + 9], labP = st.lab[id * NJOB + 10], fq = pl.fq;
+  const helpers = Math.max(0, workers - labG - labH - labF - labA - labP);
+  // 農民の、成長期でない分の時間は採集に回る
+  const L = { hunt: labH, gather: labG + helpers * PE.HELPER_SHARE + labA * (1 - fq.sf) * 0.8, fish: labF };
   g.labor.hunt = L.hunt; g.labor.gather = L.gather; g.labor.fish = L.fish;
   const nc = pl.nc, availG = pl.availG, availF = pl.availF;
   const gotG = pl.yG(L.gather), gotF = pl.yF(L.fish);
@@ -1052,12 +1235,28 @@ function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
     gotH = r.meat; g.kills = r.kills; g.huntSp = hs.sid;
     if (r.meat > 0) { g.meatBy = g.meatBy || {}; g.meatBy[hs.sid] = (g.meatBy[hs.sid] || 0) + r.meat; }
   }
-  const got = gotH + gotG + gotF;
-  // ---- 消費・保存
-  const have = g.food + got;
-  const ratio = need > 0 ? Math.min(1, have / need) : 1;
-  const spoil = PE.SPOIL[0] + PE.SPOIL[1] * peClamp01(T / 25);
-  g.food = Math.min(need * PE.STORE_MONTHS * (1 + PE.VILLAGE_STORE * (g.settle || 0)), Math.max(0, have - need) * (1 - spoil));   // 定住するほど、たくさん蓄えられる
+  const gotFarm = pl.tech.farm ? pl.yFarm(labA) : 0, gotHerd = pl.herdN > 0 ? pl.yHerd(Math.max(labP, workers * 0.04)) : 0;
+  const got = (gotH + gotG + gotF + gotFarm + gotHerd) * (1 - 0.2 * (g.share || 0));   // 分けるほど、働く意欲は少し下がる
+  g.farmFrac = (g.farmFrac || 0) + ((gotFarm + gotHerd) / Math.max(1, got) - (g.farmFrac || 0)) / 6;
+  g.lastFood.farm = gotFarm; g.lastFood.herd = gotHerd; g.labor.farm = labA; g.labor.herd = labP;
+  { const lv = Math.min(4, Math.floor(Math.log2(1 + labA / 4))); if (lv !== (g.fieldLv || 0)) { g.fieldLv = lv; if ((g.settle || 0) >= 1) g.layout = null; } }   // 畑の広がりの段階が変わったら、集落の配置を作り直す
+  if (pl.tech.herd) peHerdStep(g, pl, pop);
+  peCropCycle(g, pl.fq.sf, pl.tech.farm);
+  peBuildStep(people, g, ev, rel);
+  // ---- 消費・保存：蓄えは「長持ち（穀物・根・木の実）」「生鮮」「干物」の3つ。食べるのは傷みやすい順（生鮮→長持ち→干物）。干し棚が生鮮を干物に変え、貯蔵穴・倉庫・炉が傷み方を変える
+  const kk = 1 - 0.2 * (g.share || 0), fa = peFacil(g);
+  let fresh = (g.fresh || 0) + (gotH + gotF + gotHerd + gotG * (1 - PE.GATHER_DURABLE)) * kk, dried = g.dried || 0, dur = Math.max(0, g.food - (g.fresh || 0) - dried) + (gotFarm + gotG * PE.GATHER_DURABLE) * kk;
+  const have = fresh + dried + dur, ratio = need > 0 ? Math.min(1, have / need) : 1;
+  { let eat = Math.min(need, have); const take = (v) => { const t = Math.min(v, eat); eat -= t; return v - t; }; fresh = take(fresh); dur = take(dur); dried = take(dried); }
+  if (fa.rack > 0 && fresh > 0) { const conv = Math.min(fresh, fa.rack * PE.RACK_KG * (T < 0 ? 0.5 : 1)); fresh -= conv; dried += conv * PE.RACK_YIELD; }
+  { const t25 = peClamp01(T / 25), sp = (c) => c[0] + c[1] * t25;
+    dur *= 1 - sp(PE.SPOIL_DUR) * Math.min(fa.pit > 0 ? 0.7 : 1, fa.granary > 0 ? 0.6 : 1);
+    fresh *= 1 - Math.min(1, sp(PE.SPOIL_FRESH) * (fa.pit > 0 ? 1.3 : 1) * (fa.hearth > 0 ? 0.7 : 1));
+    dried *= 1 - sp(PE.SPOIL_DRIED) * (fa.granary > 0 ? 0.8 : 1); }
+  { const cap = need * PE.STORE_MONTHS * (1 + PE.VILLAGE_STORE * (g.settle || 0)) * (1 + PE.FARM_STORE * (g.farmFrac || 0)) * (1 + 0.25 * Math.min(3, fa.pit) + 0.5 * Math.min(3, fa.granary));   // 定住するほど、たくさん蓄えられる
+    let over = fresh + dried + dur - cap;
+    if (over > 0) { let t = Math.min(fresh, over); fresh -= t; over -= t; t = Math.min(dried, over); dried -= t; over -= t; t = Math.min(dur, over); dur -= t; } }
+  g.fresh = fresh; g.dried = dried; g.food = fresh + dried + dur;
   g.lastFood.need = need; g.lastFood.got = got; g.lastFood.hunt = gotH; g.lastFood.gather = gotG; g.lastFood.fish = gotF;
   g.fed += (ratio - g.fed) / 12;
   if (ratio < PE.HUNGER_FOOD) {
@@ -1067,11 +1266,11 @@ function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
   // ---- 状況を表に書く：住民は毎日の判定でこの表を使う（出生・飢え・寒さ・病気）
   hz.fert[id] = peClamp01((g.fed - PE.FERT_FOOD[0]) / (PE.FERT_FOOD[1] - PE.FERT_FOOD[0]));
   if (g.epi > 0) g.epi--;
-  else if (rng() < PE.EPI_P * pop / 200) {
+  else if (rng() < PE.EPI_P * pop / 200 * (1 - 0.25 * peFacil(g).well)) {
     g.epi = PE.EPI_MONTHS[0] + Math.floor(rng() * (PE.EPI_MONTHS[1] - PE.EPI_MONTHS[0] + 1));
     ev.push({ type: 'epidemic', imp: 1, relevant: rel(g.ethId), group: g.id, eth: g.ethId, x: g.x, y: g.y });
   }
-  hz.starv[id] = PE.STARV_H * Math.pow(1 - ratio, 1.5);
+  hz.starv[id] = PE.STARV_H * Math.pow(1 - ratio, 1.5) * (1 - 0.8 * (g.share || 0)) * (1 - 0.15 * Math.min(1, peFacil(g).hearth));   // 分けているほど、共同の炉があるほど、足りないときに飢える人が出にくい
   let snow = 0; if (ctx.snow) snow = ctx.snow[home] || 0;
   const harsh = peClamp01((PE.COLD_T[0] - T) / PE.COLD_T[1]) + peClamp01((snow - 50) / 100) * 0.3;
   hz.cold[id] = PE.COLD_H * harsh * (1 - PE.COLD_KNOW * kH) * (1 + (1 - ratio));
@@ -1127,7 +1326,7 @@ function peSplit(people, g, S, world, rng, ev, rel) {
     if (mix(P.seed, fam(i), P.day, 77) / 4294967296 < share) { P.moveToGroup(i, c.id); moved++; }
   }
   const f = all ? moved / all : 0;
-  c.food = g.food * f; g.food -= c.food;
+  c.food = g.food * f; g.food -= c.food; c.fresh = (g.fresh || 0) * f; g.fresh = (g.fresh || 0) - c.fresh; c.dried = (g.dried || 0) * f; g.dried = (g.dried || 0) - c.dried;
   c.cult = (g.cult || []).slice(); c.policy = g.policy; c.fed = g.fed; c.homeX = g.homeX; c.homeY = g.homeY;
   c.moveTo = { x: d.x, y: d.y, by: 'ai' };
   const hz = peHazards(people); hz.fert[c.id] = hz.fert[g.id]; hz.starv[c.id] = hz.starv[g.id]; hz.cold[c.id] = hz.cold[g.id]; hz.dis[c.id] = hz.dis[g.id]; hz.hungerDis[c.id] = hz.hungerDis[g.id];
@@ -1158,7 +1357,7 @@ function peopleSave(people) {
   const P = people.npc, n = P.n, cut = (a, per = 1) => a.slice(0, n * per);
   const pool = [], poolStart = [0]; for (let g = 0; g < P.groups; g++) { for (const v of P.pool[g]) pool.push(v); poolStart.push(pool.length); }
   const meta = { version: people.version, nextGroupId: people.nextGroupId, nextEthId: people.nextEthId, rngState: people.rngState, playerEth: people.playerEth,
-    ethnicities: people.ethnicities, groups: people.groups.map(g => Object.assign({}, g, { c6: undefined })), contacts: people.contacts, ties: people.ties || {}, ethSpeed: people.ethSpeed || 1, languages: people.languages, autoNames: people.autoNames || {}, placeLangs: people.placeLangs || {}, nextLangId: people.nextLangId || 0, player: people.player,
+    ethnicities: people.ethnicities, groups: people.groups.map(g => Object.assign({}, g, { c6: undefined })), contacts: people.contacts, ties: people.ties || {}, nation: people.nation ? Nation.save(people.nation) : (people.nationSave || null), ethSpeed: people.ethSpeed || 1, languages: people.languages, autoNames: people.autoNames || {}, placeLangs: people.placeLangs || {}, nextLangId: people.nextLangId || 0, player: people.player,
     npc: { seed: P.seed, n, day: P.day, rng: P.rng, stats: P.stats, delta: Array.from(P.delta), focus: Array.from(P.focus), ethSecondary: Array.from(P.ethSecondary), groups: P.groups } };
   return { meta, birth: cut(P.birth), death: cut(P.death), sex: cut(P.sex), group: cut(P.group), mother: cut(P.mother), father: cut(P.father), spouse: cut(P.spouse), job: cut(P.job), flags: cut(P.flags),
     eth: cut(P.eth), house: cut(P.house), cause: cut(P.cause), groupEth: P.groupEth.slice(), relId: cut(P.relId, SOC_K), relV: cut(P.relV, SOC_K * 3), pers: cut(P.pers, 4), skills: cut(P.skills, NSKILL), train: cut(P.train, Npc.NABIL), gdemand: P.gdemand.slice(), gflags: P.gflags.slice(), pool: Int32Array.from(pool), poolStart: Int32Array.from(poolStart),
@@ -1166,7 +1365,7 @@ function peopleSave(people) {
 }
 function peopleLoad(sv) {
   const m = sv.meta, people = { version: m.version, nextGroupId: m.nextGroupId, nextEthId: m.nextEthId, rngState: m.rngState, playerEth: m.playerEth, ethnicities: m.ethnicities,
-    groups: m.groups.map(g => Object.assign(g, { c6: [0, 0, 0, 0, 0, 0] })), contacts: m.contacts, ties: m.ties || {}, ethSpeed: m.ethSpeed || 1, nbr: {}, languages: m.languages, autoNames: m.autoNames || {}, placeLangs: m.placeLangs || {}, nextLangId: m.nextLangId || 0, player: m.player || null, npc: null, haz: null, stat: null };
+    groups: m.groups.map(g => Object.assign(g, { c6: [0, 0, 0, 0, 0, 0] })), contacts: m.contacts, ties: m.ties || {}, nationSave: m.nation || null, ethSpeed: m.ethSpeed || 1, nbr: {}, languages: m.languages, autoNames: m.autoNames || {}, placeLangs: m.placeLangs || {}, nextLangId: m.nextLangId || 0, player: m.player || null, npc: null, haz: null, stat: null };
   const n = m.npc.n, P = people.npc = new Population(m.npc.seed, m.npc.groups, Math.max(1024, n * 2));
   const put = (name, src, per = 1) => { P[name].set(src.subarray ? src.subarray(0, n * per) : src); };
   for (const k of ['birth', 'death', 'sex', 'group', 'mother', 'father', 'spouse', 'job', 'flags']) put(k, sv[k]);
@@ -1191,6 +1390,6 @@ function peopleEthCounts(people) {
   const P = people.npc, o = {}; for (let i = 0; i < P.n; i++) { if (P.death[i] !== ALIVE) continue; const e = P.eth[i] || P.groupEth[P.group[i]]; o[e] = (o[e] || 0) + 1; } return o;
 }
 
-if (typeof module !== 'undefined' && module.exports) module.exports = { peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, peCultureRules, PROPOSALS, peopleProposal, LEADERSHIP, peLeaders, ACTIVITIES, peopleSetActivity, peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
-else root.WohPeople = { peopleSuccession, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, PROPOSALS, peopleProposal, LEADERSHIP, ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+if (typeof module !== 'undefined' && module.exports) module.exports = { TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, peCultureRules, PROPOSALS, peopleProposal, LEADERSHIP, peLeaders, ACTIVITIES, peopleSetActivity, peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+else root.WohPeople = { TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peopleSuccession, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, PROPOSALS, peopleProposal, LEADERSHIP, ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
