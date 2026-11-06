@@ -177,7 +177,8 @@
     if (!spot) { toast('近くに十分深い海がない'); return; }
     if (!ref) { ref = { xM: spot.xM, yM: spot.yM }; makeEnv(); }
     const heading = openWaterHeading(spot.xM, spot.yM);
-    const id = fleet.addShip({ designId, X: spot.xM - ref.xM, Y: ref.yM - spot.yM, headingDeg: heading, crew: !!Ship.sampleDesigns[designId].evidence });
+    const id = fleet.addShip({ designId, X: spot.xM - ref.xM, Y: ref.yM - spot.yM, headingDeg: heading, crew: Ship.sampleDesigns[designId].evidence ? 'empty' : false });
+    if (fleet.get(id).crew) crewVillagers(id, 5);
     fleet.get(id).vessel.state.u = 1.5; // already under way, so the rudder bites
     ctl[id] = { heading, held: 0, auto: true, oar: 0.8 };
     { const dx = spot.xM - mp.xM, dy = spot.yM - mp.yM, km = Math.hypot(dx, dy) / 1000, dir = ['東', '南東', '南', '南西', '西', '北西', '北', '北東'][Math.round(Math.atan2(dy, dx) / (Math.PI / 4) + 8) % 8]; toast(`${id}（${Ship.sampleDesigns[designId].label}）を海に出した：${dir}へ約${km.toFixed(1)}km`); } refreshList(); save();
@@ -374,6 +375,23 @@ html.shipUiHidden #shipEye{left:calc(8px + env(safe-area-inset-left));opacity:.4
       ui.bench.textContent = `性能(${where}) 平均${(1000 / avg).toFixed(1)}fps／95%点${p95.toFixed(1)}ms／最悪${worst.toFixed(0)}ms／描画${inf.calls}回・三角形${(inf.triangles / 1000).toFixed(0)}k／船${fleet?.list().length ?? 0}隻／画面${innerWidth}x${innerHeight}×${devicePixelRatio}`; benchmark.run = false; };
     requestAnimationFrame(tick);
   }
+  /** Alive adults of the player's own ethnicity (the game's people), the player's own group first. */
+  function villagerCandidates(n) {
+    const pe = globalThis.__geo?.people, V = globalThis.WohNpcView; if (!pe?.npc) return [];
+    const P = pe.npc, eth = (i) => P.eth[i] || P.groupEth[P.group[i]], you = pe.player?.id ?? -1, gy = you >= 0 ? P.group[you] : -1, out = [];
+    for (let i = 0; i < P.n; i++) { if (P.death[i] !== 0x7fffffff || i === you || eth(i) !== pe.playerEth || P.age(i) < 15 || P.age(i) > 55) continue; out.push({ i, own: P.group[i] === gy ? 0 : 1 }); }
+    out.sort((a, b) => a.own - b.own || a.i - b.i);
+    return out.slice(0, n).map(({ i }) => {
+      const c = V?.viewColor ? V.viewColor(pe, i) : [160, 160, 160]; return { i, look: { cloth: c, skin: [0xf1c9a5, 0xd9a47a, 0xb9825a, 0x8d5b3d][Math.abs(i * 2654435761 | 0) % 4] } };
+    });
+  }
+  function villagerLook(i) { const pe = globalThis.__geo?.people, V = globalThis.WohNpcView; return { cloth: V?.viewColor && pe ? V.viewColor(pe, i) : [160, 160, 160], skin: [0xf1c9a5, 0xd9a47a, 0xb9825a, 0x8d5b3d][Math.abs(i * 2654435761 | 0) % 4] }; }
+  /** A new ship starts with n villagers of the player's ethnicity as its crew (replaces the placeholder cylinders). */
+  function crewVillagers(shipId, n) {
+    const rec = fleet.get(shipId), list = villagerCandidates(n);
+    list.forEach(({ i, look }, k) => rec.crew.hire({ id: `npc:${i}`, name: (globalThis.__wohPersonName?.(i) || '') || `村人${i}`, npcRef: i, look }));
+    for (let k = list.length; k < n; k++) rec.crew.hire({ id: `hand:${shipId}:${k + 1}`, name: `乗組員${k + 1}`, look: null });
+  }
   /** Hired hands come and go: rebuild the crew figures when the roster size changed. */
   function syncFigures(m, rec) {
     if (!rec?.crew || !m.crewFigs || m.crewFigs.length === rec.crew.members.length) return;
@@ -388,7 +406,7 @@ html.shipUiHidden #shipEye{left:calc(8px + env(safe-area-inset-left));opacity:.4
     for (const r of fleet.list()) { const m = meshes.get(r.id), rec = fleet.get(r.id); if (!m || !rec.crew) continue; const d = Math.hypot(m.group.position.x - me.x, m.group.position.z - me.z); if (d <= 60 && (!best || d < best.d)) best = { id: r.id, d, rec }; }
     if (!best) { toast('近く(60m以内)に乗員を乗せられる船がありません'); return; }
     const name = (globalThis.__wohPersonName?.(id) || '') || `村人${id}`;
-    try { best.rec.crew.hire({ id: `npc:${id}`, name, npcRef: id }); toast(`${name} を ${best.id} の乗員に雇った`); } catch (e) { toast(`${name} は既に乗員です`); }
+    try { best.rec.crew.hire({ id: `npc:${id}`, name, npcRef: id, look: villagerLook(id) }); toast(`${name} を ${best.id} の乗員に雇った`); } catch (e) { toast(`${name} は既に乗員です`); }
     refreshList(); save();
   }
   function dismissHand(shipId, personId) { const rec = fleet.get(shipId); if (rec?.crew?.dismiss(personId)) { toast('乗員を降ろした'); refreshList(); save(); } }

@@ -123,11 +123,25 @@ export function placePlayer(obj, pos) {
 
 const ROLE_COLOR = { captain: 0xb3262e, maestre: 0x2d5fa8, piloto: 0x2a8a5a, seaman: 0xc9b27a };
 /** One simple 1:1 figure per crew member, children of the ship group (they roll and pitch with the ship). */
+/** A hired villager is drawn like the game's own villagers (head, torso, two arms, two legs; clothes in the ethnicity colour). */
+function villagerFigure(T, m) {
+  const [r, g, b] = m.look?.cloth ?? [160, 160, 160], cloth = new T.Color(r / 255, g / 255, b / 255), dark = cloth.clone().multiplyScalar(0.55), skin = m.look?.skin ?? 0xd9a47a;
+  const mat = (c) => new T.MeshLambertMaterial({ color: c }), f = new T.Group();
+  const add = (geo, color, x, y, z) => { const o = new T.Mesh(geo, mat(color)); o.position.set(x, y, z); f.add(o); return o; };
+  add(new T.SphereGeometry(0.115, 8, 6), skin, 0, 1.58, 0); add(new T.CylinderGeometry(0.17, 0.14, 0.62, 8), cloth, 0, 1.12, 0);
+  const limb = (geo, color, x, y) => { const p = new T.Group(); p.position.set(x, y, 0); const o = new T.Mesh(geo, mat(color)); p.add(o); f.add(p); return p; };
+  const leg = () => new T.CylinderGeometry(0.07, 0.055, 0.82, 6).translate(0, -0.41, 0), arm = () => new T.CylinderGeometry(0.05, 0.04, 0.6, 6).translate(0, -0.3, 0);
+  f.userData.limbs = { armL: limb(arm(), cloth, -0.22, 1.38), armR: limb(arm(), cloth, 0.22, 1.38), legL: limb(leg(), dark, -0.09, 0.82), legR: limb(leg(), dark, 0.09, 0.82) };
+  return f;
+}
+/** One simple 1:1 figure per crew member, children of the ship group (they roll and pitch with the ship). */
 export function addCrewFigures(T, obj, crew) {
   obj.crewFigs = [];
   for (const m of crew.members) {
-    const f = new T.Group(), body = new T.Mesh(new T.CylinderGeometry(0.26, 0.26, 1.15, 8), new T.MeshLambertMaterial({ color: ROLE_COLOR[m.role] ?? 0xc9b27a })), head = new T.Mesh(new T.SphereGeometry(0.22, 10, 8), new T.MeshLambertMaterial({ color: 0xe8c79a }));
-    body.position.y = 0.58; head.position.y = 1.42; f.add(body, head); obj.group.add(f); obj.crewFigs.push({ m, f });
+    let f;
+    if (m.hired) f = villagerFigure(T, m);
+    else { f = new T.Group(); const body = new T.Mesh(new T.CylinderGeometry(0.26, 0.26, 1.15, 8), new T.MeshLambertMaterial({ color: ROLE_COLOR[m.role] ?? 0xc9b27a })), head = new T.Mesh(new T.SphereGeometry(0.22, 10, 8), new T.MeshLambertMaterial({ color: 0xe8c79a })); body.position.y = 0.58; head.position.y = 1.42; f.add(body, head); }
+    obj.group.add(f); obj.crewFigs.push({ m, f });
   }
   obj.crewInterior = crew.interior;
 }
@@ -137,5 +151,10 @@ export function updateCrewFigures(obj, playerDeck = null) {
   for (const { m, f } of obj.crewFigs) {
     f.position.set(m.pos.y, it.deckZ(m.pos.deck) - draft + 0.02, cgX - m.pos.x);
     f.visible = !!it.decks.find((d) => d.id === m.pos.deck)?.exterior || playerDeck === m.pos.deck;
+    const L = f.userData.limbs; if (L) { // walking swing while the hand is moving (same idea as the game's villagers)
+      const last = f.userData.last, moving = last && (Math.abs(last.x - m.pos.x) + Math.abs(last.y - m.pos.y) > 1e-4 || last.deck !== m.pos.deck); f.userData.last = { x: m.pos.x, y: m.pos.y, deck: m.pos.deck };
+      const ph = (performance.now() / 1000) * 5.5, sw = moving ? Math.sin(ph) * 0.7 : 0; L.legL.rotation.x = -sw; L.legR.rotation.x = sw; L.armL.rotation.x = sw; L.armR.rotation.x = -sw;
+      if (last && moving) { const dx = m.pos.y - last.y, dz = -(m.pos.x - last.x); if (Math.abs(dx) + Math.abs(dz) > 1e-5) f.rotation.y = Math.atan2(dx, dz); }
+    }
   }
 }

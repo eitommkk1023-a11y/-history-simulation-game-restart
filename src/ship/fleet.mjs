@@ -47,7 +47,7 @@ export function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0
     const vessel = build(designId);
     Object.assign(vessel.state, { X, Y, psi: headingDeg * Math.PI / 180 });
     const rec = { id: shipId, designId, vessel, captain: null, crew: null, crewNeeds: {}, massItems: null, lod: LOD.near, lifecycle: 'afloat', dormantSeconds: 0, refs: { owner: null, crew: [], cargo: [], ...refs }, history: [{ type: 'ship_created', time }] };
-    if (crew) rec.crew = makeCrew(designId);
+    if (crew) rec.crew = makeCrew(designId, crew === 'empty' ? [] : undefined); // 'empty': no built-in crew, hands are hired
     ships.set(shipId, rec);
     return shipId;
   }
@@ -60,9 +60,9 @@ export function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0
   }
   function cancelDestination(id) { get(id).captain?.cancel(); }
 
-  function makeCrew(designId) {
+  function makeCrew(designId, roster) {
     const d = designs.get(designId); if (!d?.interior) throw new RangeError(`design ${designId} has no interior, so it cannot carry a walking crew`);
-    return createCrew({ interior: createInterior(d.interior, { hull: createHull(d.hull) }), design: d });
+    return createCrew({ interior: createInterior(d.interior, { hull: createHull(d.hull) }), design: d, ...(roster ? { roster } : {}) });
   }
   /** Replace the ship's mass items (cargo, water, bilge) and rebuild its physics from them, keeping its motion and state. */
   function setLoad(id, massItems) {
@@ -135,7 +135,7 @@ export function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0
         for (const x of r.sails) { const sl = vessel.sails.find((q) => q.id === x.id); if (sl) { sl.trimDeg = x.trimDeg; sl.deployed = x.deployed; } }
         for (const x of r.oars) { const o = vessel.oars.find((q) => q.id === x.id); if (o) { o.effort = x.effort; o.stamina = x.stamina; } }
         let captain = null; if (r.captain) { captain = createCaptain(vessel); captain.restore(r.captain); }
-        let crew = null; if (r.crew) { crew = makeCrew(r.designId); crew.restore(r.crew); }
+        let crew = null; if (r.crew) { crew = makeCrew(r.designId, r.crew.villagersOnly ? [] : undefined); crew.restore(r.crew); }
         ships.set(r.id, { id: r.id, designId: r.designId, vessel, captain, crew, crewNeeds: r.crewNeeds ?? {}, massItems: r.massItems ?? null, lod: LOD.near, lifecycle: r.lifecycle, dormantSeconds: r.dormantSeconds, refs: r.refs, history: r.history });
       } catch (e) { skipped.push({ id: r.id, designId: r.designId, reason: String(e?.message ?? e) }); }
     }

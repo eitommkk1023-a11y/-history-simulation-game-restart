@@ -14986,6 +14986,7 @@ function createCrew({ interior, design, size = G.crew.scenarioSize.value, roster
   const st = pintaStations(interior, design), mastIds = Object.keys(st.mastFoot);
   const members = roster.map((p, i) => ({ ...p, watch: i % 2, pos: { ...st.rest, y: st.rest.y + ((i % 5) - 2) * 0.35 }, task: 'rest', target: null, work: 0 }));
   let time = 0, watchOn = 0;
+  const baseCount = roster.length, onShift = (m) => members.length <= 10 || m.watch === watchOn; // D: a very small crew keeps one common watch, all hands work
 
   const deckPath = (from, to) => { // BFS over decks joined by ladders: returns the first ladder to take
     if (from === to) return null;
@@ -15009,8 +15010,8 @@ function createCrew({ interior, design, size = G.crew.scenarioSize.value, roster
 
   /** Assign duties for the current watch (D rules): helm, lookout, sail hands at each mast, the rest idle; captain, maestre, pilot on deck. */
   function assign(needs) {
-    const onWatch = members.filter((m) => m.role === 'seaman' && m.watch === watchOn), free = [...onWatch];
-    for (const m of members) { m.task = m.watch === watchOn || m.role !== 'seaman' ? 'rest' : 'off_watch'; m.target = null; }
+    const onWatch = members.filter((m) => m.role === 'seaman' && onShift(m)), free = [...onWatch];
+    for (const m of members) { m.task = onShift(m) || m.role !== 'seaman' ? 'rest' : 'off_watch'; m.target = null; }
     const take = (task, target) => { const m = free.shift(); if (m) { m.task = task; m.target = target; } };
     if (needs.helm !== false) take('helm', st.helm);
     if (needs.lookout !== false) take('lookout', st.lookout);
@@ -15043,9 +15044,9 @@ function createCrew({ interior, design, size = G.crew.scenarioSize.value, roster
     return effects();
   }
   /** Take on a person from outside (e.g. a villager met on the shore) as an ordinary hand. Not one of the historical named crew (level D rules). */
-  function hire({ id, name, npcRef = null }) {
+  function hire({ id, name, npcRef = null, look = null }) {
     if (members.some((m) => m.id === id)) throw new RangeError(`already aboard: ${id}`);
-    const m = { id, name, role: 'seaman', evidence: 'D', generic: true, hired: true, npcRef, watch: members.length % 2, pos: { ...st.rest, y: st.rest.y + ((members.length % 5) - 2) * 0.35 }, task: 'rest', target: null, work: 0 };
+    const m = { id, name, role: 'seaman', evidence: 'D', generic: true, hired: true, npcRef, look, watch: members.length % 2, pos: { ...st.rest, y: st.rest.y + ((members.length % 5) - 2) * 0.35 }, task: 'rest', target: null, work: 0 };
     members.push(m); assign(lastNeeds); return m;
   }
   /** Put a hired hand ashore. The historical named crew cannot be dismissed. */
@@ -15056,7 +15057,7 @@ function createCrew({ interior, design, size = G.crew.scenarioSize.value, roster
   return {
     hire, dismiss, members, stations: st, interior, update, effects, get watchOn() { return watchOn; }, get time() { return time; },
     repairSeconds: () => Math.max(0, ...members.filter((m) => m.task === 'repair').map((m) => m.work)),
-    serialize: () => JSON.parse(JSON.stringify({ time, watchOn, lastNeeds, hired: members.filter((m) => m.hired).map((m) => ({ id: m.id, name: m.name, npcRef: m.npcRef })), members: members.map((m) => ({ id: m.id, pos: m.pos, task: m.task, target: m.target, watch: m.watch, work: m.work })) })),
+    serialize: () => JSON.parse(JSON.stringify({ time, watchOn, lastNeeds, villagersOnly: baseCount === 0, hired: members.filter((m) => m.hired).map((m) => ({ id: m.id, name: m.name, npcRef: m.npcRef, look: m.look })), members: members.map((m) => ({ id: m.id, pos: m.pos, task: m.task, target: m.target, watch: m.watch, work: m.work })) })),
     restore(d) { for (const h of d.hired ?? []) if (!members.some((x) => x.id === h.id)) hire(h); time = d.time; watchOn = d.watchOn; lastNeeds = d.lastNeeds; for (const r of d.members) { const m = members.find((x) => x.id === r.id); if (m) Object.assign(m, r); } },
   };
 }
@@ -15343,7 +15344,7 @@ function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0.1, far
     const vessel = build(designId);
     Object.assign(vessel.state, { X, Y, psi: headingDeg * Math.PI / 180 });
     const rec = { id: shipId, designId, vessel, captain: null, crew: null, crewNeeds: {}, massItems: null, lod: LOD.near, lifecycle: 'afloat', dormantSeconds: 0, refs: { owner: null, crew: [], cargo: [], ...refs }, history: [{ type: 'ship_created', time }] };
-    if (crew) rec.crew = makeCrew(designId);
+    if (crew) rec.crew = makeCrew(designId, crew === 'empty' ? [] : undefined); // 'empty': no built-in crew, hands are hired
     ships.set(shipId, rec);
     return shipId;
   }
@@ -15356,9 +15357,9 @@ function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0.1, far
   }
   function cancelDestination(id) { get(id).captain?.cancel(); }
 
-  function makeCrew(designId) {
+  function makeCrew(designId, roster) {
     const d = designs.get(designId); if (!d?.interior) throw new RangeError(`design ${designId} has no interior, so it cannot carry a walking crew`);
-    return createCrew({ interior: createInterior(d.interior, { hull: createHull(d.hull) }), design: d });
+    return createCrew({ interior: createInterior(d.interior, { hull: createHull(d.hull) }), design: d, ...(roster ? { roster } : {}) });
   }
   /** Replace the ship's mass items (cargo, water, bilge) and rebuild its physics from them, keeping its motion and state. */
   function setLoad(id, massItems) {
@@ -15431,7 +15432,7 @@ function createFleet({ nearRadiusM = 1500, farRadiusM = 20000, nearDt = 0.1, far
         for (const x of r.sails) { const sl = vessel.sails.find((q) => q.id === x.id); if (sl) { sl.trimDeg = x.trimDeg; sl.deployed = x.deployed; } }
         for (const x of r.oars) { const o = vessel.oars.find((q) => q.id === x.id); if (o) { o.effort = x.effort; o.stamina = x.stamina; } }
         let captain = null; if (r.captain) { captain = createCaptain(vessel); captain.restore(r.captain); }
-        let crew = null; if (r.crew) { crew = makeCrew(r.designId); crew.restore(r.crew); }
+        let crew = null; if (r.crew) { crew = makeCrew(r.designId, r.crew.villagersOnly ? [] : undefined); crew.restore(r.crew); }
         ships.set(r.id, { id: r.id, designId: r.designId, vessel, captain, crew, crewNeeds: r.crewNeeds ?? {}, massItems: r.massItems ?? null, lod: LOD.near, lifecycle: r.lifecycle, dormantSeconds: r.dormantSeconds, refs: r.refs, history: r.history });
       } catch (e) { skipped.push({ id: r.id, designId: r.designId, reason: String(e?.message ?? e) }); }
     }
@@ -15639,11 +15640,25 @@ function placePlayer(obj, pos) {
 
 const ROLE_COLOR = { captain: 0xb3262e, maestre: 0x2d5fa8, piloto: 0x2a8a5a, seaman: 0xc9b27a };
 /** One simple 1:1 figure per crew member, children of the ship group (they roll and pitch with the ship). */
+/** A hired villager is drawn like the game's own villagers (head, torso, two arms, two legs; clothes in the ethnicity colour). */
+function villagerFigure(T, m) {
+  const [r, g, b] = m.look?.cloth ?? [160, 160, 160], cloth = new T.Color(r / 255, g / 255, b / 255), dark = cloth.clone().multiplyScalar(0.55), skin = m.look?.skin ?? 0xd9a47a;
+  const mat = (c) => new T.MeshLambertMaterial({ color: c }), f = new T.Group();
+  const add = (geo, color, x, y, z) => { const o = new T.Mesh(geo, mat(color)); o.position.set(x, y, z); f.add(o); return o; };
+  add(new T.SphereGeometry(0.115, 8, 6), skin, 0, 1.58, 0); add(new T.CylinderGeometry(0.17, 0.14, 0.62, 8), cloth, 0, 1.12, 0);
+  const limb = (geo, color, x, y) => { const p = new T.Group(); p.position.set(x, y, 0); const o = new T.Mesh(geo, mat(color)); p.add(o); f.add(p); return p; };
+  const leg = () => new T.CylinderGeometry(0.07, 0.055, 0.82, 6).translate(0, -0.41, 0), arm = () => new T.CylinderGeometry(0.05, 0.04, 0.6, 6).translate(0, -0.3, 0);
+  f.userData.limbs = { armL: limb(arm(), cloth, -0.22, 1.38), armR: limb(arm(), cloth, 0.22, 1.38), legL: limb(leg(), dark, -0.09, 0.82), legR: limb(leg(), dark, 0.09, 0.82) };
+  return f;
+}
+/** One simple 1:1 figure per crew member, children of the ship group (they roll and pitch with the ship). */
 function addCrewFigures(T, obj, crew) {
   obj.crewFigs = [];
   for (const m of crew.members) {
-    const f = new T.Group(), body = new T.Mesh(new T.CylinderGeometry(0.26, 0.26, 1.15, 8), new T.MeshLambertMaterial({ color: ROLE_COLOR[m.role] ?? 0xc9b27a })), head = new T.Mesh(new T.SphereGeometry(0.22, 10, 8), new T.MeshLambertMaterial({ color: 0xe8c79a }));
-    body.position.y = 0.58; head.position.y = 1.42; f.add(body, head); obj.group.add(f); obj.crewFigs.push({ m, f });
+    let f;
+    if (m.hired) f = villagerFigure(T, m);
+    else { f = new T.Group(); const body = new T.Mesh(new T.CylinderGeometry(0.26, 0.26, 1.15, 8), new T.MeshLambertMaterial({ color: ROLE_COLOR[m.role] ?? 0xc9b27a })), head = new T.Mesh(new T.SphereGeometry(0.22, 10, 8), new T.MeshLambertMaterial({ color: 0xe8c79a })); body.position.y = 0.58; head.position.y = 1.42; f.add(body, head); }
+    obj.group.add(f); obj.crewFigs.push({ m, f });
   }
   obj.crewInterior = crew.interior;
 }
@@ -15653,6 +15668,11 @@ function updateCrewFigures(obj, playerDeck = null) {
   for (const { m, f } of obj.crewFigs) {
     f.position.set(m.pos.y, it.deckZ(m.pos.deck) - draft + 0.02, cgX - m.pos.x);
     f.visible = !!it.decks.find((d) => d.id === m.pos.deck)?.exterior || playerDeck === m.pos.deck;
+    const L = f.userData.limbs; if (L) { // walking swing while the hand is moving (same idea as the game's villagers)
+      const last = f.userData.last, moving = last && (Math.abs(last.x - m.pos.x) + Math.abs(last.y - m.pos.y) > 1e-4 || last.deck !== m.pos.deck); f.userData.last = { x: m.pos.x, y: m.pos.y, deck: m.pos.deck };
+      const ph = (performance.now() / 1000) * 5.5, sw = moving ? Math.sin(ph) * 0.7 : 0; L.legL.rotation.x = -sw; L.legR.rotation.x = sw; L.armL.rotation.x = sw; L.armR.rotation.x = -sw;
+      if (last && moving) { const dx = m.pos.y - last.y, dz = -(m.pos.x - last.x); if (Math.abs(dx) + Math.abs(dz) > 1e-5) f.rotation.y = Math.atan2(dx, dz); }
+    }
   }
 }
 
@@ -16078,7 +16098,8 @@ const Ship = Object.assign({}, M_hull_geometry, M_mass, M_hydrostatics, M_hull_p
     if (!spot) { toast('近くに十分深い海がない'); return; }
     if (!ref) { ref = { xM: spot.xM, yM: spot.yM }; makeEnv(); }
     const heading = openWaterHeading(spot.xM, spot.yM);
-    const id = fleet.addShip({ designId, X: spot.xM - ref.xM, Y: ref.yM - spot.yM, headingDeg: heading, crew: !!Ship.sampleDesigns[designId].evidence });
+    const id = fleet.addShip({ designId, X: spot.xM - ref.xM, Y: ref.yM - spot.yM, headingDeg: heading, crew: Ship.sampleDesigns[designId].evidence ? 'empty' : false });
+    if (fleet.get(id).crew) crewVillagers(id, 5);
     fleet.get(id).vessel.state.u = 1.5; // already under way, so the rudder bites
     ctl[id] = { heading, held: 0, auto: true, oar: 0.8 };
     { const dx = spot.xM - mp.xM, dy = spot.yM - mp.yM, km = Math.hypot(dx, dy) / 1000, dir = ['東', '南東', '南', '南西', '西', '北西', '北', '北東'][Math.round(Math.atan2(dy, dx) / (Math.PI / 4) + 8) % 8]; toast(`${id}（${Ship.sampleDesigns[designId].label}）を海に出した：${dir}へ約${km.toFixed(1)}km`); } refreshList(); save();
@@ -16275,6 +16296,23 @@ html.shipUiHidden #shipEye{left:calc(8px + env(safe-area-inset-left));opacity:.4
       ui.bench.textContent = `性能(${where}) 平均${(1000 / avg).toFixed(1)}fps／95%点${p95.toFixed(1)}ms／最悪${worst.toFixed(0)}ms／描画${inf.calls}回・三角形${(inf.triangles / 1000).toFixed(0)}k／船${fleet?.list().length ?? 0}隻／画面${innerWidth}x${innerHeight}×${devicePixelRatio}`; benchmark.run = false; };
     requestAnimationFrame(tick);
   }
+  /** Alive adults of the player's own ethnicity (the game's people), the player's own group first. */
+  function villagerCandidates(n) {
+    const pe = globalThis.__geo?.people, V = globalThis.WohNpcView; if (!pe?.npc) return [];
+    const P = pe.npc, eth = (i) => P.eth[i] || P.groupEth[P.group[i]], you = pe.player?.id ?? -1, gy = you >= 0 ? P.group[you] : -1, out = [];
+    for (let i = 0; i < P.n; i++) { if (P.death[i] !== 0x7fffffff || i === you || eth(i) !== pe.playerEth || P.age(i) < 15 || P.age(i) > 55) continue; out.push({ i, own: P.group[i] === gy ? 0 : 1 }); }
+    out.sort((a, b) => a.own - b.own || a.i - b.i);
+    return out.slice(0, n).map(({ i }) => {
+      const c = V?.viewColor ? V.viewColor(pe, i) : [160, 160, 160]; return { i, look: { cloth: c, skin: [0xf1c9a5, 0xd9a47a, 0xb9825a, 0x8d5b3d][Math.abs(i * 2654435761 | 0) % 4] } };
+    });
+  }
+  function villagerLook(i) { const pe = globalThis.__geo?.people, V = globalThis.WohNpcView; return { cloth: V?.viewColor && pe ? V.viewColor(pe, i) : [160, 160, 160], skin: [0xf1c9a5, 0xd9a47a, 0xb9825a, 0x8d5b3d][Math.abs(i * 2654435761 | 0) % 4] }; }
+  /** A new ship starts with n villagers of the player's ethnicity as its crew (replaces the placeholder cylinders). */
+  function crewVillagers(shipId, n) {
+    const rec = fleet.get(shipId), list = villagerCandidates(n);
+    list.forEach(({ i, look }, k) => rec.crew.hire({ id: `npc:${i}`, name: (globalThis.__wohPersonName?.(i) || '') || `村人${i}`, npcRef: i, look }));
+    for (let k = list.length; k < n; k++) rec.crew.hire({ id: `hand:${shipId}:${k + 1}`, name: `乗組員${k + 1}`, look: null });
+  }
   /** Hired hands come and go: rebuild the crew figures when the roster size changed. */
   function syncFigures(m, rec) {
     if (!rec?.crew || !m.crewFigs || m.crewFigs.length === rec.crew.members.length) return;
@@ -16289,7 +16327,7 @@ html.shipUiHidden #shipEye{left:calc(8px + env(safe-area-inset-left));opacity:.4
     for (const r of fleet.list()) { const m = meshes.get(r.id), rec = fleet.get(r.id); if (!m || !rec.crew) continue; const d = Math.hypot(m.group.position.x - me.x, m.group.position.z - me.z); if (d <= 60 && (!best || d < best.d)) best = { id: r.id, d, rec }; }
     if (!best) { toast('近く(60m以内)に乗員を乗せられる船がありません'); return; }
     const name = (globalThis.__wohPersonName?.(id) || '') || `村人${id}`;
-    try { best.rec.crew.hire({ id: `npc:${id}`, name, npcRef: id }); toast(`${name} を ${best.id} の乗員に雇った`); } catch (e) { toast(`${name} は既に乗員です`); }
+    try { best.rec.crew.hire({ id: `npc:${id}`, name, npcRef: id, look: villagerLook(id) }); toast(`${name} を ${best.id} の乗員に雇った`); } catch (e) { toast(`${name} は既に乗員です`); }
     refreshList(); save();
   }
   function dismissHand(shipId, personId) { const rec = fleet.get(shipId); if (rec?.crew?.dismiss(personId)) { toast('乗員を降ろした'); refreshList(); save(); } }

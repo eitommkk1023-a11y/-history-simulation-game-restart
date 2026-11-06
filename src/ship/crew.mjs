@@ -40,6 +40,7 @@ export function createCrew({ interior, design, size = G.crew.scenarioSize.value,
   const st = pintaStations(interior, design), mastIds = Object.keys(st.mastFoot);
   const members = roster.map((p, i) => ({ ...p, watch: i % 2, pos: { ...st.rest, y: st.rest.y + ((i % 5) - 2) * 0.35 }, task: 'rest', target: null, work: 0 }));
   let time = 0, watchOn = 0;
+  const baseCount = roster.length, onShift = (m) => members.length <= 10 || m.watch === watchOn; // D: a very small crew keeps one common watch, all hands work
 
   const deckPath = (from, to) => { // BFS over decks joined by ladders: returns the first ladder to take
     if (from === to) return null;
@@ -63,8 +64,8 @@ export function createCrew({ interior, design, size = G.crew.scenarioSize.value,
 
   /** Assign duties for the current watch (D rules): helm, lookout, sail hands at each mast, the rest idle; captain, maestre, pilot on deck. */
   function assign(needs) {
-    const onWatch = members.filter((m) => m.role === 'seaman' && m.watch === watchOn), free = [...onWatch];
-    for (const m of members) { m.task = m.watch === watchOn || m.role !== 'seaman' ? 'rest' : 'off_watch'; m.target = null; }
+    const onWatch = members.filter((m) => m.role === 'seaman' && onShift(m)), free = [...onWatch];
+    for (const m of members) { m.task = onShift(m) || m.role !== 'seaman' ? 'rest' : 'off_watch'; m.target = null; }
     const take = (task, target) => { const m = free.shift(); if (m) { m.task = task; m.target = target; } };
     if (needs.helm !== false) take('helm', st.helm);
     if (needs.lookout !== false) take('lookout', st.lookout);
@@ -97,9 +98,9 @@ export function createCrew({ interior, design, size = G.crew.scenarioSize.value,
     return effects();
   }
   /** Take on a person from outside (e.g. a villager met on the shore) as an ordinary hand. Not one of the historical named crew (level D rules). */
-  function hire({ id, name, npcRef = null }) {
+  function hire({ id, name, npcRef = null, look = null }) {
     if (members.some((m) => m.id === id)) throw new RangeError(`already aboard: ${id}`);
-    const m = { id, name, role: 'seaman', evidence: 'D', generic: true, hired: true, npcRef, watch: members.length % 2, pos: { ...st.rest, y: st.rest.y + ((members.length % 5) - 2) * 0.35 }, task: 'rest', target: null, work: 0 };
+    const m = { id, name, role: 'seaman', evidence: 'D', generic: true, hired: true, npcRef, look, watch: members.length % 2, pos: { ...st.rest, y: st.rest.y + ((members.length % 5) - 2) * 0.35 }, task: 'rest', target: null, work: 0 };
     members.push(m); assign(lastNeeds); return m;
   }
   /** Put a hired hand ashore. The historical named crew cannot be dismissed. */
@@ -110,7 +111,7 @@ export function createCrew({ interior, design, size = G.crew.scenarioSize.value,
   return {
     hire, dismiss, members, stations: st, interior, update, effects, get watchOn() { return watchOn; }, get time() { return time; },
     repairSeconds: () => Math.max(0, ...members.filter((m) => m.task === 'repair').map((m) => m.work)),
-    serialize: () => JSON.parse(JSON.stringify({ time, watchOn, lastNeeds, hired: members.filter((m) => m.hired).map((m) => ({ id: m.id, name: m.name, npcRef: m.npcRef })), members: members.map((m) => ({ id: m.id, pos: m.pos, task: m.task, target: m.target, watch: m.watch, work: m.work })) })),
+    serialize: () => JSON.parse(JSON.stringify({ time, watchOn, lastNeeds, villagersOnly: baseCount === 0, hired: members.filter((m) => m.hired).map((m) => ({ id: m.id, name: m.name, npcRef: m.npcRef, look: m.look })), members: members.map((m) => ({ id: m.id, pos: m.pos, task: m.task, target: m.target, watch: m.watch, work: m.work })) })),
     restore(d) { for (const h of d.hired ?? []) if (!members.some((x) => x.id === h.id)) hire(h); time = d.time; watchOn = d.watchOn; lastNeeds = d.lastNeeds; for (const r of d.members) { const m = members.find((x) => x.id === r.id); if (m) Object.assign(m, r); } },
   };
 }
