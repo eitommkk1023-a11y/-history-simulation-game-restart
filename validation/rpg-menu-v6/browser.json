@@ -1,0 +1,635 @@
+{
+  "checks": [
+    "menu starts open and game is paused",
+    "two real equipment slots show body item and empty weapon",
+    "fullscreen 667x375 inventory",
+    "inventory 667 keeps large main grid and visible equipment/actions",
+    "categories 667 form a left rail with separate touch targets",
+    "toolbar 667 packs weapon body and sort above a taller item grid",
+    "fullscreen 667x375 map",
+    "map 667 separates a two-thirds map from a one-third control panel",
+    "fullscreen 667x375 missions",
+    "fullscreen 844x390 inventory",
+    "inventory 844 keeps large main grid and visible equipment/actions",
+    "categories 844 form a left rail with separate touch targets",
+    "toolbar 844 packs weapon body and sort above a taller item grid",
+    "fullscreen 844x390 map",
+    "map 844 separates a two-thirds map from a one-third control panel",
+    "fullscreen 844x390 missions",
+    "fullscreen 1180x820 inventory",
+    "inventory 1180 keeps large main grid and visible equipment/actions",
+    "categories 1180 form a left rail with separate touch targets",
+    "toolbar 1180 packs weapon body and sort above a taller item grid",
+    "fullscreen 1180x820 map",
+    "map 1180 separates a two-thirds map from a one-third control panel",
+    "fullscreen 1180x820 missions",
+    "equipped slot opens its item across inventory category without auto unequipping",
+    "empty slot selects owned weapon without auto equip",
+    "equip synchronizes slot grid badge details and unchanged weight",
+    "unequip clears slot and grid badge while retaining owned item",
+    "total-weight choice sorts owned stacks without losing selection",
+    "name sort retains same owned item set",
+    "use updates owned count detail and total weight",
+    "mission tracking still updates prototype state",
+    "completed mission cannot be tracked",
+    "map uses loaded real generated world",
+    "world map pan and zoom still work",
+    "closing menu restores player movement",
+    "open menu freezes movement and jump",
+    "closing resumes interrupted jump",
+    "keyboard can reopen map page",
+    "official save database remains untouched",
+    "equipment count tracking and sort persist across reload",
+    "sort control reflects saved preference",
+    "no page or shader errors"
+  ],
+  "layouts": [
+    {
+      "width": 667,
+      "height": 375,
+      "inventory": {
+        "toolbar": {
+          "x": 84,
+          "y": 57,
+          "right": 477,
+          "bottom": 101,
+          "w": 393,
+          "h": 44
+        },
+        "categories": {
+          "x": 8,
+          "y": 57,
+          "right": 76,
+          "bottom": 367,
+          "w": 68,
+          "h": 310,
+          "scroll": 68,
+          "client": 68
+        },
+        "categoryButtons": [
+          {
+            "x": 8,
+            "y": 57,
+            "right": 76,
+            "bottom": 109,
+            "w": 68,
+            "h": 52
+          },
+          {
+            "x": 8,
+            "y": 115,
+            "right": 76,
+            "bottom": 167,
+            "w": 68,
+            "h": 52
+          },
+          {
+            "x": 8,
+            "y": 173,
+            "right": 76,
+            "bottom": 225,
+            "w": 68,
+            "h": 52
+          },
+          {
+            "x": 8,
+            "y": 231,
+            "right": 76,
+            "bottom": 283,
+            "w": 68,
+            "h": 52
+          },
+          {
+            "x": 8,
+            "y": 289,
+            "right": 76,
+            "bottom": 341,
+            "w": 68,
+            "h": 52
+          }
+        ],
+        "grid": {
+          "x": 84,
+          "y": 109,
+          "right": 477,
+          "bottom": 367,
+          "w": 393,
+          "h": 258,
+          "scroll": 393,
+          "client": 393
+        },
+        "equip": {
+          "x": 84,
+          "y": 57,
+          "right": 365,
+          "bottom": 101,
+          "w": 281,
+          "h": 44,
+          "scroll": 281,
+          "client": 281
+        },
+        "detail": {
+          "x": 487,
+          "y": 109,
+          "right": 659,
+          "bottom": 367,
+          "w": 172,
+          "h": 258,
+          "scroll": 171,
+          "client": 171
+        },
+        "action": {
+          "x": 496,
+          "y": 288,
+          "right": 651,
+          "bottom": 332,
+          "w": 155,
+          "h": 44,
+          "scroll": 153,
+          "client": 153
+        },
+        "sort": {
+          "x": 373,
+          "y": 57,
+          "right": 477,
+          "bottom": 101,
+          "w": 104,
+          "h": 44,
+          "scroll": 102,
+          "client": 102
+        },
+        "inventory": {
+          "w": 575
+        },
+        "bag": {
+          "w": 393
+        },
+        "equipment": [
+          {
+            "x": 84,
+            "y": 57,
+            "right": 221.5,
+            "bottom": 101,
+            "w": 137.5,
+            "h": 44
+          },
+          {
+            "x": 227.5,
+            "y": 57,
+            "right": 365,
+            "bottom": 101,
+            "w": 137.5,
+            "h": 44
+          }
+        ],
+        "items": [
+          {
+            "w": 91.5,
+            "h": 88
+          },
+          {
+            "w": 91.5,
+            "h": 88
+          },
+          {
+            "w": 91.5,
+            "h": 88
+          },
+          {
+            "w": 91.5,
+            "h": 88
+          }
+        ]
+      }
+    },
+    {
+      "width": 667,
+      "height": 375,
+      "map": {
+        "canvas": {
+          "x": 8,
+          "y": 57,
+          "width": 427.328125,
+          "height": 310
+        },
+        "controls": {
+          "x": 445.328125,
+          "y": 57,
+          "width": 213.671875,
+          "height": 310
+        },
+        "panel": {
+          "x": 8,
+          "y": 57,
+          "width": 651,
+          "height": 310
+        }
+      }
+    },
+    {
+      "width": 844,
+      "height": 390,
+      "inventory": {
+        "toolbar": {
+          "x": 98,
+          "y": 57,
+          "right": 619.375,
+          "bottom": 101,
+          "w": 521.375,
+          "h": 44
+        },
+        "categories": {
+          "x": 8,
+          "y": 57,
+          "right": 88,
+          "bottom": 382,
+          "w": 80,
+          "h": 325,
+          "scroll": 80,
+          "client": 80
+        },
+        "categoryButtons": [
+          {
+            "x": 8,
+            "y": 57,
+            "right": 88,
+            "bottom": 109,
+            "w": 80,
+            "h": 52
+          },
+          {
+            "x": 8,
+            "y": 115,
+            "right": 88,
+            "bottom": 167,
+            "w": 80,
+            "h": 52
+          },
+          {
+            "x": 8,
+            "y": 173,
+            "right": 88,
+            "bottom": 225,
+            "w": 80,
+            "h": 52
+          },
+          {
+            "x": 8,
+            "y": 231,
+            "right": 88,
+            "bottom": 283,
+            "w": 80,
+            "h": 52
+          },
+          {
+            "x": 8,
+            "y": 289,
+            "right": 88,
+            "bottom": 341,
+            "w": 80,
+            "h": 52
+          }
+        ],
+        "grid": {
+          "x": 98,
+          "y": 109,
+          "right": 619.375,
+          "bottom": 382,
+          "w": 521.375,
+          "h": 273,
+          "scroll": 521,
+          "client": 521
+        },
+        "equip": {
+          "x": 98,
+          "y": 57,
+          "right": 507.375,
+          "bottom": 101,
+          "w": 409.375,
+          "h": 44,
+          "scroll": 409,
+          "client": 409
+        },
+        "detail": {
+          "x": 629.375,
+          "y": 109,
+          "right": 836,
+          "bottom": 382,
+          "w": 206.625,
+          "h": 273,
+          "scroll": 206,
+          "client": 206
+        },
+        "action": {
+          "x": 638.375,
+          "y": 288,
+          "right": 828,
+          "bottom": 332,
+          "w": 189.625,
+          "h": 44,
+          "scroll": 188,
+          "client": 188
+        },
+        "sort": {
+          "x": 515.375,
+          "y": 57,
+          "right": 619.375,
+          "bottom": 101,
+          "w": 104,
+          "h": 44,
+          "scroll": 102,
+          "client": 102
+        },
+        "inventory": {
+          "w": 738
+        },
+        "bag": {
+          "w": 521.375
+        },
+        "equipment": [
+          {
+            "x": 98,
+            "y": 57,
+            "right": 299.6875,
+            "bottom": 101,
+            "w": 201.6875,
+            "h": 44
+          },
+          {
+            "x": 305.6875,
+            "y": 57,
+            "right": 507.375,
+            "bottom": 101,
+            "w": 201.6875,
+            "h": 44
+          }
+        ],
+        "items": [
+          {
+            "w": 123.59375,
+            "h": 88
+          },
+          {
+            "w": 123.59375,
+            "h": 88
+          },
+          {
+            "w": 123.59375,
+            "h": 88
+          },
+          {
+            "w": 123.59375,
+            "h": 88
+          }
+        ]
+      }
+    },
+    {
+      "width": 844,
+      "height": 390,
+      "map": {
+        "canvas": {
+          "x": 8,
+          "y": 57,
+          "width": 545.328125,
+          "height": 325
+        },
+        "controls": {
+          "x": 563.328125,
+          "y": 57,
+          "width": 272.65625,
+          "height": 325
+        },
+        "panel": {
+          "x": 8,
+          "y": 57,
+          "width": 828,
+          "height": 325
+        }
+      }
+    },
+    {
+      "width": 1180,
+      "height": 820,
+      "inventory": {
+        "toolbar": {
+          "x": 98,
+          "y": 57,
+          "right": 861.28125,
+          "bottom": 101,
+          "w": 763.28125,
+          "h": 44
+        },
+        "categories": {
+          "x": 8,
+          "y": 57,
+          "right": 88,
+          "bottom": 812,
+          "w": 80,
+          "h": 755,
+          "scroll": 80,
+          "client": 80
+        },
+        "categoryButtons": [
+          {
+            "x": 8,
+            "y": 57,
+            "right": 88,
+            "bottom": 109,
+            "w": 80,
+            "h": 52
+          },
+          {
+            "x": 8,
+            "y": 115,
+            "right": 88,
+            "bottom": 167,
+            "w": 80,
+            "h": 52
+          },
+          {
+            "x": 8,
+            "y": 173,
+            "right": 88,
+            "bottom": 225,
+            "w": 80,
+            "h": 52
+          },
+          {
+            "x": 8,
+            "y": 231,
+            "right": 88,
+            "bottom": 283,
+            "w": 80,
+            "h": 52
+          },
+          {
+            "x": 8,
+            "y": 289,
+            "right": 88,
+            "bottom": 341,
+            "w": 80,
+            "h": 52
+          }
+        ],
+        "grid": {
+          "x": 98,
+          "y": 109,
+          "right": 861.28125,
+          "bottom": 812,
+          "w": 763.28125,
+          "h": 703,
+          "scroll": 763,
+          "client": 763
+        },
+        "equip": {
+          "x": 98,
+          "y": 57,
+          "right": 749.28125,
+          "bottom": 101,
+          "w": 651.28125,
+          "h": 44,
+          "scroll": 651,
+          "client": 651
+        },
+        "detail": {
+          "x": 871.28125,
+          "y": 109,
+          "right": 1172,
+          "bottom": 812,
+          "w": 300.71875,
+          "h": 703,
+          "scroll": 300,
+          "client": 300
+        },
+        "action": {
+          "x": 884.28125,
+          "y": 310.5,
+          "right": 1160,
+          "bottom": 354.5,
+          "w": 275.71875,
+          "h": 44,
+          "scroll": 274,
+          "client": 274
+        },
+        "sort": {
+          "x": 757.28125,
+          "y": 57,
+          "right": 861.28125,
+          "bottom": 101,
+          "w": 104,
+          "h": 44,
+          "scroll": 102,
+          "client": 102
+        },
+        "inventory": {
+          "w": 1074
+        },
+        "bag": {
+          "w": 763.28125
+        },
+        "equipment": [
+          {
+            "x": 98,
+            "y": 57,
+            "right": 420.640625,
+            "bottom": 101,
+            "w": 322.640625,
+            "h": 44
+          },
+          {
+            "x": 426.640625,
+            "y": 57,
+            "right": 749.28125,
+            "bottom": 101,
+            "w": 322.640625,
+            "h": 44
+          }
+        ],
+        "items": [
+          {
+            "w": 145.65625,
+            "h": 169.75
+          },
+          {
+            "w": 145.65625,
+            "h": 169.75
+          },
+          {
+            "w": 145.65625,
+            "h": 169.75
+          },
+          {
+            "w": 145.65625,
+            "h": 169.75
+          }
+        ]
+      }
+    },
+    {
+      "width": 1180,
+      "height": 820,
+      "map": {
+        "canvas": {
+          "x": 8,
+          "y": 57,
+          "width": 769.328125,
+          "height": 755
+        },
+        "controls": {
+          "x": 787.328125,
+          "y": 57,
+          "width": 384.65625,
+          "height": 755
+        },
+        "panel": {
+          "x": 8,
+          "y": 57,
+          "width": 1164,
+          "height": 755
+        }
+      }
+    }
+  ],
+  "sorted": [
+    "wood",
+    "stone",
+    "ore",
+    "bread",
+    "water",
+    "tunic",
+    "knife",
+    "leather",
+    "rope",
+    "flint",
+    "bandage",
+    "herb"
+  ],
+  "persisted": {
+    "version": 1,
+    "counts": {
+      "knife": 1,
+      "tunic": 1,
+      "bread": 4,
+      "water": 2,
+      "bandage": 3,
+      "wood": 6,
+      "stone": 4,
+      "flint": 2,
+      "rope": 1,
+      "herb": 4,
+      "ore": 2,
+      "leather": 3
+    },
+    "equipment": {
+      "weapon": "knife",
+      "body": "tunic"
+    },
+    "tracked": "river",
+    "sortOrder": "name"
+  },
+  "databases": [
+    "geo-world-saves-prototype-rpg-menu-v1"
+  ],
+  "errors": []
+}
