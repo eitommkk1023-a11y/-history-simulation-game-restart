@@ -1933,11 +1933,22 @@ function createCrew({ interior, design, size = G.crew.scenarioSize.value, roster
     for (const m of members) if (m.target) { const arrived = walkTo(m, m.target, dt); if (arrived && (m.task === 'repair')) m.work += dt; }
     return effects();
   }
+  /** Take on a person from outside (e.g. a villager met on the shore) as an ordinary hand. Not one of the historical named crew (level D rules). */
+  function hire({ id, name, npcRef = null }) {
+    if (members.some((m) => m.id === id)) throw new RangeError(`already aboard: ${id}`);
+    const m = { id, name, role: 'seaman', evidence: 'D', generic: true, hired: true, npcRef, watch: members.length % 2, pos: { ...st.rest, y: st.rest.y + ((members.length % 5) - 2) * 0.35 }, task: 'rest', target: null, work: 0 };
+    members.push(m); assign(lastNeeds); return m;
+  }
+  /** Put a hired hand ashore. The historical named crew cannot be dismissed. */
+  function dismiss(id) {
+    const i = members.findIndex((m) => m.id === id && m.hired); if (i < 0) return false;
+    members.splice(i, 1); assign(lastNeeds); return true;
+  }
   return {
-    members, stations: st, interior, update, effects, get watchOn() { return watchOn; }, get time() { return time; },
+    hire, dismiss, members, stations: st, interior, update, effects, get watchOn() { return watchOn; }, get time() { return time; },
     repairSeconds: () => Math.max(0, ...members.filter((m) => m.task === 'repair').map((m) => m.work)),
-    serialize: () => JSON.parse(JSON.stringify({ time, watchOn, lastNeeds, members: members.map((m) => ({ id: m.id, pos: m.pos, task: m.task, target: m.target, watch: m.watch, work: m.work })) })),
-    restore(d) { time = d.time; watchOn = d.watchOn; lastNeeds = d.lastNeeds; for (const r of d.members) { const m = members.find((x) => x.id === r.id); if (m) Object.assign(m, r); } },
+    serialize: () => JSON.parse(JSON.stringify({ time, watchOn, lastNeeds, hired: members.filter((m) => m.hired).map((m) => ({ id: m.id, name: m.name, npcRef: m.npcRef })), members: members.map((m) => ({ id: m.id, pos: m.pos, task: m.task, target: m.target, watch: m.watch, work: m.work })) })),
+    restore(d) { for (const h of d.hired ?? []) if (!members.some((x) => x.id === h.id)) hire(h); time = d.time; watchOn = d.watchOn; lastNeeds = d.lastNeeds; for (const r of d.members) { const m = members.find((x) => x.id === r.id); if (m) Object.assign(m, r); } },
   };
 }
 

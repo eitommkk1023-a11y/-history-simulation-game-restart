@@ -148,7 +148,7 @@
       try { const q = T.toLocal(xM, yM, 0, S.origin); m.group.position.set(q.x, q.y, q.z); m.group.visible = true; } catch (_) { m.group.visible = false; continue; }
       m.group.rotation.set(0, -st.psi, -st.heelDeg * DEG);
       if (m.furn && m.loadRef !== (rec.massItems ?? null)) { m.loadRef = rec.massItems ?? null; m.furn(); Ship.updateFurnishingsVisibility(m); } // stores follow the real load
-      Ship.updateShipObject(m, { leeSign: Math.sign(rec.vessel.apparentWind(env).y) || 1 }); if (m.crewFigs?.length) Ship.updateCrewFigures(m, null); if (m.setDetail) m.setDetail(THREE_ && cp.camera.position.distanceTo(m.group.position) > 400 ? 2 : cp.camera.position.distanceTo(m.group.position) > 120 ? 1 : 0);
+      Ship.updateShipObject(m, { leeSign: Math.sign(rec.vessel.apparentWind(env).y) || 1 }); syncFigures(m, rec); if (m.crewFigs?.length) Ship.updateCrewFigures(m, null); if (m.setDetail) m.setDetail(THREE_ && cp.camera.position.distanceTo(m.group.position) > 400 ? 2 : cp.camera.position.distanceTo(m.group.position) > 120 ? 1 : 0);
     }
     for (const id of [...meshes.keys()]) if (!fleet.has(id)) { disposeMesh(meshes.get(id)); meshes.delete(id); }
   }
@@ -305,7 +305,7 @@
     Ship.setViewDeck(m, m.pos.deck, m.interior.roomOf(m.pos.deck, m.pos.x, m.pos.y)?.id ?? null);
     if (m.furn) Ship.updateFurnishingsVisibility(m);
     setWater(!m.cutaway); // below deck the hold floor is under the sea surface: hide the sea (cutaway view) so the hold can be seen
-    if (m.crewFigs?.length) Ship.updateCrewFigures(m, m.pos.deck);
+    syncFigures(m, fleet.get(boarded)); if (m.crewFigs?.length) Ship.updateCrewFigures(m, m.pos.deck);
     const near = m.interior.laddersNear(m.pos), sig = near.map((l) => l.id).join(',');
     const foot = near.find((l) => l.dist < 0.7 && l.id !== m.ladderLock); dwell = uiHidden && foot ? dwell + dt : 0; if (dwell > 1) { m.pos = m.interior.climb(m.pos, foot.id); dwell = 0; ladderSig = ''; return; }
     if (sig !== ladderSig) { ladderSig = sig; ui.ladders.replaceChildren(...near.map((l) => $('button', { textContent: l.direction === 'up' ? '上る' : '下りる', className: 'on', onclick: () => { const z0 = m.interior.deckZ(m.pos.deck); m.pos = m.interior.climb(m.pos, l.id); m.climbZ = z0 - m.interior.deckZ(m.pos.deck); m.ladderLock = l.id; ladderSig = ''; } }))); }
@@ -336,7 +336,7 @@ html.shipUiHidden #shipEye{left:calc(8px + env(safe-area-inset-left));opacity:.4
     ui.eye = $('button', { id: 'shipEye', textContent: '👁', title: '船のUIの表示／非表示', onclick: () => setUiHidden(!uiHidden) });
     ui.panel = $('div', { id: 'shipPanel', className: 'scrollable' });
     ui.toast = $('div', { id: 'shipToast' });
-    ui.btn.onclick = () => { ui.panel.style.display = ui.panel.style.display === 'block' ? 'none' : 'block'; };
+    ui.btn.onclick = () => { ui.panel.style.display = ui.panel.style.display === 'block' ? 'none' : 'block'; refreshList(); };
     ui.spawn = $('div', {}, [$('h4', { textContent: '船を出す（近くの海へ）' }),
       ...Object.entries({ 'pinta-1492': 'ピンタ1492 横帆', 'pinta-1492-lateen': 'ピンタ1492 ラテン', galleon: 'ガレオン', galley: 'ガレー' }).map(([d, n]) => $('button', { textContent: n, onclick: () => spawn(d) }))]);
     ui.list = $('div'); ui.ctrl = $('div', { className: 'btns' }); ui.info = $('div', { className: 'info' });
@@ -374,12 +374,33 @@ html.shipUiHidden #shipEye{left:calc(8px + env(safe-area-inset-left));opacity:.4
       ui.bench.textContent = `性能(${where}) 平均${(1000 / avg).toFixed(1)}fps／95%点${p95.toFixed(1)}ms／最悪${worst.toFixed(0)}ms／描画${inf.calls}回・三角形${(inf.triangles / 1000).toFixed(0)}k／船${fleet?.list().length ?? 0}隻／画面${innerWidth}x${innerHeight}×${devicePixelRatio}`; benchmark.run = false; };
     requestAnimationFrame(tick);
   }
+  /** Hired hands come and go: rebuild the crew figures when the roster size changed. */
+  function syncFigures(m, rec) {
+    if (!rec?.crew || !m.crewFigs || m.crewFigs.length === rec.crew.members.length) return;
+    for (const { f } of m.crewFigs) m.group.remove(f);
+    Ship.addCrewFigures(THREE_, m, rec.crew);
+  }
+  /** Take the villager the player has selected (tap on an NPC) aboard the nearest ship as a hired hand. The villager stays in the game's own village simulation. */
+  function hireSelected() {
+    const id = globalThis.__wohNpcView?.selected;
+    if (id === null || id === undefined) { toast('雇いたい村人を先にタップして選んでください'); return; }
+    const me = cp.character.position; let best = null;
+    for (const r of fleet.list()) { const m = meshes.get(r.id), rec = fleet.get(r.id); if (!m || !rec.crew) continue; const d = Math.hypot(m.group.position.x - me.x, m.group.position.z - me.z); if (d <= 60 && (!best || d < best.d)) best = { id: r.id, d, rec }; }
+    if (!best) { toast('近く(60m以内)に乗員を乗せられる船がありません'); return; }
+    const name = (globalThis.__wohPersonName?.(id) || '') || `村人${id}`;
+    try { best.rec.crew.hire({ id: `npc:${id}`, name, npcRef: id }); toast(`${name} を ${best.id} の乗員に雇った`); } catch (e) { toast(`${name} は既に乗員です`); }
+    refreshList(); save();
+  }
+  function dismissHand(shipId, personId) { const rec = fleet.get(shipId); if (rec?.crew?.dismiss(personId)) { toast('乗員を降ろした'); refreshList(); save(); } }
   function refreshList() {
     if (!ui.list) return;
     ui.list.replaceChildren($('h4', { textContent: '船' }), ...(fleet?.list() ?? []).map((r) => $('div', { className: 'row' }, [
       $('span', { textContent: `${r.id}（${Ship.sampleDesigns[r.designId]?.label ?? r.designId}）`, style: 'flex:1' }),
       $('button', { textContent: boarded === r.id ? '降りる' : '乗る', className: boarded === r.id ? 'on' : '', onclick: () => (boarded === r.id ? disembark() : board(r.id)) }),
       $('button', { textContent: '消す', onclick: () => removeShip(r.id) })])));
+    const crewShips = (fleet?.list() ?? []).filter((r) => fleet.get(r.id).crew);
+    if (crewShips.length) ui.list.append($('h4', { textContent: '乗員（村人を雇う）' }), $('button', { textContent: '選択中の村人を雇う', onclick: hireSelected }),
+      ...crewShips.flatMap((r) => fleet.get(r.id).crew.members.filter((x) => x.hired).map((x) => $('div', { className: 'row' }, [$('span', { textContent: `${x.name}（${r.id}）`, style: 'flex:1' }), $('button', { textContent: '降ろす', onclick: () => dismissHand(r.id, x.id) })]))));
     ui.ctrl.replaceChildren();
     ui.bar.style.display = boarded && fleet?.has(boarded) ? 'block' : 'none';
     if (!boarded || !fleet?.has(boarded)) return;
