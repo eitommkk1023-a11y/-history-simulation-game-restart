@@ -9,17 +9,18 @@ export function stepStationaryTurn(state,steer,dt,{cart=false}={}){
 }
 
 export function startHorseFall(horse){
- return {kind:'fall',elapsed:0,x:horse.x,y:horse.y,z:horse.z,yaw:horse.yaw,speed:horse.speed};
+ return {kind:'fall',elapsed:0,x:horse.x,y:horse.y,z:horse.z,yaw:horse.yaw,speed:horse.speed,startSpeed:horse.speed,startMode:horse.mode??'idle',startPhase:horse.phase??0,running:Math.abs(horse.speed)>=2.5};
 }
 
 export function stepHorseFall(state,dt,terrain){
  if(state.kind==='dead'||!(dt>0))return state;
  const s={...state},duration=Math.min(dt,.1,1.5-s.elapsed),steps=Math.max(1,Math.ceil(duration*120)),h=duration/steps;
  for(let i=0;i<steps;i++){
-  const distance=s.speed*(1-Math.exp(-3.8*h))/3.8;
+  const elapsed=s.elapsed+i*h,drag=s.running?(elapsed<.18?.8:elapsed<.55?2.1:5):3.8;
+  const distance=s.speed*(1-Math.exp(-drag*h))/drag;
   const x=s.x+Math.sin(s.yaw)*distance,z=s.z+Math.cos(s.yaw)*distance,y=terrain.height(x,z);
   if(!Number.isFinite(y)||Math.abs(y-s.y)>Math.abs(distance)*.65+.04||terrain.blocked(x,z,.7))s.speed=0;
-  else{s.x=x;s.z=z;s.y=y;s.speed*=Math.exp(-3.8*h);}
+  else{s.x=x;s.z=z;s.y=y;s.speed*=Math.exp(-drag*h);}
  }
  s.elapsed+=duration;if(s.elapsed>=1.5-1e-8){s.kind='dead';s.speed=0;}
  return s;
