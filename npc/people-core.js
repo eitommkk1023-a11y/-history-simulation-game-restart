@@ -17,6 +17,8 @@ const PE = {
   SIZE_CLASS: [[0.3, 30, 60], [0.5, 60, 150], [0.2, 150, 250]],   // 初期人口：小・中・大の範囲［仕様］、割合［仮］（平均 約105人）
   MIN_SPACING: 45,                                // 初期配置の集団どうしの最小間隔（ブロック ≒ 150km）。置けなければ少しずつ縮める［仮］
   RIVER_STEP: 3,                                  // 川の点を何点おきに候補にするか［仮］
+  SITE_SHARE: { river: 0.4, coast: 0.3, lake: 0.2, spring: 0.1 },   // 初期配置で、場所の種類をどの割合で選ぶか［仮］。種類ごとに、点数の2乗に比例して選ぶ（食料の多い海岸だけに偏らないように）
+  SITE_RIVER_ONLY: false,                         // true：集落の候補を川の点だけにする（以前の挙動。比較・試験用）
   HELPER_SHARE: 0.35,                             // 仕事に就いていない10〜13歳・兼任の人が、採集に回る割合［仮］
   KNOW_DEFAULT: 0.15,                             // その仕事の人がいないときの技能（0〜1）［仮］
   FERT_ADJ: 1.5,
@@ -463,8 +465,8 @@ function peopleProposal(people, kind, ctx) {
   if (kind === 'migrate') {
     if (g.moveTo) return { ok: false, reason: 'moving' };
     const S = peCache && peCache.world === ctx.world ? peCache : null; if (!S) return { ok: false, reason: 'noWorld' };
-    const k = peNearestRiver(S, ctx.x, ctx.y, PE.RIVER_SNAP); if (k < 0) return { ok: false, reason: 'noRiver' };
-    target = peDryNear(S, ctx.world, ctx.world.riverPts[k * 3], ctx.world.riverPts[k * 3 + 1]);
+    const ns = peNearestSite(S, ctx.world, ctx.x, ctx.y, PE.RIVER_SNAP); if (!ns) return { ok: false, reason: 'noRiver' };
+    target = peDryNear(S, ctx.world, ns.x, ns.y); target.site = peSiteTag(S, ctx.world, ns, people, g);
     if (peSeaBetween(S, ctx.world, g.x, g.y, target.x, target.y)) return { ok: false, reason: 'sea' };
     dist = Math.hypot(target.x - g.x, target.y - g.y); if (dist < 6) return { ok: false, reason: 'near' };
   } else if (kind in SHARE_OF) { if ((g.share || 0) === SHARE_OF[kind]) return { ok: false, reason: 'same' }; }
@@ -481,7 +483,7 @@ function peopleProposal(people, kind, ctx) {
   let leaderOppose = false; if (!isLeader && g.leader >= 0 && P.death[g.leader] === ALIVE) leaderOppose = peVoterScore(people, g.leader, me, kind, g, dist) <= 0;
   const need = isLeader ? PROP_NEED.leader : PROP_NEED.member + (leaderOppose ? PROP_NEED.leaderOppose : 0), passed = support >= need;
   pl.proposalReady = P.day + PROP_COOLDOWN * (passed ? 1 : 2);
-  if (passed) { if (kind === 'migrate') { g.moveTo = { x: target.x, y: target.y, by: 'player' }; } else if (kind in SHARE_OF) g.share = SHARE_OF[kind]; else g.policy = kind; }
+  if (passed) { if (kind === 'migrate') { g.moveTo = { x: target.x, y: target.y, by: 'player', site: target.site }; } else if (kind in SHARE_OF) g.share = SHARE_OF[kind]; else g.policy = kind; }
   return { ok: true, passed, kind, support, need, voters: voters.length, isLeader, leaderOppose, group: g.id, eth: g.ethId, x: g.x, y: g.y };
 }
 // ---------------------------------------------------------------- プレイヤーの人物と、文化ごとの継承
@@ -697,35 +699,34 @@ function peopleGenerate(seed, W) {
   const sd = typeof seed === 'number' ? seed >>> 0 : peHash(String(seed));
   const rng = peRng(sd ^ peHash('people'));
   const P = world.riverPts;
-  // 候補：川の点ごとの暮らしやすさ
-  const cand = [], score = [];
+  // 候補：川・海岸・湖畔・湧水の点ごとの、複数条件の採点（食料・水・地形・資源・交通・洪水）。点数の2乗に比例して選ぶ
+  const T = peSites(S, world), cand = [], score = [], info = [];
   let smax = 0;
-  for (let c = 0; c < S.n; c++) {
-    if (S.riverStart[c] === S.riverStart[c + 1]) continue;
-    const v = peSiteValue(S, world, c);
-    if (v <= 0) continue;
-    if (!world.climate.cell.zone[c]) continue;
-    for (let j = S.riverStart[c]; j < S.riverStart[c + 1]; j++) {
-      const k = S.riverPt[j], i = Math.round(P[k * 3 + 1]) * S.W + Math.round(P[k * 3]);
-      const e = world.elev[i];
-      const hi = e > 3500 ? 0.1 : e > 2000 ? 1 - 0.9 * (e - 2000) / 1500 : 1;   // 高地は暮らしにくい
-      cand.push(k); score.push(v * hi);
-      if (v * hi > smax) smax = v * hi;
-    }
+  for (let q = 0; q < T.count; q++) {
+    const x = T.x[q], y = T.y[q], r = peSiteScore(S, world, x, y, SITE_KINDS[T.kind[q]], null);
+    if (!r || r.score <= 0) continue;
+    cand.push(q); score.push(r.score); info.push(r);
+    if (r.score > smax) smax = r.score;
   }
-  const cum = new Float64Array(cand.length);
-  let tot = 0;
-  for (let i = 0; i < cand.length; i++) { const s = score[i] / smax; tot += s * s; cum[i] = tot; }
-  const pick = () => { const r = rng() * tot; let lo = 0, hi = cum.length - 1; while (lo < hi) { const mid = (lo + hi) >> 1; if (cum[mid] < r) lo = mid + 1; else hi = mid; } return lo; };
+  // 種類ごとに、点数の2乗の累積を作る。まず種類を割合で選び、その中で点数に比例して選ぶ
+  const byKind = SITE_KINDS.map(() => ({ idx: [], cum: [], tot: 0 }));
+  for (let i = 0; i < cand.length; i++) { const kb = byKind[T.kind[cand[i]]], w = score[i] / smax; kb.tot += w * w; kb.idx.push(i); kb.cum.push(kb.tot); }
+  const pickIn = (kb) => { const r = rng() * kb.tot; let lo = 0, hi = kb.cum.length - 1; while (lo < hi) { const mid = (lo + hi) >> 1; if (kb.cum[mid] < r) lo = mid + 1; else hi = mid; } return kb.idx[lo]; };
+  const pick = () => {
+    let wsum = 0; for (let k = 0; k < byKind.length; k++) if (byKind[k].idx.length) wsum += PE.SITE_SHARE[SITE_KINDS[k]] || 0;
+    let r = rng() * wsum, kk = -1; for (let k = 0; k < byKind.length; k++) { if (!byKind[k].idx.length) continue; r -= PE.SITE_SHARE[SITE_KINDS[k]] || 0; if (r <= 0) { kk = k; break; } }
+    if (kk < 0) kk = byKind.findIndex(x => x.idx.length);
+    return pickIn(byKind[kk]);
+  };
   const sites = [];
   let spacing = PE.MIN_SPACING, fails = 0;
   while (sites.length < PE.ETHNICITIES && cand.length) {
-    const k = cand[pick()], x = P[k * 3], y = P[k * 3 + 1];
+    const pi = pick(), q = cand[pi], x = T.x[q], y = T.y[q];
     let ok = true;
     for (const s of sites) { const dx = s.rx - x, dy = s.ry - y; if (dx * dx + dy * dy < spacing * spacing) { ok = false; break; } }
     if (!ok) { if (++fails > 400) { spacing *= 0.85; fails = 0; } continue; }
     const d = peDryNear(S, world, x, y);
-    sites.push({ rx: x, ry: y, x: d.x, y: d.y });
+    sites.push({ rx: x, ry: y, x: d.x, y: d.y, site: { kind: info[pi].kind, score: info[pi].score, parts: info[pi].parts } });
   }
   const people = { version: 2, ties: {}, ethSpeed: 1, nbr: {}, nextGroupId: 1, nextEthId: 1, rngState: 0, playerEth: 0, ethnicities: [], groups: [], contacts: {}, languages: [], npc: null, haz: null, stat: null };
   // 安定人口に近い年齢構成（基本の死亡率での生存率）の累積
@@ -745,6 +746,7 @@ function peopleGenerate(seed, W) {
     for (const c of PE.SIZE_CLASS) { cls = c; if (r < c[0]) break; r -= c[0]; }
     pops.push(Math.round(cls[1] + (cls[2] - cls[1]) * rng()));
     const g = peNewGroup(people, eth.id, s.x, s.y);
+    g.site = s.site;
     g.radius = peRadius(pops[i]);
     g.cult = Array.from({ length: CULT_DIMS }, (_, k) => peHash('cult' + eth.id + ':' + k + '/' + sd) / 4294967296);   // 民族の文化の特徴［仮］
     Object.assign(eth, peCultureRules(g.cult)); eth.cult0 = g.cult.slice();
@@ -904,11 +906,11 @@ function peSetDemand(people, g, pl) {
 // 近くの川沿いに直す。行けない（近くに川が無い・海を越える）ときは { ok:false, reason }
 function peopleSetMove(people, g, x, y, world) {
   const S = peWorld(world, peCache && peCache.world === world ? peCache.plantFood : null);
-  const k = peNearestRiver(S, x, y, PE.RIVER_SNAP);
-  if (k < 0) return { ok: false, reason: 'noRiver' };
-  const d = peDryNear(S, world, world.riverPts[k * 3], world.riverPts[k * 3 + 1]);
+  const ns = peNearestSite(S, world, x, y, PE.RIVER_SNAP);
+  if (!ns) return { ok: false, reason: 'noRiver' };
+  const d = peDryNear(S, world, ns.x, ns.y);
   if (peSeaBetween(S, world, g.x, g.y, d.x, d.y)) return { ok: false, reason: 'sea' };
-  g.moveTo = { x: d.x, y: d.y, by: 'player' };
+  g.moveTo = { x: d.x, y: d.y, by: 'player', site: peSiteTag(S, world, ns, people, g) };
   return { ok: true, x: d.x, y: d.y };
 }
 
@@ -1007,20 +1009,100 @@ function peTerritory(S, g) {
 
 
 // 移住先・分裂先を探す：距離 range の川沿いで、他の集団から離れた、暮らしやすい所（minValue 以上）。無ければ null
+// ---------------------------------------------------------------- 集落の立地：候補は川だけでなく、海岸・湖畔・湧水。複数の条件で採点し、理由（内訳）を残す
+const SITE_KINDS = ['river', 'coast', 'lake', 'spring'], SITE_LABEL = { river: '川沿い', coast: '海岸', lake: '湖畔', spring: '湧水・オアシス' };
+// 候補の点（セルごと・CSR形式）。川＝川の線の点、海岸＝海に接する陸、湖畔＝湖に接する陸、湧水＝地下水が浅く、地表の水から遠い肥えた所。一度作って使い回す
+function peSites(S, world) {
+  if (S.sites) return S.sites;
+  const W = S.W, H = S.H, type = world.type, water = world.water, P = world.riverPts, n = S.n, px = [], py = [], kd = [];
+  for (let c = 0; c < n; c++) for (let j = S.riverStart[c]; j < S.riverStart[c + 1]; j++) { const k = S.riverPt[j]; px.push(P[k * 3]); py.push(P[k * 3 + 1]); kd.push(0); }
+  if (!PE.SITE_RIVER_ONLY) {
+    for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+      const i = y * W + x; if (!type[i] || water[i]) continue;
+      if ((((x * 73856093) ^ (y * 19349663)) >>> 0 & 3) !== 0) continue;   // 4つに1つに間引く
+      if (!type[i - 1] || !type[i + 1] || !type[i - W] || !type[i + W]) { px.push(x); py.push(y); kd.push(1); }
+      else if (water[i - 1] === 2 || water[i + 1] === 2 || water[i - W] === 2 || water[i + W] === 2) { px.push(x); py.push(y); kd.push(2); }
+    }
+    const g = world.resources && world.resources.grid;
+    if (g && g.gwDepth) for (let gy = 0; gy < g.h; gy++) for (let gx = 0; gx < g.w; gx++) {
+      const gi = gy * g.w + gx, x = gx * g.step, y = gy * g.step; if (x >= W || y >= H) continue;
+      if (g.fertility[gi] <= 40 || g.gwDepth[gi] >= 20 || g.gwRecharge[gi] <= 100) continue;
+      if ((((gx * 2654435761) ^ (gy * 40503)) >>> 0 & 7) !== 0) continue;
+      const i = y * W + x; if (!type[i] || water[i]) continue;
+      let near = false; for (let dy = -8; dy <= 8 && !near; dy += 2) for (let dx = -8; dx <= 8; dx += 2) { const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue; const j = yy * W + xx; if (!type[j] || water[j]) { near = true; break; } }
+      if (!near) { px.push(x); py.push(y); kd.push(3); }
+    }
+  }
+  const cnt = new Int32Array(n + 1), cellOf = new Int32Array(px.length);
+  for (let q = 0; q < px.length; q++) { const c = peCellOf(S, px[q], py[q]); cellOf[q] = c; cnt[c + 1]++; }
+  for (let c = 0; c < n; c++) cnt[c + 1] += cnt[c];
+  const fill = cnt.slice(0, n), X = new Float32Array(px.length), Y = new Float32Array(px.length), K = new Uint8Array(px.length);
+  for (let q = 0; q < px.length; q++) { const o = fill[cellOf[q]]++; X[o] = px[q]; Y[o] = py[q]; K[o] = kd[q]; }
+  S.sites = { start: cnt, x: X, y: Y, kind: K, count: px.length };
+  return S.sites;
+}
+// 定住（村になる条件）に使う価値：野生の食料に、農耕・牧畜を持つ民族なら、肥えた土地・草地の分を足す（川沿いの肥えた谷が、農耕で村になれるように）
+function peSettleValue(S, world, g, people) {
+  const c = peCellOf(S, g.homeX, g.homeY), v = peSiteValue(S, world, c); if (!people || !people.nation) return v;
+  const t = peTechOf(people, g.ethId); if (!t.farm && !t.herd) return v;
+  const gr = world.resources && world.resources.grid, gi = gr ? Math.min(gr.h - 1, (g.homeY / gr.step) | 0) * gr.w + Math.min(gr.w - 1, (g.homeX / gr.step) | 0) : -1;
+  return v + (t.farm && gi >= 0 ? 900 * gr.fertility[gi] / 255 : 0) + (t.herd ? 300 * world.fauna.env.grass[c] / 255 : 0);
+}
+// 暮らし方に応じた好み：農耕なら肥えた土地、牧畜なら草地、漁なら水辺（hint＝{ farm, herd, fish } の割合）
+function peSiteHint(people, g) {
+  const t = peTechOf(people, g.ethId), P = people.npc, tot = Math.max(1, (g.pop || 1));
+  return { farm: t.farm ? 1 : 0, herd: t.herd ? 1 : 0, fish: P && P.gcount ? P.gcount[g.id * NJOB + 3] / tot : 0 };
+}
+// 点 (x,y) の立地の採点。{ ok, score, kind, parts }。parts は、なぜその点数かの内訳（食料・水・地形・資源・交通・洪水・暮らし方）
+function peSiteScore(S, world, x, y, kind, hint) {
+  const c = peCellOf(S, x, y), food = peSiteValue(S, world, c); if (!(food > 0) || !world.climate.cell.zone[c]) return null;
+  const env = world.fauna.env, rug = env.rugged[c] / 255, wet = env.wetland[c] / 255, gr = world.resources && world.resources.grid;
+  const i = Math.round(y) * S.W + Math.round(x), e = world.elev[i], hi = e > 3500 ? 0.1 : e > 2000 ? 1 - 0.9 * (e - 2000) / 1500 : 1;
+  const gi = gr ? Math.min(gr.h - 1, (y / gr.step) | 0) * gr.w + Math.min(gr.w - 1, (x / gr.step) | 0) : -1;
+  const freshNear = kind === 'river' || kind === 'lake' || peNearestRiver(S, x, y, 3) >= 0;
+  const waterF = kind === 'river' || kind === 'lake' ? 1 : kind === 'spring' ? 0.8 : freshNear ? 1 : 0.5;
+  const terrain = (1 - 0.65 * Math.pow(rug, 1.4)) * hi, resource = gr && gi >= 0 ? Math.min(1, (gr.wood[gi] + gr.stone[gi] + gr.clay[gi]) / 382) : 0;
+  const transport = kind === 'coast' ? 0.22 : kind === 'lake' ? 0.12 : kind === 'river' ? 0.1 : 0;
+  const flood = 1 - 0.35 * wet * (kind === 'river' || kind === 'lake' ? 1 : 0.4);
+  let tech = 1; if (hint) { const fert = gr && gi >= 0 ? gr.fertility[gi] / 255 : 0.3; tech = (hint.farm ? 0.75 + 0.7 * fert : 1) * (hint.herd ? 0.85 + 0.4 * env.grass[c] / 255 : 1) * (1 + 0.25 * (hint.fish || 0) * (kind === 'coast' || kind === 'lake' || kind === 'river' ? 1 : 0)); }
+  const mult = (1 + 0.35 * resource + transport);
+  return { kind, score: food * waterF * terrain * mult * flood * tech, parts: { food: Math.round(food), water: +waterF.toFixed(2), terrain: +terrain.toFixed(2), resource: +resource.toFixed(2), transport: +transport.toFixed(2), flood: +flood.toFixed(2), tech: +tech.toFixed(2) } };
+}
+// いちばん近い候補の点（kind を指定すれば、その種類だけ）。maxD ブロック以内。なければ null
+function peNearestSite(S, world, x, y, maxD, kind) {
+  const T = peSites(S, world), rc = Math.ceil(maxD / S.step), cx = Math.min(S.cw - 1, Math.max(0, (x / S.step) | 0)), cy = Math.min(S.ch - 1, Math.max(0, (y / S.step) | 0));
+  let best = -1, bd = maxD * maxD;
+  for (let yy = Math.max(0, cy - rc); yy <= Math.min(S.ch - 1, cy + rc); yy++) for (let xx = Math.max(0, cx - rc); xx <= Math.min(S.cw - 1, cx + rc); xx++) {
+    const c = yy * S.cw + xx;
+    for (let j = T.start[c]; j < T.start[c + 1]; j++) { if (kind !== undefined && T.kind[j] !== kind) continue; const dx = T.x[j] - x, dy = T.y[j] - y, dd = dx * dx + dy * dy; if (dd <= bd) { bd = dd; best = j; } }
+  }
+  return best < 0 ? null : { x: T.x[best], y: T.y[best], kind: T.kind[best] };
+}
+// 候補の点（peNearestSite の結果）に、立地の記録 { kind, score, parts } をつける
+function peSiteTag(S, world, ns, people, g) { const r = peSiteScore(S, world, ns.x, ns.y, SITE_KINDS[ns.kind], people && g ? peSiteHint(people, g) : null); return r ? { kind: r.kind, score: r.score, parts: r.parts } : { kind: SITE_KINDS[ns.kind], score: 0, parts: {} }; }
+// いまの集団の立地の点数（記録があればそれ、なければその場所を川沿いとして採点）
+function peCurSite(S, world, g, people) {
+  if (g.site && Number.isFinite(g.site.score)) return g.site.score;
+  const r = peSiteScore(S, world, g.homeX, g.homeY, 'river', people ? peSiteHint(people, g) : null); return r ? r.score : 0;
+}
+// 立地の理由（画面・試験用）
+function peopleSiteInfo(people, gid) { const g = people.groups[gid - 1]; if (!g || !g.site) return null; return { kind: g.site.kind, label: SITE_LABEL[g.site.kind] || g.site.kind, score: Math.round(g.site.score), parts: g.site.parts }; }
+
 function peFindSite(people, g, S, world, rng, range, minValue) {
-  const P = world.riverPts, rc = Math.ceil(range[1] / S.step);
+  const T = peSites(S, world), rc = Math.ceil(range[1] / S.step), hint = peSiteHint(people, g);
   const cx = Math.min(S.cw - 1, (g.homeX / S.step) | 0), cy = Math.min(S.ch - 1, (g.homeY / S.step) | 0);
   const others = people.groups.filter(o => o.alive && o !== g);
   let best = null, bv = minValue;
   for (let t = 0; t < PE.SITE_SAMPLES; t++) {
     const xx = cx + Math.floor((rng() * 2 - 1) * rc), yy = cy + Math.floor((rng() * 2 - 1) * rc);
     if (xx < 0 || yy < 0 || xx >= S.cw || yy >= S.ch) continue;
-    const c = yy * S.cw + xx, s0 = S.riverStart[c], s1 = S.riverStart[c + 1];
+    const c = yy * S.cw + xx, s0 = T.start[c], s1 = T.start[c + 1];
     if (s0 === s1) continue;
-    const k = S.riverPt[s0 + Math.floor(rng() * (s1 - s0))], x = P[k * 3], y = P[k * 3 + 1];
+    const q = s0 + Math.floor(rng() * (s1 - s0)), x = T.x[q], y = T.y[q];
     const dx = x - g.homeX, dy = y - g.homeY, dd = dx * dx + dy * dy;
     if (dd < range[0] * range[0] || dd > range[1] * range[1]) continue;
-    const v = peSiteValue(S, world, c) * (0.9 + 0.2 * rng());
+    const r = peSiteScore(S, world, x, y, SITE_KINDS[T.kind[q]], hint); if (!r) continue;
+    const v = r.score * (0.9 + 0.2 * rng());
     if (v <= bv) continue;
     let crowd = false;
     for (const o of others) {
@@ -1028,7 +1110,7 @@ function peFindSite(people, g, S, world, rng, range, minValue) {
       if (ox * ox + oy * oy < PE.MIG_CLEAR * PE.MIG_CLEAR) { crowd = true; break; }
     }
     if (crowd || peSeaBetween(S, world, g.x, g.y, x, y)) continue;
-    bv = v; best = peDryNear(S, world, x, y);
+    bv = v; best = Object.assign(peDryNear(S, world, x, y), { site: { kind: r.kind, score: r.score, parts: r.parts } });
   }
   return best;
 }
@@ -1037,8 +1119,8 @@ function peTravel(people, g, S, world, ev, rel) {
   const t = g.moveTo, dx = t.x - g.x, dy = t.y - g.y, d = Math.sqrt(dx * dx + dy * dy);
   if (d <= PE.MOVE_SPEED) {
     // 着いた所の近くの川沿いに野営する（プレイヤーが川から離れた所を指定した場合）
-    const k = peNearestRiver(S, t.x, t.y, PE.RIVER_SNAP);
-    if (k >= 0) { const r = peDryNear(S, world, world.riverPts[k * 3], world.riverPts[k * 3 + 1]); if (!peSeaBetween(S, world, t.x, t.y, r.x, r.y)) { t.x = r.x; t.y = r.y; } }
+    if (!t.site) { const ns = peNearestSite(S, world, t.x, t.y, PE.RIVER_SNAP); if (ns) { const r = peDryNear(S, world, ns.x, ns.y); if (!peSeaBetween(S, world, t.x, t.y, r.x, r.y)) { t.x = r.x; t.y = r.y; t.site = peSiteTag(S, world, ns, people, g); } } }
+    if (t.site) g.site = t.site;
     g.x = t.x; g.y = t.y; g.homeX = t.x; g.homeY = t.y; g.moveTo = null; g.hunger = 0; g.settle = 0; g.stay = 0; if (people.npc) peSettleChanged(people, g, true);
     ev.push({ type: 'arrive', imp: 0, relevant: rel(g.ethId), group: g.id, eth: g.ethId, x: g.x, y: g.y, by: t.by || 'ai' });
     return;
@@ -1121,7 +1203,7 @@ function peopleGrowth(people, gid) {
   const stage = settle === 2 && pop >= 120 && (g.farmFrac || 0) > 0.3 ? 3 : settle;
   const cnt = (j) => P.gcount[gid * NJOB + j];
   const need = g.lastFood ? g.lastFood.need : 0;
-  return { stage, label: GROWTH_LABELS[stage], pop, farm: tech.farm, herd: tech.herd, farmers: cnt(9), herders: cnt(10), herdN: Math.round(g.herdN || 0), farmFrac: g.farmFrac || 0, share: g.share || 0, policy: g.policy || 'auto', facil: Object.assign({}, peFacil(g)), avail: peFacilAvail(people, g), preview: peFacilPreview(people, g), stock: { dur: Math.max(0, g.food - (g.fresh || 0) - (g.dried || 0)), fresh: g.fresh || 0, dried: g.dried || 0 }, build: g.build ? { kind: g.build.kind, left: g.build.left, spot: g.build.spot || null } : null, spots: g.facilSpots || {}, storeDays: need > 0 ? Math.round(30 * g.food / need) : 0,
+  return { site: peopleSiteInfo(people, gid), stage, label: GROWTH_LABELS[stage], pop, farm: tech.farm, herd: tech.herd, farmers: cnt(9), herders: cnt(10), herdN: Math.round(g.herdN || 0), farmFrac: g.farmFrac || 0, share: g.share || 0, policy: g.policy || 'auto', facil: Object.assign({}, peFacil(g)), avail: peFacilAvail(people, g), preview: peFacilPreview(people, g), stock: { dur: Math.max(0, g.food - (g.fresh || 0) - (g.dried || 0)), fresh: g.fresh || 0, dried: g.dried || 0 }, build: g.build ? { kind: g.build.kind, left: g.build.left, spot: g.build.spot || null } : null, spots: g.facilSpots || {}, storeDays: need > 0 ? Math.round(30 * g.food / need) : 0,
     income: g.lastFood ? { hunt: g.lastFood.hunt, gather: g.lastFood.gather, fish: g.lastFood.fish, farm: g.lastFood.farm || 0, herd: g.lastFood.herd || 0, need } : null };
 }
 // ---------------------------------------------------------------- 村の技術・技能の集計（表示用。新しい数値や制度は作らず、いま管理しているものを集めて見せる）
@@ -1325,9 +1407,9 @@ function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
   peSettleStep(people, g, S, world, ev, rel, home, people.ethSpeed || 1);
   if (g.moveTo) peTravel(people, g, S, world, ev, rel);
   else if (g.hunger >= PE.MIG_HUNGER + (g.settle === 2 ? PE.VILLAGE_HUNGER : 0)) {
-    const d = peFindSite(people, g, S, world, rng, PE.MIG_RANGE, peSiteValue(S, world, home) * PE.MIG_BETTER);
+    const d = peFindSite(people, g, S, world, rng, PE.MIG_RANGE, peCurSite(S, world, g, people) * PE.MIG_BETTER);
     if (d) {
-      g.moveTo = { x: d.x, y: d.y, by: 'ai' };
+      g.moveTo = { x: d.x, y: d.y, by: 'ai', site: d.site };
       if (g.settle === 2) { ev.push({ type: 'abandon', imp: 1, relevant: rel(g.ethId) || (people.player && P.group[people.player.id] === g.id), group: g.id, eth: g.ethId, x: g.x, y: g.y }); }
       g.settle = 0; g.stay = 0;
       ev.push({ type: 'migrate', imp: 1, relevant: rel(g.ethId), group: g.id, eth: g.ethId, x: g.x, y: g.y, toX: d.x, toY: d.y });
@@ -1335,11 +1417,11 @@ function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
   } else if (rng() < PE.CAMP_MOVE_P * (g.settle === 2 ? 0 : g.settle === 1 ? 0.4 : 1)) {
     const dir = PE_DIR8[Math.floor(rng() * 8)], dist = g.radius * (0.3 + 0.6 * rng());
     const tx = g.homeX + dir[0] * dist, ty = g.homeY + dir[1] * dist;
-    const k = peNearestRiver(S, tx, ty, g.radius);
-    if (k >= 0) {
-      const Pt = world.riverPts, dx = Pt[k * 3] - g.homeX, dy = Pt[k * 3 + 1] - g.homeY;
-      if (dx * dx + dy * dy <= g.radius * g.radius * 1.2 && !peSeaBetween(S, world, g.homeX, g.homeY, Pt[k * 3], Pt[k * 3 + 1])) {
-        const d = peDryNear(S, world, Pt[k * 3], Pt[k * 3 + 1]); g.x = d.x; g.y = d.y;
+    const kd = g.site && SITE_KINDS.indexOf(g.site.kind) >= 0 ? SITE_KINDS.indexOf(g.site.kind) : 0, ns = peNearestSite(S, world, tx, ty, g.radius, kd);
+    if (ns) {
+      const dx = ns.x - g.homeX, dy = ns.y - g.homeY;
+      if (dx * dx + dy * dy <= g.radius * g.radius * 1.2 && !peSeaBetween(S, world, g.homeX, g.homeY, ns.x, ns.y)) {
+        const d = peDryNear(S, world, ns.x, ns.y); g.x = d.x; g.y = d.y;
       }
     }
   }
@@ -1350,8 +1432,8 @@ function peSettleStep(people, g, S, world, ev, rel, home, speed) {
   if (g.moveTo || g.hunger >= 3) { if (g.moveTo) { g.stay = 0; } return; }
   if (g.fed > 0.9) g.stay = (g.stay || 0) + 1;
   const need1 = PE.SETTLE1_MONTHS / speed, need2 = PE.SETTLE2_MONTHS / speed, P = people.npc;
-  if (g.settle === 0 && g.stay >= need1 && g.pop >= 30 && peSiteValue(S, world, home) >= (people.siteMid || 0)) g.settle = 1;
-  if (g.settle === 1 && g.stay >= need2 && g.pop >= PE.SETTLE2_POP && g.fed >= PE.SETTLE2_FED && peSiteValue(S, world, home) >= (people.siteHi || 0) && P.random() < Math.min(0.5, PE.SETTLE2_P * speed)) {
+  if (g.settle === 0 && g.stay >= need1 && g.pop >= 30 && peSettleValue(S, world, g, people) >= (people.siteMid || 0)) g.settle = 1;
+  if (g.settle === 1 && g.stay >= need2 && g.pop >= PE.SETTLE2_POP && g.fed >= PE.SETTLE2_FED && peSettleValue(S, world, g, people) >= (people.siteHi || 0) && P.random() < Math.min(0.5, PE.SETTLE2_P * speed)) {
     g.settle = 2; peSettleChanged(people, g, true); const mine = people.player && people.player.id >= 0 && P.group[people.player.id] === g.id;
     ev.push({ type: 'settle', imp: mine ? 2 : 1, relevant: mine || rel(g.ethId), group: g.id, eth: g.ethId, x: g.x, y: g.y });
   }
@@ -1372,7 +1454,7 @@ function peSplit(people, g, S, world, rng, ev, rel) {
   const f = all ? moved / all : 0;
   c.food = g.food * f; g.food -= c.food; c.fresh = (g.fresh || 0) * f; g.fresh = (g.fresh || 0) - c.fresh; c.dried = (g.dried || 0) * f; g.dried = (g.dried || 0) - c.dried;
   c.cult = (g.cult || []).slice(); c.policy = g.policy; c.fed = g.fed; c.homeX = g.homeX; c.homeY = g.homeY;
-  c.moveTo = { x: d.x, y: d.y, by: 'ai' };
+  c.moveTo = { x: d.x, y: d.y, by: 'ai', site: d.site };
   const hz = peHazards(people); hz.fert[c.id] = hz.fert[g.id]; hz.starv[c.id] = hz.starv[g.id]; hz.cold[c.id] = hz.cold[g.id]; hz.dis[c.id] = hz.dis[g.id]; hz.hungerDis[c.id] = hz.hungerDis[g.id];
   P.gdemand.set(P.gdemand.subarray(g.id * NJOB, g.id * NJOB + NJOB), c.id * NJOB);
   c.pop = moved; g.pop = all - moved; c.radius = peRadius(c.pop); g.radius = peRadius(g.pop);
@@ -1434,6 +1516,6 @@ function peopleEthCounts(people) {
   const P = people.npc, o = {}; for (let i = 0; i < P.n; i++) { if (P.death[i] !== ALIVE) continue; const e = P.eth[i] || P.groupEth[P.group[i]]; o[e] = (o[e] || 0) + 1; } return o;
 }
 
-if (typeof module !== 'undefined' && module.exports) module.exports = { peNationEnsure, FACIL_SERVES, peCover, TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, peCultureRules, PROPOSALS, peopleProposal, LEADERSHIP, peLeaders, ACTIVITIES, peopleSetActivity, peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
-else root.WohPeople = { peNationEnsure, FACIL_SERVES, peCover, TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peopleSuccession, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, PROPOSALS, peopleProposal, LEADERSHIP, ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+if (typeof module !== 'undefined' && module.exports) module.exports = { PE, resetSiteCache() { peCache = null; }, peSites, peSiteScore, peNearestSite, peopleSiteInfo, SITE_KINDS, SITE_LABEL, peNationEnsure, FACIL_SERVES, peCover, TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, peCultureRules, PROPOSALS, peopleProposal, LEADERSHIP, peLeaders, ACTIVITIES, peopleSetActivity, peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+else root.WohPeople = { peSites, peSiteScore, peNearestSite, peopleSiteInfo, SITE_KINDS, SITE_LABEL, peNationEnsure, FACIL_SERVES, peCover, TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peopleSuccession, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, PROPOSALS, peopleProposal, LEADERSHIP, ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
