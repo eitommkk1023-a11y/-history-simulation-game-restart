@@ -21958,8 +21958,11 @@ function addBellonaModel(T, obj, design, assets) {
   const loader = () => new T.GLTFLoader();
   const prep = (scene) => scene.traverse((o) => {
     if (o.name === 'collision_proxies') o.visible = false;
-    if (o.isMesh) { o.frustumCulled = false; for (const m of [].concat(o.material)) { m.clippingPlanes = [obj.cutPlane]; m.clipShadows = false; } }
+    if (o.isMesh) { o.frustumCulled = false; for (const m of [].concat(o.material)) { m.side = 2; m.userData.bellonaClip = true; m.clippingPlanes = clipOn ? [obj.cutPlane] : null; } }
   });
+  // Shader clipping is switched on only while a cutaway is shown: outside it the materials render exactly as in the study's viewer.
+  let clipOn = false;
+  const setClip = (on) => { if (on === clipOn) return; clipOn = on; for (const sc of [...scenes, interior]) sc?.traverse((o) => { if (o.isMesh) for (const m of [].concat(o.material)) { m.clippingPlanes = on ? [obj.cutPlane] : null; m.needsUpdate = true; } }); };
   const parse = (key, done) => { try { loader().parse(b64(assets[key]), '', (g) => done(g.scene), (e) => console.warn('bellona model', key, e)); } catch (e) { console.warn('bellona model', key, e); } };
   function ensure(l) { if (scenes[l] || loading[l] || !assets) return; loading[l] = true; parse(['lod0', 'lod1', 'lod2'][l], (scene) => { prep(scene); scene.visible = false; holder.add(scene); scenes[l] = scene; loading[l] = false; apply(); }); }
   function apply() {
@@ -21988,10 +21991,11 @@ function addBellonaModel(T, obj, design, assets) {
       let low = here; for (const dx of [-12, -6, 6, 12]) for (const dy of [-3, 0, 3]) low = Math.min(low, it.deckAbove({ x: pos.x + dx, y: pos.y + dy, h: pos.h }));
       cut = Math.max(low - 0.28, pos.h + 1.9);
     }
-    obj.cutaway = below; obj.cutY = cut;
+    obj.cutaway = below; obj.cutY = cut; setClip(below);
     if (below) { obj.ensureInterior(); want = 0; ensure(0); }
     apply();
   };
+  obj.diag = () => `LOD${shown}(読込 ${scenes.map((q, i) => (q ? 'L' + i : '-')).join('')}${interior ? '+内装' : ''}) 断面${obj.cutaway ? 'あり' : 'なし'} 切断面${obj.cutY === null ? '—' : obj.cutY.toFixed(1)}m 船体(簡易)${obj.hullMesh.visible ? '表示' : '非表示'}`;
   const dispose = obj.dispose; obj.dispose = () => { dispose(); for (const sc of [...scenes, interior]) sc?.traverse((o) => { o.geometry?.dispose?.(); for (const m of [].concat(o.material ?? [])) { m.map?.dispose?.(); m.dispose?.(); } }); };
   return obj;
 }
@@ -22686,8 +22690,8 @@ html.shipUiHidden #shipEye{opacity:.5}
     try { setUiHidden(localStorage.getItem('woh-ship-ui-hidden') === '1'); } catch (_) { /* storage unavailable */ }
     // developer frame: the game's own "開発者" panel hosts the ship system section (dev mode only)
     ui.dev = $('details', { className: 'shipSec shipui', open: true }, [$('summary', { textContent: '⛵ 船システム' })]);
-    ui.spawn = $('div'); ui.list = $('div'); ui.crewBox = $('div'); ui.bench = $('div', { className: 'sub', style: 'user-select:text;margin-top:4px' });
-    ui.dev.append(ui.spawn, ui.list, ui.crewBox, $('div', { className: 'row' }, [$('button', { className: 'shipbtn', textContent: '性能測定(6秒)', onclick: benchmark }), $('button', { className: 'shipbtn', textContent: '👁 船UI 表示/非表示', onclick: () => setUiHidden(!uiHidden) })]), ui.bench);
+    ui.diag = $('div', { className: 'sub', style: 'user-select:text;margin-top:4px' }); ui.spawn = $('div'); ui.list = $('div'); ui.crewBox = $('div'); ui.bench = $('div', { className: 'sub', style: 'user-select:text;margin-top:4px' });
+    ui.dev.append(ui.spawn, ui.list, ui.crewBox, $('div', { className: 'row' }, [$('button', { className: 'shipbtn', textContent: '性能測定(6秒)', onclick: benchmark }), $('button', { className: 'shipbtn', textContent: '👁 船UI 表示/非表示', onclick: () => setUiHidden(!uiHidden) })]), ui.bench, ui.diag);
     // Host: the game's menu gets a "船(開発者)" tab (dev mode only). Older games without that menu: the developer pane.
     const mount = () => {
       if (ui.dev.isConnected) return;
@@ -22703,7 +22707,7 @@ html.shipUiHidden #shipEye{opacity:.5}
       }
       const dp = document.getElementById('developerPane') ?? document.getElementById('developerPanel'); if (dp) dp.append(ui.dev);
     };
-    mount(); setInterval(() => { mount(); document.body.classList.toggle('woh-ship-on', devOn() && !!boarded && !!fleet?.has(boarded)); if (!devOn() && boarded) disembark(); }, 500);
+    mount(); setInterval(() => { mount(); { const bm = boarded && meshes.get(boarded); ui.diag.textContent = bm?.diag ? '表示診断: ' + bm.diag() : ''; } document.body.classList.toggle('woh-ship-on', devOn() && !!boarded && !!fleet?.has(boarded)); if (!devOn() && boarded) disembark(); }, 500);
     ui.spawn.append($('div', { className: 'sub', textContent: '船を出す(近くの海へ)' }), ...Object.entries({ 'pinta-1492': 'ピンタ1492 横帆', 'pinta-1492-lateen': 'ピンタ1492 ラテン', 'bellona-1760': 'ベローナ1760 74門艦', galleon: 'ガレオン', galley: 'ガレー' }).map(([d, n]) => $('button', { className: 'shipbtn', textContent: n, onclick: () => { spawn(d); } })));
     layoutShipUi(); setInterval(layoutShipUi, 400); addEventListener('resize', layoutShipUi);
     let down = null; const cv = nat.renderer.domElement;

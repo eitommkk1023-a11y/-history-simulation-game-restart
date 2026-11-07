@@ -459,8 +459,8 @@ html.shipUiHidden #shipEye{opacity:.5}
     try { setUiHidden(localStorage.getItem('woh-ship-ui-hidden') === '1'); } catch (_) { /* storage unavailable */ }
     // developer frame: the game's own "開発者" panel hosts the ship system section (dev mode only)
     ui.dev = $('details', { className: 'shipSec shipui', open: true }, [$('summary', { textContent: '⛵ 船システム' })]);
-    ui.spawn = $('div'); ui.list = $('div'); ui.crewBox = $('div'); ui.bench = $('div', { className: 'sub', style: 'user-select:text;margin-top:4px' });
-    ui.dev.append(ui.spawn, ui.list, ui.crewBox, $('div', { className: 'row' }, [$('button', { className: 'shipbtn', textContent: '性能測定(6秒)', onclick: benchmark }), $('button', { className: 'shipbtn', textContent: '👁 船UI 表示/非表示', onclick: () => setUiHidden(!uiHidden) })]), ui.bench);
+    ui.diag = $('div', { className: 'sub', style: 'user-select:text;margin-top:4px' }); ui.spawn = $('div'); ui.list = $('div'); ui.crewBox = $('div'); ui.bench = $('div', { className: 'sub', style: 'user-select:text;margin-top:4px' });
+    ui.dev.append(ui.spawn, ui.list, ui.crewBox, $('div', { className: 'row' }, [$('button', { className: 'shipbtn', textContent: '性能測定(6秒)', onclick: benchmark }), $('button', { className: 'shipbtn', textContent: '👁 船UI 表示/非表示', onclick: () => setUiHidden(!uiHidden) })]), ui.bench, ui.diag);
     // Host: the game's menu gets a "船(開発者)" tab (dev mode only). Older games without that menu: the developer pane.
     const mount = () => {
       if (ui.dev.isConnected) return;
@@ -476,7 +476,7 @@ html.shipUiHidden #shipEye{opacity:.5}
       }
       const dp = document.getElementById('developerPane') ?? document.getElementById('developerPanel'); if (dp) dp.append(ui.dev);
     };
-    mount(); setInterval(() => { mount(); document.body.classList.toggle('woh-ship-on', devOn() && !!boarded && !!fleet?.has(boarded)); if (!devOn() && boarded) disembark(); }, 500);
+    mount(); setInterval(() => { mount(); { const bm = boarded && meshes.get(boarded); ui.diag.textContent = bm?.diag ? '表示診断: ' + bm.diag() : ''; } document.body.classList.toggle('woh-ship-on', devOn() && !!boarded && !!fleet?.has(boarded)); if (!devOn() && boarded) disembark(); }, 500);
     ui.spawn.append($('div', { className: 'sub', textContent: '船を出す(近くの海へ)' }), ...Object.entries({ 'pinta-1492': 'ピンタ1492 横帆', 'pinta-1492-lateen': 'ピンタ1492 ラテン', 'bellona-1760': 'ベローナ1760 74門艦', galleon: 'ガレオン', galley: 'ガレー' }).map(([d, n]) => $('button', { className: 'shipbtn', textContent: n, onclick: () => { spawn(d); } })));
     layoutShipUi(); setInterval(layoutShipUi, 400); addEventListener('resize', layoutShipUi);
     let down = null; const cv = nat.renderer.domElement;

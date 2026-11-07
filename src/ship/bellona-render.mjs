@@ -17,8 +17,11 @@ export function addBellonaModel(T, obj, design, assets) {
   const loader = () => new T.GLTFLoader();
   const prep = (scene) => scene.traverse((o) => {
     if (o.name === 'collision_proxies') o.visible = false;
-    if (o.isMesh) { o.frustumCulled = false; for (const m of [].concat(o.material)) { m.clippingPlanes = [obj.cutPlane]; m.clipShadows = false; } }
+    if (o.isMesh) { o.frustumCulled = false; for (const m of [].concat(o.material)) { m.side = 2; m.userData.bellonaClip = true; m.clippingPlanes = clipOn ? [obj.cutPlane] : null; } }
   });
+  // Shader clipping is switched on only while a cutaway is shown: outside it the materials render exactly as in the study's viewer.
+  let clipOn = false;
+  const setClip = (on) => { if (on === clipOn) return; clipOn = on; for (const sc of [...scenes, interior]) sc?.traverse((o) => { if (o.isMesh) for (const m of [].concat(o.material)) { m.clippingPlanes = on ? [obj.cutPlane] : null; m.needsUpdate = true; } }); };
   const parse = (key, done) => { try { loader().parse(b64(assets[key]), '', (g) => done(g.scene), (e) => console.warn('bellona model', key, e)); } catch (e) { console.warn('bellona model', key, e); } };
   function ensure(l) { if (scenes[l] || loading[l] || !assets) return; loading[l] = true; parse(['lod0', 'lod1', 'lod2'][l], (scene) => { prep(scene); scene.visible = false; holder.add(scene); scenes[l] = scene; loading[l] = false; apply(); }); }
   function apply() {
@@ -47,10 +50,11 @@ export function addBellonaModel(T, obj, design, assets) {
       let low = here; for (const dx of [-12, -6, 6, 12]) for (const dy of [-3, 0, 3]) low = Math.min(low, it.deckAbove({ x: pos.x + dx, y: pos.y + dy, h: pos.h }));
       cut = Math.max(low - 0.28, pos.h + 1.9);
     }
-    obj.cutaway = below; obj.cutY = cut;
+    obj.cutaway = below; obj.cutY = cut; setClip(below);
     if (below) { obj.ensureInterior(); want = 0; ensure(0); }
     apply();
   };
+  obj.diag = () => `LOD${shown}(読込 ${scenes.map((q, i) => (q ? 'L' + i : '-')).join('')}${interior ? '+内装' : ''}) 断面${obj.cutaway ? 'あり' : 'なし'} 切断面${obj.cutY === null ? '—' : obj.cutY.toFixed(1)}m 船体(簡易)${obj.hullMesh.visible ? '表示' : '非表示'}`;
   const dispose = obj.dispose; obj.dispose = () => { dispose(); for (const sc of [...scenes, interior]) sc?.traverse((o) => { o.geometry?.dispose?.(); for (const m of [].concat(o.material ?? [])) { m.map?.dispose?.(); m.dispose?.(); } }); };
   return obj;
 }
