@@ -14756,7 +14756,7 @@ function clearTerrain(){
 }
 function groundAt(xM,yM){
   if(!state)return null;
-  for(const {chunk}of state.entries){const p=chunk.sampleGround(xM,yM);if(p){const water=state.water.sample(xM,yM,p.elevationM);return {...p,waterDepthM:water?.depthM??0,waterSurfaceM:water?.surfaceM??null,waterKind:water?.kind??null};}}
+  for(const {chunk}of state.entries){const p=chunk.sampleGround(xM,yM);if(p){const water=state.water.sample(xM,yM,p.elevationM);return {...p,waterDepthM:water?.depthM??rvDepthAt(xM,yM),waterSurfaceM:water?.surfaceM??null,waterKind:water?.kind??null};}}
   return null;
 }
 function placeMarker(xM,yM,render=true){
@@ -14771,6 +14771,104 @@ function placeMarker(xM,yM,render=true){
   bridge.map.player(playerToSource(markerPoint));if(render)updateCamera();
 }
 function releaseMesh({mesh}){scene.remove(mesh);mesh.traverse(o=>{if(o.geometry)o.geometry.dispose();});mesh.material.dispose();}
+// ---- 自然な川：川の流れ（世界の川の線）から、近くの地面に、なめらかな川・浅瀬・濡れた岸・小石・草の縁を描く。
+// 元の地面の色は「川のセルが1マス（33m）ずつ青い」だけで、岸も深さもなかった。ここでは、川の線から距離の場を作り（2m刻み、2km四方）、地面の色の計算で、水・浅瀬・岸を描く。形・幅は流量で決まる
+const RV_N=1024,RV_PX=2,RV_REACH=48;
+let rvTex=null,rvCenter=null,rvCpu=null,rvPts=null,rvStat={builds:0,ms:0,segs:0};
+const rvU={rvMask:{value:null},rvBox:{value:new THREE.Vector4(1e9,1e9,1,1)}};
+function rvPoints(){
+  const W=state.world,P=W.riverPts;if(!P)return null;if(rvPts&&rvPts.world===W)return rvPts;
+  const n=P.length/3,M=new Float32Array(n*2);for(let k=0;k<n;k++){const q=state.terrain.gridToMeters(P[k*3],P[k*3+1]);M[k*2]=q.xM;M[k*2+1]=q.yM;}
+  rvPts={world:W,M};return rvPts;
+}
+function rvBuild(cx,cy){
+  const t0=performance.now(),W=state.world,pts=rvPoints();if(!pts||!W.riverStarts)return;
+  const S=W.riverStarts,RL=W.riverLine,info=W.riverInfo,np=W.riverPts.length/3,M=pts.M,x0=cx-RV_N*RV_PX/2,y0=cy-RV_N*RV_PX/2,x1=x0+RV_N*RV_PX,y1=y0+RV_N*RV_PX;
+  const dist=new Float32Array(RV_N*RV_N).fill(1e9),hwA=new Uint8Array(RV_N*RV_N);let segs=0;
+  for(let s=0;s<S.length;s++){
+    const a=S[s],b=s+1<S.length?S[s+1]:np;let flow=info&&RL?info.flow[RL[s]]:100;if(!(flow>0))flow=100;
+    const hw=Math.max(2.5,Math.min(16,2.2+1.7*Math.log(Math.max(flow,30)/30))),hwq=Math.round(hw/20*255);
+    for(let k=a;k+1<b;k++){
+      const ax=M[k*2],ay=M[k*2+1],bx=M[k*2+2],by=M[k*2+3];
+      if(Math.max(ax,bx)<x0-RV_REACH||Math.min(ax,bx)>x1+RV_REACH||Math.max(ay,by)<y0-RV_REACH||Math.min(ay,by)>y1+RV_REACH)continue;
+      segs++;
+      const i0=Math.max(0,Math.floor((Math.min(ax,bx)-RV_REACH-x0)/RV_PX)),i1=Math.min(RV_N-1,Math.ceil((Math.max(ax,bx)+RV_REACH-x0)/RV_PX)),j0=Math.max(0,Math.floor((Math.min(ay,by)-RV_REACH-y0)/RV_PX)),j1=Math.min(RV_N-1,Math.ceil((Math.max(ay,by)+RV_REACH-y0)/RV_PX));
+      const dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy||1;
+      for(let j=j0;j<=j1;j++){const py=y0+(j+.5)*RV_PX;for(let i=i0;i<=i1;i++){const px=x0+(i+.5)*RV_PX;let u=((px-ax)*dx+(py-ay)*dy)/l2;u=u<0?0:u>1?1:u;const ex=px-(ax+dx*u),ey=py-(ay+dy*u),d=Math.sqrt(ex*ex+ey*ey),o=j*RV_N+i;if(d<dist[o]){dist[o]=d;hwA[o]=hwq;}}}
+    }
+  }
+  const data=new Uint8Array(RV_N*RV_N*4);
+  for(let o=0;o<RV_N*RV_N;o++){const d=Math.min(dist[o],RV_REACH);data[o*4]=Math.round(d/RV_REACH*255);data[o*4+1]=hwA[o];data[o*4+2]=0;data[o*4+3]=255;}
+  if(!rvTex){rvTex=new THREE.DataTexture(data,RV_N,RV_N,THREE.RGBAFormat);rvTex.magFilter=rvTex.minFilter=THREE.LinearFilter;rvTex.generateMipmaps=false;rvTex.wrapS=rvTex.wrapT=THREE.ClampToEdgeWrapping;rvU.rvMask.value=rvTex;}
+  else{rvTex.image.data=data;}
+  rvTex.needsUpdate=true;
+  rvU.rvBox.value.set(x0-state.origin.xM,y0-state.origin.yM,RV_N*RV_PX,1/(RV_N*RV_PX));
+  rvCpu={data,x0,y0};rvCenter={x:cx,y:cy,state};rvStat={builds:rvStat.builds+1,ms:performance.now()-t0,segs};
+}
+// 川の中の深さ（m）：川の流れの中心に近いほど深い（最大0.55m＝歩いて渡れる）。川の外は0。建物の置き場・歩ける場所の判定に使う
+function rvDepthAt(xM,yM){
+  if(!rvCpu||!rvCenter||rvCenter.state!==state)return 0;const i=Math.floor((xM-rvCpu.x0)/RV_PX),j=Math.floor((yM-rvCpu.y0)/RV_PX);if(i<0||j<0||i>=RV_N||j>=RV_N)return 0;
+  const o=(j*RV_N+i)*4,d=rvCpu.data[o]/255*RV_REACH,hw=rvCpu.data[o+1]/255*20;if(hw<0.1||d>=hw*0.9)return 0;return 0.15+0.4*(1-d/(hw*0.9));
+}
+function rvRefresh(xM,yM){
+  if(!state||!state.world||!state.world.riverPts)return;
+  if(rvCenter&&rvCenter.state===state&&Math.hypot(xM-rvCenter.x,yM-rvCenter.y)<512)return;
+  try{rvBuild(Math.round(xM/256)*256,Math.round(yM/256)*256);}catch(e){console.error('川の描画：',e);}
+}
+const RV_GLSL_VERT='varying vec3 rvPos;varying float rvDist;\n',RV_GLSL_FRAG=`
+uniform sampler2D rvMask; uniform vec4 rvBox; varying vec3 rvPos; varying float rvDist;
+float rvH(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float rvN(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(rvH(i),rvH(i+vec2(1,0)),f.x),mix(rvH(i+vec2(0,1)),rvH(i+vec2(1,1)),f.x),f.y);}
+float rvLike(vec3 c){return 1.0-smoothstep(0.02,0.11,length(c-vec3(0.235,0.455,0.675)));}
+`;
+const RV_GLSL_BODY=`
+{vec2 rvUv=(rvPos.xz-rvBox.xy)*rvBox.w;
+ if(rvUv.x>0.002&&rvUv.x<0.998&&rvUv.y>0.002&&rvUv.y<0.998){
+  vec4 rvM=texture2D(rvMask,rvUv);float rvD=rvM.r*48.0,rvHW=rvM.g*20.0;
+  vec3 rvC=diffuseColor.rgb;float rvNear=1.0-smoothstep(25.0,70.0,rvDist);
+  // 元の「青いセル」は、まわりの陸の色に置き換える
+  float rvL=rvLike(rvC);
+  if(rvL>0.02){vec3 acc=vec3(0.0);float wsum=0.0;vec2 o=vec2(0.0004,0.0);
+   for(int k=0;k<4;k++){vec2 off=k==0?o:k==1?-o:k==2?o.yx:-o.yx;vec3 c2=texture2D(map,vUv+off).rgb;float w=1.0-rvLike(c2);acc+=c2*w;wsum+=w;}
+   vec3 land=wsum>0.05?acc/wsum:vec3(0.42,0.5,0.28);rvC=mix(rvC,land,rvL);}
+  if(rvHW>0.1){
+   float n1=rvN(rvPos.xz*0.045),n2=rvN(rvPos.xz*0.4),n3=rvN(rvPos.xz*0.9);
+   float edge=rvHW*(0.8+0.4*n1)+0.9*(n2-0.5);
+   float s=rvD-edge;
+   if(s<0.0){
+    float depth=smoothstep(0.0,max(1.5,edge*0.8),-s);
+    vec3 shallow=mix(vec3(0.42,0.47,0.38),vec3(0.27,0.46,0.44),smoothstep(0.0,0.35,depth));
+    vec3 deep=vec3(0.10,0.27,0.38);
+    rvC=mix(shallow,deep,depth);
+    rvC*=1.0-(0.07-0.14*n3)*rvNear;
+    rvC+=0.04*smoothstep(0.55,0.95,rvN(rvPos.xz*vec2(0.9,0.5)))*(1.0-depth)*rvNear;
+   }else{
+    float bw=3.5+3.0*n1;
+    float wet=1.0-smoothstep(0.0,bw,s);
+    float gravel=(1.0-smoothstep(bw*0.3,bw*1.9,s))*(0.45+0.55*n2);
+    rvC=mix(rvC,vec3(0.27,0.23,0.17),wet*0.8);
+    rvC=mix(rvC,vec3(0.50,0.47,0.41),gravel*0.5);
+    float peb=smoothstep(0.72,0.8,rvN(rvPos.xz*3.2))*(1.0-smoothstep(0.0,bw*1.9,s))*rvNear;
+    rvC+=peb*vec3(0.07,0.07,0.06);
+    float fr=smoothstep(bw*1.4,bw*2.6,s)*(1.0-smoothstep(9.0,22.0,s));
+    rvC=mix(rvC,rvC*vec3(0.82,1.1,0.78),fr*0.55);
+   }
+  }
+  diffuseColor.rgb=rvC;
+ }}
+`;
+function rvPatch(material){
+  const prev=material.onBeforeCompile,prevKey=material.customProgramCacheKey;
+  material.onBeforeCompile=(shader,renderer)=>{
+    if(prev)prev.call(material,shader,renderer);
+    shader.uniforms.rvMask=rvU.rvMask;shader.uniforms.rvBox=rvU.rvBox;
+    shader.vertexShader=RV_GLSL_VERT+shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n rvPos=(modelMatrix*vec4(transformed,1.0)).xyz; rvDist=length((modelViewMatrix*vec4(transformed,1.0)).xyz);');
+    shader.fragmentShader=RV_GLSL_FRAG+shader.fragmentShader.replace('#include <emissivemap_fragment>',RV_GLSL_BODY+'\n#include <emissivemap_fragment>');
+  };
+  material.customProgramCacheKey=()=>(prevKey?prevKey.call(material):'')+'|river-v1';
+}
+globalThis.__wohRiver={depthAt:rvDepthAt,get stats(){return {...rvStat};},rebuild(){rvCenter=null;if(markerPoint)rvRefresh(markerPoint.xM,markerPoint.yM);}};
+
 function makeTerrainMesh(chunk,far=false,edgeCuts){
  if(state)state.terrainBuilds++;
  const data=far?seamGeometry(state.terrain,chunk,edgeCuts):{positions:chunk.positions.slice(),normals:chunk.normals.slice(),indices:chunk.indices,boundary:new Set()};
@@ -14786,6 +14884,7 @@ function makeTerrainMesh(chunk,far=false,edgeCuts){
    shader.fragmentShader='uniform vec4 nearHole; varying vec2 terrainXZ;\n'+shader.fragmentShader.replace('#include <clipping_planes_fragment>','#include <clipping_planes_fragment>\n if(terrainXZ.x>=nearHole.x&&terrainXZ.x<nearHole.z&&terrainXZ.y>=nearHole.y&&terrainXZ.y<nearHole.w)discard;');
   };material.customProgramCacheKey=()=> 'terrain-near-hole-v1';}
  rockMaterials.patch(material);
+ rvPatch(material);
  const mesh=new THREE.Mesh(geometry,material);scene.add(mesh);return {chunk,mesh,hole,boundary:data.boundary};
 }
 function sampleDisplayed(entry,x,y){
@@ -14816,6 +14915,7 @@ function setNearHole(entry){
  entry.hole.value.set((c.x-1)*64-x,(c.y-1)*64-y,(c.x+2)*64-x,(c.y+2)*64-y);
 }
 function refreshWater(xM,yM){
+ rvRefresh(xM,yM);
  const key=(state.fastRender?'fast:':'normal:')+Math.floor(xM/512)+','+Math.floor(yM/512);
  if(key!==state.waterKey){
   for(const mesh of [state.waterMesh,state.farWaterMesh])if(mesh){scene.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();}
@@ -15197,7 +15297,7 @@ function dwEnsure(pe,g,c){
   const Pm=globalThis.WohPeople,S=globalThis.WohSettle,A=globalThis.WohArch,cb=Pm.peCampCenter(g),level=g.settle||0;
   if(g.layout&&(!g.layout.at||g.layout.at.level!==level||g.layout.at.x!==cb.x||g.layout.at.y!==cb.y)){g.layout=null;dwSpecs.delete(g.id);dwIdx.delete(g.id);dwSig.delete(g.id);for(const it of dwFine.keys())if(Math.floor(it/100003)===g.id)dwFine.delete(it);}
   const cElev=groundAt(c.xM,c.yM),cE=cElev?cElev.elevationM:state.terrain.sampleBase(c.xM,c.yM).baseElevationM;
-  const mkTerr=()=>S.terrainFromSamples((x,z)=>{const xM=c.xM+x,yM=c.yM+z,p=state.terrain.sampleBase(xM,yM),w=state.water.sample(xM,yM,p.baseElevationM);return {h:p.baseElevationM-cE,w:w?w.depthM:0};},200,5);
+  const mkTerr=()=>S.terrainFromSamples((x,z)=>{const xM=c.xM+x,yM=c.yM+z,p=state.terrain.sampleBase(xM,yM),w=state.water.sample(xM,yM,p.baseElevationM);return {h:p.baseElevationM-cE,w:w?w.depthM:rvDepthAt(xM,yM)};},200,5);
   const hh=Pm.peopleHouseholds(pe,g.id),sig=hh.length+':'+hh.reduce((s,x)=>(s*31+x.house*7+x.members)|0,0);
   let rec=dwSpecs.get(g.id);
   if(!g.layout){if(!g.hist||dwLayoutBudget<=0)return null;dwLayoutBudget--;const terr=mkTerr(),trad=Pm.peopleTradition(pe,window.__geo.world,g.id),spec={seed:pe.npc.seed,gid:g.id,trad,hist:g.hist,level,households:hh,economy:Pm.peopleEconomy(pe,g.id),terr};
