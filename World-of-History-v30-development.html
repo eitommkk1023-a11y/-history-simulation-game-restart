@@ -14431,15 +14431,16 @@ function installGameHUD(){
  mini.onclick=()=>{zoom=zoom===1?16:zoom===16?128:1;lastUI=0;};
  globalThis.__wohMapZoomBy=d=>{const L=[1,16,128],k=Math.max(0,Math.min(2,L.indexOf(zoom)+d));zoom=L[k];lastUI=0;};
  const diagnostic={fps:0,kph:0,heading:0,northUp:true};globalThis.__wohHUD=diagnostic;
- function tick(now){requestAnimationFrame(tick);const view=globalThis.__chunkPreview;if(document.hidden||!view?.state||!view.markerPoint){lastTime=now;lastPosition=null;return;}
+ const loopT=[];
+ function tick(now){requestAnimationFrame(tick);loopT.push(now);while(loopT.length&&loopT[0]<now-1000)loopT.shift();const view=globalThis.__chunkPreview;if(document.hidden||!view?.state||!view.markerPoint){lastTime=now;lastPosition=null;return;}
   if(wasRendered)frames.push(now);wasRendered=false;while(frames.length&&frames[0]<now-1000)frames.shift();
   const world=view.state.world,p=view.markerPoint,dt=now-lastTime;
   const kph=lastWorld===world&&!view.view.overview?measuredSpeed(lastPosition,p,dt,PLAYER_SPEED.dash*(globalThis.__wohDev?.multiplier||1)):0;
   speeds.push({time:now,kph});while(speeds.length&&speeds[0].time<now-400)speeds.shift();lastTime=now;lastWorld=world;lastPosition={...p};
   if(now-lastUI<250)return;lastUI=now;
   if(cachedWorld!==world||(cachedRevision!==bridge.revision&&now-lastMapBuild>1000)){buildMap(world);cachedWorld=world;cachedRevision=bridge.revision;lastMapBuild=now;}
-  diagnostic.fps=frames.length;diagnostic.kph=view.view.overview?0:speeds.reduce((sum,s)=>sum+s.kph,0)/Math.max(1,speeds.length);diagnostic.heading=drawMini(view);
-  stats.textContent='FPS '+diagnostic.fps+(diagnostic.fps===0?'（待機）':'')+'　'+diagnostic.kph.toFixed(1)+' km/h';
+  diagnostic.fps=frames.length;diagnostic.loopHz=loopT.length;diagnostic.kph=view.view.overview?0:speeds.reduce((sum,s)=>sum+s.kph,0)/Math.max(1,speeds.length);diagnostic.heading=drawMini(view);
+  stats.textContent='FPS '+diagnostic.fps+(diagnostic.fps===0?'（静止・省電力／ループ'+diagnostic.loopHz+'）':'')+'　'+diagnostic.kph.toFixed(1)+' km/h';
  }
  requestAnimationFrame(tick);
 }
@@ -15075,6 +15076,17 @@ document.getElementById('enterMapCenter').onclick=()=>{
  if(!ground.land||ground.water||ground.baseElevationM<0||ground.slopeDegrees>40){document.getElementById('movementNotice').textContent='中央を平らな陸地に合わせてください';return;}
  placeMarker(p.xM,p.yM,false);document.getElementById('viewMode').click();
 };
+// ---- アニメーションの要求：波・船・旗など、カメラが止まっていても動き続けるものが「描き続けて」と頼む窓口。
+// この画面は、変化があったときだけ描く（省電力）。時間・NPC・物理は毎フレーム進むが、描画は「変化」か「要求」があるときだけ。
+// 使い方：__wohNative.animate('名前', true) で、止めるまで毎フレーム描く／animate('名前', false) で止める／animate('名前', 250) で250msだけ（毎フレーム呼べば続く。呼ぶのをやめれば自然に止まる）
+const animReq=new Map();
+function animActive(now){let on=false;for(const [k,v] of animReq){if(v===true||v>now)on=true;else animReq.delete(k);}return on;}
+globalThis.__wohNative.animate=function(name,on=true,){
+  if(on===false||on===null)animReq.delete(name);
+  else if(typeof on==='number')animReq.set(name,performance.now()+on);
+  else animReq.set(name,true);
+};
+Object.defineProperty(globalThis.__wohNative,'animating',{get(){animActive(performance.now());return [...animReq.keys()];},configurable:true});
 let lastTime=null;
 function frame(time){
   if(state&&bridge.revision!==bridge.seenRevision&&performance.now()-bridge.lastChange>500)adoptNativeWorld();
@@ -15121,7 +15133,7 @@ function frame(time){
     const npcChanged=npcTick(dt);
     const propsChanged=propsFrame(performance.now());
     let bvChanged=false;try{bvChanged=bvFrame(dt);}catch(e){if(!BV.err){BV.err=1;console.warn('battle',e);}}
-    if(animate||terrainChanged||grassChanged||npcChanged||propsChanged||bvChanged)updateCamera();
+    if(animate||terrainChanged||grassChanged||npcChanged||propsChanged||bvChanged||animActive(performance.now()))updateCamera();
   }
   requestAnimationFrame(frame);
 }
