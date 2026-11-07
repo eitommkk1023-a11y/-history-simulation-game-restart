@@ -522,5 +522,14 @@ t('不毛地は全部ほぼ0', Object.values(F.availability(desert)).every(v => 
   t('目標一覧：達成が反映され、have は need で頭打ち', L2.find(g => g.id === 'wood').done && L2.find(g => g.id === 'wood').have === 10 && L2.find(g => g.id === 'drink').done);
   t('目標一覧と goals() の件数が一致', F.goals(S).total === L2.length);
 }
+{ // 開発者モード：素材は無限（枠を使わず、いつも99個）、製作は失敗しない
+  const S = F.newState(), N = F.newState();
+  t('通常は、素材が自動で増えない', F.godFill(N) === false && !N.inv.firewood);
+  S.god = true; t('開発者モード：素材が99そろう', F.godFill(S) === true && S.inv.firewood === 99 && S.inv.stone === 99 && S.inv.rope === 99 && S.inv.clay === 99);
+  t('素材は枠を使わない', F.slotsUsed(S) === 0, F.slotsUsed(S));
+  S.inv.nut = 5; t('素材以外は枠を使う', F.slotsUsed(S) === 1);
+  const used = F.drop(S, 'firewood', 90); F.godFill(S); t('使っても、また99にそろう', used === 90 && S.inv.firewood === 99);
+  const rng = () => 0.999; S.inv = { fiber: 10 }; F.godFill(S); const r = F.craft(S, 'rope', 0, rng, 0, 0, 0); t('開発者モード：製作は失敗しない（乱数が最悪でも）', r.ok === true, JSON.stringify(r));
+}
 console.log(ng ? 'FAIL ' + ng + ' / ' + (ok + ng) : 'OK ' + ok + ' 件通過');
 process.exit(ng ? 1 : 0);

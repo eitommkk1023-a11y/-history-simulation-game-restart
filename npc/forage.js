@@ -53,7 +53,10 @@
   const SLOTS = 20;
   function stackOf(it) { return it.group === 'tool' ? 3 : it.bulk >= 1 ? 10 : it.bulk >= 0.25 ? 20 : 40; }
   function slotsOf(inv, except) { let n = 0; for (const id in inv) if (id !== except && IDX[id] != null && inv[id] > 0) n += Math.ceil(inv[id] / stackOf(ITEMS[IDX[id]])); return n; }
-  function slotsUsed(st, except) { return slotsOf(st.inv, except); }
+  // 開発者モード（god）：素材は無限。素材は、持ち物の枠を使わず、いつも99個そろっている（建設・製作の試しを、集め直さずに行うため）
+  function godInv(st) { if (!st.god) return st.inv; const o = {}; for (const id in st.inv) if (IDX[id] != null && ITEMS[IDX[id]].group !== 'material') o[id] = st.inv[id]; return o; }
+  function godFill(st) { if (!st.god) return false; for (const it of ITEMS) if (it.group === 'material') st.inv[it.id] = Math.max(st.inv[it.id] || 0, 99); return true; }
+  function slotsUsed(st, except) { return slotsOf(godInv(st), except); }
   // その品物を、あと何個持てるか
   function roomFor(st, id, slots) {
     const it = ITEMS[IDX[id]], st1 = stackOf(it), free = (slots || SLOTS) - slotsUsed(st, id);
@@ -275,7 +278,7 @@
       const thirst = st.water <= 0, hungry = st.kcal <= 0, ill = cur < st.sickUntil, hurt = cur < (st.injuredUntil || 0);
       wearCloth(st, step); rot(st, step);
       // 開発者モードの「消耗なし」：渇き・飢え・寒さ・怪我・体力の消耗と、死亡を止める
-      if (st.god) { st.kcal = Math.max(st.kcal, KCAL_START); st.water = WATER_MAX; st.hp = HP_MAX; st.dyingDays = 0; st.injuredUntil = 0; st.dead = null; continue; }
+      if (st.god) { st.kcal = Math.max(st.kcal, KCAL_START); st.water = WATER_MAX; st.hp = HP_MAX; st.dyingDays = 0; st.injuredUntil = 0; st.dead = null; godFill(st); continue; }
       const loss = (thirst ? 12 : 0) + (hungry ? 8 : 0) + (ill ? 3 : 0) + (hurt ? 4 : 0) + cold;
       const regen = loss === 0 && st.kcal > 900 && st.water > 30 ? 5 : 0;
       const mortal = st.mortal !== false;
@@ -420,10 +423,10 @@
     for (const k in r.need) if ((st.inv[k] || 0) < r.need[k]) return { ok: false, why: name + 'の材料が足りない（' + needText(r) + '）' };
     if (r.fire && !fireActive(st, bx, by, day)) return { ok: false, why: '土器は火のそばで焼いて作る' };
     // 材料を使ったあとに、できた物が入らないなら作らない
-    const after = { inv: { ...st.inv } }; for (const k in r.need) { after.inv[k] -= r.need[k]; if (!after.inv[k]) delete after.inv[k]; }
+    const after = { god: st.god, inv: { ...st.inv } }; for (const k in r.need) { after.inv[k] -= r.need[k]; if (!after.inv[k]) delete after.inv[k]; }
     after.inv[id] = (after.inv[id] || 0) + r.out;
     if (slotsUsed(after) > SLOTS) return { ok: false, why: FULL_MSG + '（' + slotsUsed(st) + '/' + SLOTS + '枠）' };
-    const p = Math.min(0.95, r.p + 0.3 * (skill == null ? 0.3 : skill));
+    const p = st.god ? 1 : Math.min(0.95, r.p + 0.3 * (skill == null ? 0.3 : skill));   // 開発者モードは失敗しない
     if (rng() > p) { for (const k in r.lose) drop(st, k, r.lose[k]); return { ok: false, why: name + 'づくりに失敗した（' + lostText(r) + 'を失った）' }; }
     for (const k in r.need) drop(st, k, r.need[k]);
     st.inv[id] = (st.inv[id] || 0) + r.out; st.total[id] = (st.total[id] || 0) + r.out;
@@ -648,6 +651,6 @@
     return function () { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   }
 
-  const api = { goalList, clothOf, clothFactor, CLOTH, ROT, rot, takeRotted, dry, DRY, carryCap, fillWater, drinkCarried, injured, hurt, treat, bestWeapon, applyHunt, WEAPON, HUNT_RISK, dyingLeft, takeDeath, firstAid, inherit, DYING_DAYS, RECOVER_HP, setEnv, rest, staminaCap, staminaStep, jumpCost, drink, vitalsInfo, HP_MAX, SP_MAX, WATER_MAX, setCommons, atCommons, ownFireActive, standingInfo, gainStanding, giveToGroup, ration, share, learn, talk, nearCamp, KCAL_PER_KG, goals, GOALS, slotsOf, HOME_NEED, HOME_DAYS, HOME_REACH, STORE_SLOTS, homeStatus, nearHome, homeNeedText, buildHome, demolishHome, storePut, storeTake, storeList, storeRoom, sleep, SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
+  const api = { godFill, godInv, goalList, clothOf, clothFactor, CLOTH, ROT, rot, takeRotted, dry, DRY, carryCap, fillWater, drinkCarried, injured, hurt, treat, bestWeapon, applyHunt, WEAPON, HUNT_RISK, dyingLeft, takeDeath, firstAid, inherit, DYING_DAYS, RECOVER_HP, setEnv, rest, staminaCap, staminaStep, jumpCost, drink, vitalsInfo, HP_MAX, SP_MAX, WATER_MAX, setCommons, atCommons, ownFireActive, standingInfo, gainStanding, giveToGroup, ration, share, learn, talk, nearCamp, KCAL_PER_KG, goals, GOALS, slotsOf, HOME_NEED, HOME_DAYS, HOME_REACH, STORE_SLOTS, homeStatus, nearHome, homeNeedText, buildHome, demolishHome, storePut, storeTake, storeList, storeRoom, sleep, SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohForage = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

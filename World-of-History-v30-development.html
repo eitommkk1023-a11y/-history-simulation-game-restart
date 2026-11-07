@@ -659,7 +659,7 @@ body.bvw-on .hud, body.bvw-on #joystick, body.bvw-on #actions, body.bvw-on #mini
 </style>
 <div id="menu" class="sheet">
   <div class="shead"><b>メニュー</b><button id="menuClose">閉じる</button></div>
-  <div class="sfilter"><button id="menuTitle">タイトルへ戻る</button><button id="menuMortal">死亡：あり</button><button id="menuGod" class="dev-only">暮らしの消耗：なし</button><button id="menuTech" class="dev-only">あなたの民族に栽培・牧畜を与える</button><button id="menuBt1" class="dev-only">野戦：敵が攻めてくる</button><button id="menuBt2" class="dev-only">野戦：敵が罠を張る</button><button id="menuBt3" class="dev-only">野戦：敵は守る</button><button id="menuBt4" class="dev-only">野戦：騎兵と荷馬車</button><button id="menuDevBar" class="dev-only">開発ツール（上のボタン列）</button><button id="menuHist">歴史を見る</button><button id="menuExport">ファイルに書き出す</button><button id="menuImport">ファイルから読み込む</button></div>
+  <div class="sfilter"><button id="menuTitle">タイトルへ戻る</button><button id="menuMortal">死亡：あり</button><button id="menuGod" class="dev-only">暮らしの消耗・素材：なし・無限</button><button id="menuTech" class="dev-only">あなたの民族に栽培・牧畜を与える</button><button id="menuBt1" class="dev-only">野戦：敵が攻めてくる</button><button id="menuBt2" class="dev-only">野戦：敵が罠を張る</button><button id="menuBt3" class="dev-only">野戦：敵は守る</button><button id="menuBt4" class="dev-only">野戦：騎兵と荷馬車</button><button id="menuDevBar" class="dev-only">開発ツール（上のボタン列）</button><button id="menuHist">歴史を見る</button><button id="menuExport">ファイルに書き出す</button><button id="menuImport">ファイルから読み込む</button></div>
   <input type="file" id="menuFile" accept=".json,application/json" style="display:none">
   <div id="menuSlots" class="scrollable"></div>
   <div id="menuMsg"></div>
@@ -7022,7 +7022,10 @@ root.WohHorseView=api;})(typeof globalThis!=="undefined"?globalThis:this);
   const SLOTS = 20;
   function stackOf(it) { return it.group === 'tool' ? 3 : it.bulk >= 1 ? 10 : it.bulk >= 0.25 ? 20 : 40; }
   function slotsOf(inv, except) { let n = 0; for (const id in inv) if (id !== except && IDX[id] != null && inv[id] > 0) n += Math.ceil(inv[id] / stackOf(ITEMS[IDX[id]])); return n; }
-  function slotsUsed(st, except) { return slotsOf(st.inv, except); }
+  // 開発者モード（god）：素材は無限。素材は、持ち物の枠を使わず、いつも99個そろっている（建設・製作の試しを、集め直さずに行うため）
+  function godInv(st) { if (!st.god) return st.inv; const o = {}; for (const id in st.inv) if (IDX[id] != null && ITEMS[IDX[id]].group !== 'material') o[id] = st.inv[id]; return o; }
+  function godFill(st) { if (!st.god) return false; for (const it of ITEMS) if (it.group === 'material') st.inv[it.id] = Math.max(st.inv[it.id] || 0, 99); return true; }
+  function slotsUsed(st, except) { return slotsOf(godInv(st), except); }
   // その品物を、あと何個持てるか
   function roomFor(st, id, slots) {
     const it = ITEMS[IDX[id]], st1 = stackOf(it), free = (slots || SLOTS) - slotsUsed(st, id);
@@ -7244,7 +7247,7 @@ root.WohHorseView=api;})(typeof globalThis!=="undefined"?globalThis:this);
       const thirst = st.water <= 0, hungry = st.kcal <= 0, ill = cur < st.sickUntil, hurt = cur < (st.injuredUntil || 0);
       wearCloth(st, step); rot(st, step);
       // 開発者モードの「消耗なし」：渇き・飢え・寒さ・怪我・体力の消耗と、死亡を止める
-      if (st.god) { st.kcal = Math.max(st.kcal, KCAL_START); st.water = WATER_MAX; st.hp = HP_MAX; st.dyingDays = 0; st.injuredUntil = 0; st.dead = null; continue; }
+      if (st.god) { st.kcal = Math.max(st.kcal, KCAL_START); st.water = WATER_MAX; st.hp = HP_MAX; st.dyingDays = 0; st.injuredUntil = 0; st.dead = null; godFill(st); continue; }
       const loss = (thirst ? 12 : 0) + (hungry ? 8 : 0) + (ill ? 3 : 0) + (hurt ? 4 : 0) + cold;
       const regen = loss === 0 && st.kcal > 900 && st.water > 30 ? 5 : 0;
       const mortal = st.mortal !== false;
@@ -7389,10 +7392,10 @@ root.WohHorseView=api;})(typeof globalThis!=="undefined"?globalThis:this);
     for (const k in r.need) if ((st.inv[k] || 0) < r.need[k]) return { ok: false, why: name + 'の材料が足りない（' + needText(r) + '）' };
     if (r.fire && !fireActive(st, bx, by, day)) return { ok: false, why: '土器は火のそばで焼いて作る' };
     // 材料を使ったあとに、できた物が入らないなら作らない
-    const after = { inv: { ...st.inv } }; for (const k in r.need) { after.inv[k] -= r.need[k]; if (!after.inv[k]) delete after.inv[k]; }
+    const after = { god: st.god, inv: { ...st.inv } }; for (const k in r.need) { after.inv[k] -= r.need[k]; if (!after.inv[k]) delete after.inv[k]; }
     after.inv[id] = (after.inv[id] || 0) + r.out;
     if (slotsUsed(after) > SLOTS) return { ok: false, why: FULL_MSG + '（' + slotsUsed(st) + '/' + SLOTS + '枠）' };
-    const p = Math.min(0.95, r.p + 0.3 * (skill == null ? 0.3 : skill));
+    const p = st.god ? 1 : Math.min(0.95, r.p + 0.3 * (skill == null ? 0.3 : skill));   // 開発者モードは失敗しない
     if (rng() > p) { for (const k in r.lose) drop(st, k, r.lose[k]); return { ok: false, why: name + 'づくりに失敗した（' + lostText(r) + 'を失った）' }; }
     for (const k in r.need) drop(st, k, r.need[k]);
     st.inv[id] = (st.inv[id] || 0) + r.out; st.total[id] = (st.total[id] || 0) + r.out;
@@ -7617,7 +7620,7 @@ root.WohHorseView=api;})(typeof globalThis!=="undefined"?globalThis:this);
     return function () { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   }
 
-  const api = { goalList, clothOf, clothFactor, CLOTH, ROT, rot, takeRotted, dry, DRY, carryCap, fillWater, drinkCarried, injured, hurt, treat, bestWeapon, applyHunt, WEAPON, HUNT_RISK, dyingLeft, takeDeath, firstAid, inherit, DYING_DAYS, RECOVER_HP, setEnv, rest, staminaCap, staminaStep, jumpCost, drink, vitalsInfo, HP_MAX, SP_MAX, WATER_MAX, setCommons, atCommons, ownFireActive, standingInfo, gainStanding, giveToGroup, ration, share, learn, talk, nearCamp, KCAL_PER_KG, goals, GOALS, slotsOf, HOME_NEED, HOME_DAYS, HOME_REACH, STORE_SLOTS, homeStatus, nearHome, homeNeedText, buildHome, demolishHome, storePut, storeTake, storeList, storeRoom, sleep, SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
+  const api = { godFill, godInv, goalList, clothOf, clothFactor, CLOTH, ROT, rot, takeRotted, dry, DRY, carryCap, fillWater, drinkCarried, injured, hurt, treat, bestWeapon, applyHunt, WEAPON, HUNT_RISK, dyingLeft, takeDeath, firstAid, inherit, DYING_DAYS, RECOVER_HP, setEnv, rest, staminaCap, staminaStep, jumpCost, drink, vitalsInfo, HP_MAX, SP_MAX, WATER_MAX, setCommons, atCommons, ownFireActive, standingInfo, gainStanding, giveToGroup, ration, share, learn, talk, nearCamp, KCAL_PER_KG, goals, GOALS, slotsOf, HOME_NEED, HOME_DAYS, HOME_REACH, STORE_SLOTS, homeStatus, nearHome, homeNeedText, buildHome, demolishHome, storePut, storeTake, storeList, storeRoom, sleep, SLOTS, slotsUsed, roomFor, stackOf, RECIPES, LIFE, canCraft, craft, boil, tick, hunger, sick, vigor, eat, makeFire, stoke, fireActive, fireLeft, roast, soakStart, soakCollect, KCAL_MAX, KCAL_DAY, RAW, ROAST, rngFor, ITEMS, IDX, SPOT_CAP, newState, count, availability, spotLeft, gather, drop, list, save, load, prune };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohForage = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
@@ -11332,7 +11335,7 @@ function vitalsDie(cause) {
 globalThis.__wohVitalsDie = vitalsDie;
 document.getElementById('deathOk')?.addEventListener('click', () => document.getElementById('deathBox').classList.remove('show'));
 document.getElementById('menuTech')?.addEventListener('click', () => { try { const ok1 = WohPeople.peopleGrantTech(people, people.playerEth, 'cultivate'), ok2 = WohPeople.peopleGrantTech(people, people.playerEth, 'herd'); const m = document.getElementById('menuMsg'); if (m) m.textContent = ok1 || ok2 ? 'あなたの民族が栽培・牧畜を身につけた（次の月から農民・牧人の職が開く）' : 'すでに持っているか、技術の層がまだ準備できていない'; } catch (e) { } });
-document.getElementById('menuGod')?.addEventListener('click', () => { try { localStorage.setItem('woh-god', forageGodOn() ? '0' : '1'); } catch (e) { } forageSt.god = forageGodOn(); const b = document.getElementById('menuGod'); if (b) b.textContent = '暮らしの消耗：' + (forageSt.god ? 'なし' : 'あり'); });
+document.getElementById('menuGod')?.addEventListener('click', () => { try { localStorage.setItem('woh-god', forageGodOn() ? '0' : '1'); } catch (e) { } forageSt.god = forageGodOn(); const b = document.getElementById('menuGod'); if (b) b.textContent = '暮らしの消耗・素材：' + (forageSt.god ? 'なし・無限' : 'あり'); if (forageSt.god) WohForage.godFill(forageSt); });
 document.getElementById('menuMortal')?.addEventListener('click', () => {
   const on = forageSt.mortal === false; forageSt.mortal = on;   // 「なし」→「あり」へ／「あり」→「なし」へ
   if (!on) { forageSt.hp = Math.max(1, forageSt.hp); forageSt.dyingDays = 0; }
@@ -11406,6 +11409,7 @@ function forageAct(act, id) {
   forageSay(msg); forageBagRender();
 }
 function forageBagRender() {
+  if (forageSt && forageSt.god) WohForage.godFill(forageSt);   // 開発者モード：素材は無限
   const el = document.getElementById('bagPanel'); if (!el) return;
   try { forageSyncProps(); } catch (e) { }
   const day = forageNow(), F = WohForage, L = F.list(forageSt), used = F.slotsUsed(forageSt), hg = F.hunger(forageSt), pct = Math.round(100 * forageSt.kcal / F.KCAL_MAX);
@@ -11496,6 +11500,7 @@ globalThis.__wohForage = { context: forageContext, fauna: () => fauna, FA: () =>
     $('rpgEquipment').innerHTML = SLOTS_EQ.map(s => { const id = equippedOf(s.id), d = id ? F.ITEMS[F.IDX[id]] : null; return '<button class="rpg-equip-slot' + (d ? '' : ' vacant') + '" data-slot="' + s.id + '" aria-pressed="' + (!!id && selected === id) + '" aria-label="' + s.label + '：' + (d ? d.name : 'なし') + '">' + icon(d ? iconOf(d) : s.icon) + '<span class="rpg-equip-copy"><small>' + s.label + '</small><strong>' + (d ? d.name : 'なし') + '</strong></span><span class="rpg-equip-open">' + (d ? '詳細' : '—') + '</span></button>'; }).join('');
   }
   function renderInventory() {
+    if (forageSt.god) WohForage.godFill(forageSt);
     const items = sortedItems(), scroll = $('rpgItemGrid').scrollTop;
     if (!items.some(i => i.id === selected)) selected = items[0] ? items[0].id : null;
     renderEquipment(); $('rpgSort').value = sortOrder;
@@ -11554,6 +11559,7 @@ globalThis.__wohForage = { context: forageContext, fauna: () => fauna, FA: () =>
   const INCOME = [['gather', '採集', '#7fb26a'], ['hunt', '狩猟', '#c9805a'], ['fish', '漁', '#5a9ec9'], ['farm', '農耕', '#d3b24a'], ['herd', '牧畜', '#b48ad0']];
   const ROLE_NAME = { dwelling: '家', storage: '倉庫', storehouse: '倉庫', workshop: '作業場', assembly: '集会所', hall: '集会所', drying: '干し場', rack: '干し棚' };
   function renderVillage() {
+    if (forageSt.god) WohForage.godFill(forageSt);
     const host = $('rpgVillage'), W = window.WohPeople;
     const pl = people && people.player, P = people && people.npc, g = pl && pl.id >= 0 && !pl.over ? people.groups[P.group[pl.id] - 1] : null;
     if (!g || !g.alive) { host.innerHTML = '<p class="rpg-subtle">あなたの集団がありません。</p>'; return; }
@@ -11818,7 +11824,7 @@ globalThis.__wohForage = { context: forageContext, fauna: () => fauna, FA: () =>
       else if (vi.thirsty && vi.water < 12) { txt = '喉が渇いている。水辺を探そう'; cls = 'warn'; }
       if (lastTxt.get('danger') !== txt) { lastTxt.set('danger', txt); dg.textContent = txt; dg.style.display = txt ? 'block' : 'none'; dg.classList.toggle('warn', cls === 'warn'); }
       const op = left !== null ? 0.65 : vi.hp < 30 ? (30 - vi.hp) / 30 * 0.5 : 0; vg.style.opacity = String(op.toFixed(2));
-      { const gb = document.getElementById('menuGod'); if (gb) { const gt = '暮らしの消耗：' + (forageGodOn() ? 'なし（開発者）' : 'あり'); if (gb.textContent !== gt) gb.textContent = gt; } }
+      { const gb = document.getElementById('menuGod'); if (gb) { const gt = '暮らしの消耗・素材：' + (forageGodOn() ? 'なし・無限（開発者）' : 'あり'); if (gb.textContent !== gt) gb.textContent = gt; } }
       const mb = document.getElementById('menuMortal'); if (mb) { const t = '死亡：' + (forageSt.mortal === false ? 'なし（瀕死で止まる）' : 'あり'); if (mb.textContent !== t) mb.textContent = t; }
     } catch (e) { }
     // 体力・スタミナ・水分
@@ -11881,6 +11887,7 @@ function peoplePropose(kind, label) {
 // 村の施設を建てる：材料はあなたの持ち物から。戻り値：{ ok, text }
 function peopleBuild(kind, spot) {
   if (!people) return { ok: false, text: '世界の準備中' };
+  if (forageSt.god) WohForage.godFill(forageSt);
   const F = WohPeople.FACIL[kind], r = WohPeople.peopleBuildCheck(people, kind);
   if (!r.ok) return { ok: false, text: r.reason === 'locked' ? '建てられない（条件：' + r.why + '）' : (PE_PROP_REASON[r.reason] || '建てられない') };
   const lack = Object.keys(F.cost).filter(k => (forageSt.inv[k] || 0) < F.cost[k]);
@@ -11895,6 +11902,7 @@ function peopleBuild(kind, spot) {
 const PE_PLACED = ['pit', 'rack', 'granary', 'well', 'pen', 'hearth', 'kiln'];
 function peopleBuildPlace(kind, done) {
   const F = WohPeople.FACIL[kind]; if (!people || !F) return { ok: false, text: '世界の準備中' };
+  if (forageSt.god) WohForage.godFill(forageSt);
   if (!PE_PLACED.includes(kind) || !globalThis.__wohBuildView) { const r = peopleBuild(kind); if (done) done(r); return r; }
   const r = WohPeople.peopleBuildCheck(people, kind); if (!r.ok) { const t = r.reason === 'locked' ? '建てられない（条件：' + r.why + '）' : (PE_PROP_REASON[r.reason] || '建てられない'); if (done) done({ ok: false, text: t }); return { ok: false, text: t }; }
   const lack = Object.keys(F.cost).filter(k => (forageSt.inv[k] || 0) < F.cost[k]);
