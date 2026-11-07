@@ -219,6 +219,8 @@
   #titleScreen .tstage button { position: absolute; background: transparent; border: 0; padding: 0; color: transparent; touch-action: manipulation; -webkit-tap-highlight-color: transparent; border-radius: 10px; }
   #titleScreen .tstage button:active { background: rgba(255, 226, 150, .18); }
   #titleScreen button:disabled { cursor: default; }
+  #titleScreen #tGod { left: 2.5%; top: 86%; width: 24%; height: 8%; color: #ecd9a6; font-size: calc(var(--sw) * 0.0125); font-weight: 600; letter-spacing: 1px; border: 1px solid #b9964a; border-radius: 10px; background: linear-gradient(#2a2418e6, #14110ce6); box-shadow: 0 0 12px #000a; text-shadow: 0 1px 3px #000; }
+  #titleScreen #tGod:active { background: #5c4210; }
   #tContinue { left: 30.2%; top: 40.2%; width: 38.9%; height: 9.2%; }
   #tNew { left: 30.2%; top: 51.5%; width: 38.9%; height: 9.2%; }
   #tLoad { left: 30.2%; top: 63.1%; width: 38.9%; height: 9.4%; }
@@ -11838,8 +11840,8 @@ document.getElementById('deathOk')?.addEventListener('click', () => document.get
     const t = GOD_TIMES[k]; if (!t) { clockSetPlaying(false); } else { clock.mode = t[0]; clock.speed = t[1]; clock.acc = 0; clockSetPlaying(true); }
     timebarUpdate(); for (const b of bar.querySelectorAll('[data-gt]')) b.classList.toggle('on', b.dataset.gt === k);
   }
-  function enter() {
-    const r = window.__wohGodView && window.__wohGodView.enter(); if (!r || !r.ok) { msg((r && r.why) || '神モードに入れません'); return false; }
+  function enter(quiet) {
+    const r = window.__wohGodView && window.__wohGodView.enter(); if (!r || !r.ok) { if (quiet !== true) msg((r && r.why) || '神モードに入れません'); return false; }
     build(); snap = { f: WohForage.save(forageSt), mortal: forageSt.mortal }; forageSt.mortal = false;   // 持ち物・体の状態は、入る前の状態に戻す（神モードの間は、あなたの世界の時間は止まっているものとする） godHist = []; lastDay = -1; setTime('real'); refresh(); return true;
   }
   function exit() {
@@ -12404,7 +12406,7 @@ globalThis.__wohForage = { context: forageContext, fauna: () => fauna, FA: () =>
   function renderSystem() {
     const ids = [['tPlay', '再生／停止'], ['tMode', '進め方'], ['tSpeed', '速さ'], ['tStep', '1つ進める']];
     $('rpgSystem').innerHTML = '<div class="rpg-kicker">時間</div><div class="rpg-sys-row"><span class="rpg-sys-date">' + ($('tDate') ? $('tDate').textContent : '') + '</span>' + ids.map(a => '<button class="rpg-sys" data-proxy="' + a[0] + '"><small>' + a[1] + '</small>' + ($(a[0]) ? $(a[0]).textContent : '') + '</button>').join('') + '</div>' +
-      '<div class="rpg-kicker" style="margin-top:16px">開く</div><div class="rpg-sys-row">' + [['btnInfo', '情報（世界・地形・資源・天気）'], ['btnMenu', 'セーブ・ロード・設定'], ['viewMode', '世界を俯瞰（3D）'], ['fgView', '視点の切り替え']].map(a => '<button class="rpg-sys" data-launch="' + a[0] + '">' + a[1] + '</button>').join('') + '</div>' +
+      '<div class="rpg-kicker" style="margin-top:16px">開く</div><div class="rpg-sys-row">' + [['btnInfo', '情報（世界・地形・資源・天気）'], ['btnMenu', 'セーブ・ロード・設定'], ['viewMode', '世界を俯瞰（3D）'], ['fgView', '視点の切り替え'], ['menuGodView', '神モード（空から見守る）']].map(a => '<button class="rpg-sys" data-launch="' + a[0] + '">' + a[1] + '</button>').join('') + '</div>' +
       '<p class="rpg-subtle" style="margin-top:14px">メニューを開いている間は時間が止まります。閉じると、元の進み方に戻ります。</p>';
     $('rpgFootDate').textContent = $('tDate') ? $('tDate').textContent : '';
   }
@@ -14128,16 +14130,21 @@ function devModeGet() { try { return localStorage.getItem(TITLE_DEV_KEY) === '1'
 function devModeSet(on) { document.body.classList.toggle('woh-dev', !!on); try { localStorage.setItem(TITLE_DEV_KEY, on ? '1' : '0'); } catch (e) {} }
 function titleHide() { titlePending = false; document.body.classList.remove('title-open'); const el = document.getElementById('titleScreen'); if (el) el.classList.remove('show'); }
 function uiAssets() { if (!uiAssets.v) { try { uiAssets.v = JSON.parse(document.getElementById('ui-assets').textContent); } catch (e) { uiAssets.v = { title: '', panels: [] }; } } return uiAssets.v; }
+let titleSaved = null;
+// 神モードで始める：世界の準備ができたら、神モードに入る（準備中は待つ）
+function godAfterLoad() { let n = 0; const t = setInterval(() => { if (++n > 240) { clearInterval(t); return; } try { const L = document.getElementById('loading'); if (window.__wohGod && window.__wohGodView && window.__geo && window.__geo.people && L && !L.classList.contains('show') && window.__wohGod.enter(true)) clearInterval(t); } catch (e) { } }, 500); }
 function titleShow(st) {
+  titleSaved = st;
   let el = document.getElementById('titleScreen');
   if (!el) {
     el = document.createElement('div'); el.id = 'titleScreen'; const A = uiAssets();
     el.innerHTML = '<div class="tblur"></div><div class="tstage"><button id="tContinue" aria-label="続きから始める"></button><div id="tVeil"></div><div id="tContInfo"></div>' +
       '<button id="tNew" aria-label="新しい世界を創る"></button><button id="tLoad" aria-label="セーブデータ"></button><button id="tDev" aria-label="開発者モード"></button>' +
-      '<div id="tDevSw"><i></i><b></b></div><div id="tDevBox"><input id="tSeed" type="text" placeholder="Seed（空ならランダム）" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><button id="tSeedGo">Seedを指定して始める</button></div><div id="tVer"></div></div>';
+      '<button id="tGod" aria-label="神モード（空から見守る）">神モード（空から見守る）</button><div id="tDevSw"><i></i><b></b></div><div id="tDevBox"><input id="tSeed" type="text" placeholder="Seed（空ならランダム）" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><button id="tSeedGo">Seedを指定して始める</button></div><div id="tVer"></div></div>';
     el.querySelector('.tblur').style.backgroundImage = `url(${A.title})`; el.querySelector('.tstage').style.backgroundImage = `url(${A.title})`;
     document.body.appendChild(el);
     bindTap(el.querySelector('#tNew'), () => { titleHide(); generate(randomSeed()); });
+    bindTap(el.querySelector('#tGod'), () => { godAfterLoad(); const s = titleSaved; titleHide(); if (s) loadState(s); else generate(randomSeed()); });   // 神モード：続きの記録があればそれを、なければ新しい世界を始めて、空から見守る
     bindTap(el.querySelector('#tLoad'), () => { document.body.classList.add('title-open'); menuShow(true); });
     bindTap(el.querySelector('#tDev'), () => { devModeSet(!devModeGet()); titleDevRefresh(); });
     bindTap(el.querySelector('#tSeedGo'), () => { const v = el.querySelector('#tSeed').value.trim(); titleHide(); generate(v || randomSeed()); });

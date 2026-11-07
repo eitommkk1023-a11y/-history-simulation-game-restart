@@ -1,0 +1,21 @@
+const { chromium } = require('playwright'); const D = '/tmp/claude-0/-home-user--/d03687c2-a545-5a23-9b43-0b8d77dc6c9c/scratchpad/t/';
+(async () => {
+  const b = await chromium.launch({ args: ['--use-gl=swiftshader','--enable-webgl','--ignore-gpu-blocklist'] });
+  const ctx = await b.newContext({ viewport: { width: 874, height: 380 }, hasTouch: true, isMobile: true });
+  await ctx.addInitScript(() => { try { localStorage.setItem('woh-dev', '1'); } catch (e) { } });
+  const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
+  await p.goto('file:///tmp/claude-0/-home-user--/d03687c2-a545-5a23-9b43-0b8d77dc6c9c/scratchpad/v30/index3.html');
+  await p.waitForSelector('#titleScreen.show', { timeout: 60000 }); await p.waitForTimeout(1500); await p.screenshot({ path: D + 'title_god.png' });
+  let bad = 0; const t = (n, c, x) => { console.log((c ? 'OK  ' : 'NG  ') + n + (x !== undefined ? '  ' + x : '')); if (!c) bad++; };
+  t('タイトルに神モードのボタンがある', await p.evaluate(() => !!document.getElementById('tGod') && getComputedStyle(document.getElementById('tGod')).display !== 'none'));
+  await p.evaluate(() => document.getElementById('tGod').click());
+  await p.waitForFunction(() => document.body.classList.contains('god-on'), null, { timeout: 400000 }); await p.waitForTimeout(3000);
+  t('タイトルから神モードで始まる', await p.evaluate(() => window.__wohGod.active)); await p.screenshot({ path: D + 'title_god2.png' });
+  await p.evaluate(() => __wohGod.exit()); await p.waitForTimeout(1000);
+  await p.evaluate(() => __wohRpgMenu.open('system')); await p.waitForTimeout(600);
+  t('ゲーム内メニュー（時間・記録）に神モードがある', await p.evaluate(() => /神モード/.test(document.getElementById('rpgSystem').innerText)));
+  await p.screenshot({ path: D + 'menu_god.png' });
+  await p.evaluate(() => document.querySelector('#rpgSystem [data-launch="menuGodView"]').click()); await p.waitForTimeout(2500);
+  t('メニューから神モードに入れる', await p.evaluate(() => window.__wohGod.active));
+  console.log('errors', errs.slice(0, 3)); await b.close(); process.exit(bad || errs.length ? 1 : 0);
+})();
