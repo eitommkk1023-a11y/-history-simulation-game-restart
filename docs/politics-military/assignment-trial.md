@@ -2,6 +2,12 @@
 
 対象ブランチ：codex/politics-military-p0。これは人員配属台帳の接続試験で、自律政治・戦争のプレイ版ではありません。
 
+## 試験画面
+
+https://woh-politics-military-test.sedatehake8.chatgpt.site
+
+このプレビューは専用ブランチの試験HTMLと同一内容です。検査用6人の小世界で、本作への統合版ではありません。
+
 ## 起動
 `tools/politics-military/assignment-sandbox.html` は1ファイルで動く試験画面です。必要なら `python tools/politics-military/build-sandbox.py` で生成し直してください。ESMの接続部品と実人口コードをそのまま埋め込み、外部ライブラリ要求はありません。
 

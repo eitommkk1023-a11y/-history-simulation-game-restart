@@ -1,0 +1,23 @@
+{
+  "scope": "P0b isolated assignment trial",
+  "sourceImplementationCommit": "ffea0bd",
+  "branch": "codex/politics-military-p0",
+  "preview": "https://woh-politics-military-test.sedatehake8.chatgpt.site",
+  "deployment": "appgdep_6aef208eebb4819192cc51e73885bcdc",
+  "deploymentStatus": "succeeded",
+  "htmlSha256": "80ef204f5b859f90a3fb7ae368bf4dddb170312832e9089a7e3159523add9427",
+  "tests": {
+    "assignmentLedger": 15,
+    "personReference": 6,
+    "geographyAdapter": 11,
+    "browserChecks": 20
+  },
+  "unchangedCanonicalFiles": [
+    "World-of-History-v30-development.html",
+    "npc/npc-core.js",
+    "npc/people-core.js",
+    "npc/battle.js"
+  ],
+  "mainGameIntegrated": false,
+  "actualIOSHardwareTested": false
+}
