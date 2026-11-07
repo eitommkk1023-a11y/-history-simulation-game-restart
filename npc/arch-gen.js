@@ -163,7 +163,10 @@ function designBuilding(seed, trad, role, key, members, age) {
 
 // ---- 材料の色（建物の部品の色）。経年で少し暗く、くすませる
 const MAT_COLOR = { timber: [0.50, 0.36, 0.23], stone: [0.55, 0.54, 0.52], adobe: [0.74, 0.57, 0.38], mud: [0.45, 0.34, 0.25], turf: [0.30, 0.38, 0.20], reed: [0.72, 0.63, 0.38],
-  thatch: [0.70, 0.60, 0.33], shingle: [0.42, 0.31, 0.21], slab: [0.46, 0.46, 0.45], brick: [0.60, 0.30, 0.20], hide: [0.58, 0.50, 0.40], found: [0.50, 0.49, 0.47], dark: [0.10, 0.08, 0.07] };
+  thatch: [0.70, 0.60, 0.33], shingle: [0.42, 0.31, 0.21], slab: [0.46, 0.46, 0.45], brick: [0.60, 0.30, 0.20], hide: [0.58, 0.50, 0.40], found: [0.50, 0.49, 0.47], dark: [0.10, 0.08, 0.07],
+  // 新素材辞書（materials.js）の素材
+  log: [0.46, 0.33, 0.20], pole: [0.50, 0.38, 0.25], bark: [0.40, 0.30, 0.20], splitwood: [0.52, 0.39, 0.25], fieldstone: [0.50, 0.49, 0.47], splitstone: [0.56, 0.55, 0.52], dressed: [0.62, 0.60, 0.57], clay: [0.55, 0.40, 0.30],
+  sod: [0.30, 0.38, 0.20], rammed: [0.50, 0.38, 0.27], mudbrick: [0.72, 0.55, 0.37], firedbrick: [0.60, 0.30, 0.20], plaster: [0.82, 0.78, 0.70], wattle: [0.58, 0.46, 0.30], felt: [0.80, 0.76, 0.66], fitting: [0.30, 0.28, 0.27] };
 function matColor(name, tint, age) { const c = MAT_COLOR[name] || [0.5, 0.5, 0.5], w = Math.min(0.35, (age || 0) / 400 * 0.35), g = 0.5; return c.map(x => Math.max(0, Math.min(1, (x * (1 - w) + g * w * 0.8) * (tint || 1)))); }
 
 const api = { WALL_MATS, ROOF_MATS, PLANS, ROOFS, TECHS, TECH_IDS, BASE_TECHS, envAt, genome, regional, blend, tradition, tradAt, designBuilding, matColor, MAT_COLOR };
