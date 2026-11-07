@@ -38,7 +38,7 @@ function overlaps(a, b, m) { if (a.round && b.round) return Math.hypot(a.x - b.x
 
 // ---- 配置の本体
 const MAX_SLOPE = { dwelling: 26, hall: 14, storehouse: 22, workshop: 20, rack: 30 };
-function newLayout(gid) { return { version: 1, gid, center: { x: 0, z: 0 }, items: [], paths: [], plaza: { r: 5 }, byHouse: {}, fields: [], fence: [], queue: [], nextSeq: 1, history: null, resolved: false }; }
+function newLayout(gid) { return { version: 1, gid, center: { x: 0, z: 0 }, items: [], paths: [], plaza: { r: 5, kind: 'open' }, axis: { a: 0, k: 0 }, nTarget: 0, byHouse: {}, fields: [], fence: [], queue: [], nextSeq: 1, history: null, resolved: false }; }
 // 地面：建物の足元の高さを数点で測る
 function groundOf(terr, b) {
   const pts = [[0, 0]], hw = b.plan.w / 2, hd = (b.plan.kind === 'rect' ? b.plan.d : b.plan.w) / 2, cs = Math.cos(b.rot), sn = Math.sin(b.rot);
@@ -58,36 +58,57 @@ function decideFoundation(b, g, trad, terrWet) {
   else { floorY = g.hMean + 0.12; foundH = floorY - g.hMin + 0.05; }
   return { kind, floorY, foundH: Math.max(0.08, foundH) };
 }
-function doorDirection(trad, terr, b, plaza) {
-  const to = (dx, dz) => { const l = Math.hypot(dx, dz) || 1; return [dx / l, dz / l]; };
-  let want = to(plaza.x - b.x, plaza.z - b.z);
-  if (trad.door === 'water') { const w = terr.nearestWater(b.x, b.z); if (w && w.dist < 150) want = to(w.dx, w.dz); }
-  else if (trad.door === 'sun') want = to(0, 1);
-  else if (trad.door === 'east') want = to(1, 0);
-  const jitter = (rnd(0, b.key, 9) - 0.5) * 0.5;
-  const a = Math.atan2(want[0], want[1]) + jitter;   // 0＝+z 方向
-  return a;
+function doorDirection(trad, terr, b, layout) {
+  const to = (dx, dz) => { const l = Math.hypot(dx, dz) || 1; return [dx / l, dz / l]; }, c = layout.center;
+  // 入口の向きは、伝統（水・太陽・東・中心）を基本に、水辺の向き・下り坂（水はけ）を混ぜる。中心を向くのは、広場のある村だけが強い
+  const w = terr.nearestWater(b.x, b.z), wv = w && w.dist < 150 ? to(w.dx, w.dz) : null;
+  const e = 2, gx = terr.height(b.x + e, b.z) - terr.height(b.x - e, b.z), gz = terr.height(b.x, b.z + e) - terr.height(b.x, b.z - e), gl = Math.hypot(gx, gz), down = gl > 0.1 ? [-gx / gl, -gz / gl] : null;
+  let base, wc = 1; const core = to(c.x - b.x, c.z - b.z);
+  if (trad.door === 'water' && wv) base = wv; else if (trad.door === 'sun') base = to(0, 1); else if (trad.door === 'east') base = to(1, 0);
+  else { base = core; wc = layout.plaza.kind === 'open' ? 1 : 0.55; }
+  let vx = base[0] * wc, vz = base[1] * wc;
+  if (down) { vx += down[0] * 0.5; vz += down[1] * 0.5; }
+  if (wv && trad.door !== 'water') { vx += wv[0] * 0.3; vz += wv[1] * 0.3; }
+  const jitter = (rnd(0, b.key, 9) - 0.5) * 0.9;
+  return Math.atan2(vx, vz) + jitter;   // 0＝+z 方向
+}
+// 集落のおおよその広がり（m）：世帯数の平方根に比例（密集しすぎ・散らばりすぎを防ぐ目安）
+function extentOf(layout) { const n = Math.max(layout.nTarget || 0, layout.items.filter(i => i.role === 'dwelling' && i.state !== 'removed').length, 4); return 12 + 4.2 * Math.sqrt(n); }
+// 育つ位置の候補：すでにある建物（空き家・廃屋以外）と、中心の火。ここから外へ向かって家が増える
+function growPool(layout) {
+  const pool = [{ x: layout.center.x, z: layout.center.z, r: layout.plaza.r * 0.5 }];
+  for (const i of layout.items) if (i.state !== 'removed' && i.state !== 'ruin' && (i.role === 'dwelling' || i.role === 'hall' || i.role === 'storehouse')) pool.push({ x: i.x, z: i.z, r: Math.hypot(i.plan.w, i.plan.kind === 'rect' ? i.plan.d : i.plan.w) / 2 });
+  return pool;
 }
 function place(layout, spec, b, opts) {
   const { terr, seed, trad } = spec, o = opts || {}, items = layout.items;
   const r0 = Math.hypot(b.plan.w, b.plan.kind === 'rect' ? b.plan.d : b.plan.w) / 2 + 1.2;
   const anchor = o.anchor || layout.center, maxSlope = MAX_SLOPE[b.role] || 24;
+  const organic = !!o.grow || o.prefDist === 0, Rc = extentOf(layout), pool = o.grow ? growPool(layout) : null, ax = layout.axis;
   let best = null, bestS = -1e9;
   const nTry = 40, R = o.radius || (layout.plaza.r + r0 + 2);
   for (let k = 0; k < nTry; k++) {
     const grow = 1 + Math.floor(k / 14) * 0.45;   // 見つからなければ、外へ広げる
-    const ang = rnd(seed, b.key, 200 + k) * Math.PI * 2, rad = (R + rnd(seed, b.key, 300 + k) * (o.spread || 18)) * grow;
-    const x = anchor.x + Math.cos(ang) * rad, z = anchor.z + Math.sin(ang) * rad;
+    const ang = rnd(seed, b.key, 200 + k) * Math.PI * 2; let cx = anchor.x, cz = anchor.z, rad;
+    if (pool) { const P = pool[Math.floor(rnd(seed, b.key, 500 + k) * pool.length)]; cx = P.x; cz = P.z; rad = (r0 + P.r + 1.8 + rnd(seed, b.key, 300 + k) * 9) * grow; }
+    else rad = (R + rnd(seed, b.key, 300 + k) * (o.spread || 18)) * grow;
+    const x = cx + Math.cos(ang) * rad, z = cz + Math.sin(ang) * rad;
     const d = Math.hypot(x - layout.center.x, z - layout.center.z); if (d < layout.plaza.r + r0 * 0.7) continue;
     const wd = terr.water(x, z); if (wd > 0.25 && b.role !== 'rack') continue;
     const slope = terr.slope(x, z); if (slope > maxSlope) continue;
-    b.x = x; b.z = z; b.rot = doorDirection(trad, terr, b, layout.center);
-    const sh = shapeOf(b); let bad = false;
-    for (const it of items) { if (it.state === 'removed') continue; if (overlaps(sh, shapeOf(it), 1.6)) { bad = true; break; } }
+    b.x = x; b.z = z; b.rot = doorDirection(trad, terr, b, layout);
+    const sh = shapeOf(b); let bad = false, nnMin = 1e9, nb = 0;
+    for (const it of items) { if (it.state === 'removed') continue; if (overlaps(sh, shapeOf(it), 1.6)) { bad = true; break; } const dd = Math.hypot(x - it.x, z - it.z); if (dd < nnMin) nnMin = dd; if (dd < 16) nb++; }
     if (bad) continue;
-    const nw = terr.nearestWater(x, z); let s = -Math.abs(d - (o.prefDist || (layout.plaza.r + 10))) * 0.35 - slope * 0.4;
-    if (nw) { if (b.role === 'rack') s += 8 - Math.abs(nw.dist - 7); else s += 5 - Math.abs(nw.dist - 40) / 9; }
-    if (o.anchor) s -= Math.hypot(x - o.anchor.x, z - o.anchor.z) * 0.25;
+    const nw = terr.nearestWater(x, z); let s;
+    if (organic) {
+      // 自然な育ち方：平らさ・水との距離・まとまり（近すぎず遠すぎない間隔）・集落の広がりの上限・その集落の伸びる向き
+      s = -slope * 0.4 - Math.max(0, d - Rc) * 0.12 - d * 0.03;
+      if (nnMin < 1e8) s += Math.max(-3, 2.5 - Math.abs(nnMin - (r0 + 3)) * 0.3) + Math.min(nb, 3) * 0.8 - Math.max(0, nb - 6);
+      if (ax.k > 0) s += ax.k * 3 * Math.cos(2 * (Math.atan2(z - layout.center.z, x - layout.center.x) - ax.a)) * Math.min(1, d / 10);
+    } else s = -Math.abs(d - (o.prefDist || (layout.plaza.r + 10))) * 0.35 - slope * 0.4;
+    if (nw) { if (b.role === 'rack') s += 8 - Math.abs(nw.dist - 7); else if (organic) s += Math.max(-6, 7 - Math.abs(nw.dist - (spec.siteKind === 'spring' ? 14 : 35)) / 7); else s += 5 - Math.abs(nw.dist - 40) / 9; }
+    if (o.anchor && !o.grow) s -= Math.hypot(x - o.anchor.x, z - o.anchor.z) * 0.25;
     if (terr.wet && terr.wet(x, z) && b.stilts < 0.3 && b.role === 'dwelling') s -= 4;
     if (s > bestS) { bestS = s; best = { x, z, rot: b.rot }; }
   }
@@ -110,7 +131,7 @@ function addBuilding(layout, spec, role, house, members, anchor, opts, builtAge)
     b.windows = 0; b.ornament = 0; b.trim = false; b.stilts = role === 'storehouse' ? 1 : 0; b.sunken = 0;
   }
   const o0 = opts || {};
-  if (!place(layout, spec, b, Object.assign({ anchor }, o0)) && !place(layout, spec, b, { anchor: layout.center, radius: (o0.radius || 10) * 1.8 + 10, spread: (o0.spread || 18) * 2 + 20, prefDist: layout.plaza.r + 30 })) return null;   // 置けなければ、範囲を広げてもう一度
+  if (!place(layout, spec, b, Object.assign({ anchor }, o0)) && !place(layout, spec, b, { anchor: layout.center, grow: !!o0.grow, radius: (o0.radius || 10) * 1.8 + 10, spread: (o0.spread || 18) * 2 + 20, prefDist: layout.plaza.r + 30 }) && !place(layout, spec, b, { anchor: layout.center, radius: extentOf(layout) * 1.2, spread: extentOf(layout) * 1.5, prefDist: extentOf(layout) * 1.5 })) return null;   // 置けなければ、範囲を広げてもう一度
   layout.items.push(b); if (role === 'dwelling') layout.byHouse[house] = b.id; return b;
 }
 // ---- 集落全体の配置
@@ -119,8 +140,14 @@ function layoutSettlement(spec) {
   const { seed, gid, hist, level, households, economy, terr } = spec, layout = newLayout(gid); layout.history = hist;
   const nH = households.length;
   // 中心：平らで乾いた場所（焚き火と広場）。最初の候補の近くで探す
-  let bc = { x: 0, z: 0 }, bs = 1e9; for (let k = 0; k < 30; k++) { const a = rnd(seed, gid, 50 + k) * 6.283, r = k === 0 ? 0 : 4 + rnd(seed, gid, 90 + k) * 22, x = Math.cos(a) * r, z = Math.sin(a) * r, s = terr.slope(x, z) + (terr.water(x, z) > 0.1 ? 60 : 0) + r * 0.15; if (s < bs) { bs = s; bc = { x, z }; } }
-  layout.center = bc; layout.plaza.r = 4 + 0.45 * Math.sqrt(nH);
+  // 水辺の村は、水から20〜40mの乾いた平地を好む（水が近すぎる・遠すぎるのを避ける）
+  let bc = { x: 0, z: 0 }, bs = 1e9; for (let k = 0; k < 30; k++) { const a = rnd(seed, gid, 50 + k) * 6.283, r = k === 0 ? 0 : 4 + rnd(seed, gid, 90 + k) * 22, x = Math.cos(a) * r, z = Math.sin(a) * r, nw0 = terr.nearestWater(x, z), s = terr.slope(x, z) + (terr.water(x, z) > 0.1 ? 60 : 0) + r * 0.15 + (nw0 ? Math.min(30, Math.abs(nw0.dist - 30) * 0.3) : 0); if (s < bs) { bs = s; bc = { x, z }; } }
+  layout.center = bc; layout.nTarget = nH;
+  // 中心は「必ず円形の広場」ではない：野営地・半定住は焚き火だけ。村でも、広場を持つのは一部（広場のある村は、集会所が広場の縁に立つ）
+  const openPlaza = level === 2 && rnd(seed, gid, 60) < 0.45;
+  layout.plaza.kind = openPlaza ? 'open' : 'hearth'; layout.plaza.r = openPlaza ? 4 + 0.45 * Math.sqrt(nH) : level === 0 ? 2.2 : 2.6 + 0.18 * Math.sqrt(nH);
+  // この集落が伸びやすい向き：どれだけ偏るか（0＝丸く、1＝帯状）は集落ごとに違う。川や海のある所では、水辺の引力のほうが強い
+  layout.axis = { a: rnd(seed, gid, 61) * Math.PI, k: Math.max(0, rnd(seed, gid, 62) * 1.3 - 0.25) };
   const ageOf = (k) => Math.round(rnd(seed, gid, 700 + k) * Math.min(hist.age, hist.rebuildCycle * 1.3));
   // 村の集会所（中心の広場の縁）
   if (level === 2) { const hb = addBuilding(layout, spec, 'hall', -1, 8, layout.center, { radius: layout.plaza.r + 4, spread: 5, prefDist: layout.plaza.r + 5 }, Math.min(hist.age, ageOf(-1))); if (hb) hb.hallKey = true; }
@@ -128,18 +155,18 @@ function layoutSettlement(spec) {
   const order = households.slice().sort((a, b) => a.house - b.house), kinAnchor = new Map();
   for (const h of order) {
     const anc = h.kin !== undefined && kinAnchor.has(h.kin) ? kinAnchor.get(h.kin) : null;
-    const b = addBuilding(layout, spec, 'dwelling', h.house, h.members, anc || layout.center, anc ? { radius: 8, spread: 14, prefDist: 0 } : { radius: layout.plaza.r + 5, spread: 8 + Math.sqrt(nH) * 4, prefDist: layout.plaza.r + 6 + Math.sqrt(nH) * 3.2 }, ageOf(h.house));
+    const b = addBuilding(layout, spec, 'dwelling', h.house, h.members, anc || layout.center, anc ? { radius: 8, spread: 14, prefDist: 0 } : { grow: true }, ageOf(h.house));
     if (b) { if (h.kin !== undefined && !kinAnchor.has(h.kin)) kinAnchor.set(h.kin, { x: b.x, z: b.z }); b.cluster = h.kin; }
   }
   // 倉庫：世帯の数と暮らし（採集・保存）に応じて
   const nStore = level === 0 ? Math.round(nH * 0.05) : Math.ceil(nH * (0.12 + 0.07 * level + 0.15 * (economy.gather || 0)));
   for (let k = 0; k < nStore; k++) { const hh = order[Math.floor(rnd(seed, gid, 400 + k) * nH)], a = hh && layout.byHouse[hh.house] ? layout.items.find(i => i.id === layout.byHouse[hh.house]) : null; addBuilding(layout, spec, 'storehouse', 1e6 + k, 2, a ? { x: a.x, z: a.z } : layout.center, { radius: 7, spread: 9, prefDist: layout.plaza.r + 8 }, ageOf(900 + k)); }
   // 干し場：漁が盛んなら、水辺に
-  const nRack = Math.ceil((economy.fish || 0) * nH * 0.14); for (let k = 0; k < nRack; k++) { const w = terr.nearestWater(layout.center.x, layout.center.z); addBuilding(layout, spec, 'rack', 2e6 + k, 1, w && w.dist < 150 ? { x: layout.center.x + w.dx * Math.max(0, w.dist - 6), z: layout.center.z + w.dz * Math.max(0, w.dist - 6) } : layout.center, { radius: 2, spread: 10, prefDist: Math.max(0, (w ? w.dist : 20) - 6) }, ageOf(950 + k)); }
+  const nRack = Math.ceil((economy.fish || 0) * nH * 0.14); for (let k = 0; k < nRack; k++) { const cen = centroidOf(layout), w = terr.nearestWater(cen.x, cen.z); addBuilding(layout, spec, 'rack', 2e6 + k, 1, w && w.dist < 150 ? { x: cen.x + w.dx * Math.max(0, w.dist - 6), z: cen.z + w.dz * Math.max(0, w.dist - 6) } : cen, { radius: 2, spread: 10, prefDist: Math.max(0, (w ? w.dist : 20) - 6) }, ageOf(950 + k)); }
   // 作業場：道具づくりの人が多ければ、集落の外れに
-  const nWork = Math.min(4, Math.ceil((economy.tool || 0) * nH * 0.25)) + (level >= 1 && nH > 20 ? 1 : 0); for (let k = 0; k < nWork; k++) addBuilding(layout, spec, 'workshop', 3e6 + k, 2, layout.center, { radius: layout.plaza.r + 14, spread: 18, prefDist: layout.plaza.r + 24 }, ageOf(980 + k));
+  const nWork = Math.min(4, Math.ceil((economy.tool || 0) * nH * 0.25)) + (level >= 1 && nH > 20 ? 1 : 0); for (let k = 0; k < nWork; k++) addBuilding(layout, spec, 'workshop', 3e6 + k, 2, layout.center, { radius: extentOf(layout) * 0.7, spread: 14, prefDist: extentOf(layout) }, ageOf(980 + k));
   // 衰退した集落：住む人のいない廃屋（外れ）。成立の古さと衰退の度合いに応じて
-  if (hist.status === 'declining') { const nRuin = Math.max(1, Math.round(nH * 0.35)); for (let k = 0; k < nRuin; k++) { const b = addBuilding(layout, spec, 'dwelling', 4e6 + k, 3, layout.center, { radius: layout.plaza.r + 14, spread: 20, prefDist: layout.plaza.r + 24 }, 40 + ageOf(1000 + k)); if (b) { b.state = rnd(seed, gid, 1100 + k) < 0.5 ? 'ruin' : 'vacant'; delete layout.byHouse[4e6 + k]; } } }
+  if (hist.status === 'declining') { const nRuin = Math.max(1, Math.round(nH * 0.35)); for (let k = 0; k < nRuin; k++) { const b = addBuilding(layout, spec, 'dwelling', 4e6 + k, 3, layout.center, { radius: extentOf(layout) * 0.7, spread: 16, prefDist: extentOf(layout) }, 40 + ageOf(1000 + k)); if (b) { b.state = rnd(seed, gid, 1100 + k) < 0.5 ? 'ruin' : 'vacant'; delete layout.byHouse[4e6 + k]; } } }
   // 畑・家畜小屋：農耕・牧畜がある集団のときだけ（まだ実装されていない生業。接続口）
   if (economy.farm) layoutFields(layout, spec, nH);
   // 道
@@ -148,6 +175,7 @@ function layoutSettlement(spec) {
   if (hist.defense > 0) buildFence(layout, spec);
   layout.resolved = true; return layout;
 }
+function centroidOf(layout) { const d = layout.items.filter(i => i.role === 'dwelling' && i.state !== 'removed'); if (!d.length) return { x: layout.center.x, z: layout.center.z }; return { x: d.reduce((a, b) => a + b.x, 0) / d.length, z: d.reduce((a, b) => a + b.z, 0) / d.length }; }
 function layoutFields(layout, spec, nH) {   // 畑：水に近い平らな所に、家の外側。農耕の仕組みが入ったときに使う
   const { terr, seed, gid } = spec, lv = spec.economy && spec.economy.farmLv != null ? spec.economy.farmLv : 3, n = Math.max(1, Math.ceil(nH * 0.5 * lv / 4)); const dws = layout.items.filter(i => i.role === 'dwelling');
   for (let k = 0; k < n * 6 && layout.fields.length < n; k++) {
@@ -157,23 +185,26 @@ function layoutFields(layout, spec, nH) {   // 畑：水に近い平らな所に
     layout.fields.push(f);
   }
 }
-// 道：広場と各家の入口をつなぐ（近い順に、すでにつながった所へ）。建物にぶつかるときは迂回の点を足す。水場への道もつける
+// 道：中心の火と各家の入口を、近い所から順に、すでにつながった所へつなぐ（建物にぶつかるときは迂回の点を足す）。
+// 道の太さは「その道を通る家の数」で決まる（踏まれ具合）。水場への道は、水に一番近い道の端から水辺へ（中心から放射状には出さない）
 function buildPaths(layout, spec) {
-  const { terr } = spec, nodes = [{ x: layout.center.x, z: layout.center.z, id: 'plaza' }], paths = [], solid = layout.items.filter(i => i.state !== 'removed').map(i => ({ s: shapeOf(i), id: i.id }));
+  const { terr } = spec, nodes = [{ x: layout.center.x, z: layout.center.z, id: 'plaza', par: -1 }], paths = [], solid = layout.items.filter(i => i.state !== 'removed').map(i => ({ s: shapeOf(i), id: i.id }));
   const hits = (x1, z1, x2, z2, skipA, skipB) => { for (const o of solid) { if (o.id === skipA || o.id === skipB) continue; for (let t = 0.15; t < 0.9; t += 0.15) { const px = x1 + (x2 - x1) * t, pz = z1 + (z2 - z1) * t; if (overlaps({ x: px, z: pz, rot: 0, hw: 0.4, hd: 0.4, round: true }, o.s, 0)) return o; } } return null; };
   const doors = layout.items.filter(i => i.entrance && i.state !== 'removed' && i.state !== 'ruin').sort((a, b) => Math.hypot(a.entrance.x - layout.center.x, a.entrance.z - layout.center.z) - Math.hypot(b.entrance.x - layout.center.x, b.entrance.z - layout.center.z));
   for (const b of doors) {
-    let bn = null, bd = 1e9; for (const n of nodes) { const d = Math.hypot(n.x - b.entrance.x, n.z - b.entrance.z); if (d < bd) { bd = d; bn = n; } }
-    let from = bn, to = { x: b.entrance.x, z: b.entrance.z };
+    let bn = 0, bd = 1e9; for (let i = 0; i < nodes.length; i++) { const n = nodes[i], d = Math.hypot(n.x - b.entrance.x, n.z - b.entrance.z); if (d < bd) { bd = d; bn = i; } }
+    let from = nodes[bn], fromIdx = bn, to = { x: b.entrance.x, z: b.entrance.z };
     const blk = hits(from.x, from.z, to.x, to.z, b.id, null);
-    if (blk) { const dx = to.x - from.x, dz = to.z - from.z, l = Math.hypot(dx, dz) || 1, px = -dz / l, pz = dx / l, sgn = rnd(spec.seed, b.id, 55) < 0.5 ? 1 : -1, hs = blk.s, off = Math.max(hs.hw, hs.hd) + 1.6; const wp = { x: hs.x + px * off * sgn, z: hs.z + pz * off * sgn }; paths.push({ x1: from.x, z1: from.z, x2: wp.x, z2: wp.z, w: 0.9, use: 1 }); from = wp; nodes.push({ x: wp.x, z: wp.z, id: 'wp' + b.id }); }
-    paths.push({ x1: from.x, z1: from.z, x2: to.x, z2: to.z, w: 0.9, use: 1 }); nodes.push({ x: to.x, z: to.z, id: b.id });
+    if (blk) { const dx = to.x - from.x, dz = to.z - from.z, l = Math.hypot(dx, dz) || 1, px = -dz / l, pz = dx / l, sgn = rnd(spec.seed, b.id, 55) < 0.5 ? 1 : -1, hs = blk.s, off = Math.max(hs.hw, hs.hd) + 1.6; const wp = { x: hs.x + px * off * sgn, z: hs.z + pz * off * sgn }; nodes.push({ x: wp.x, z: wp.z, id: 'wp' + b.id, par: fromIdx }); paths.push({ x1: from.x, z1: from.z, x2: wp.x, z2: wp.z, w: 0.9, use: 1, node: nodes.length - 1 }); from = nodes[nodes.length - 1]; fromIdx = nodes.length - 1; }
+    nodes.push({ x: to.x, z: to.z, id: b.id, par: fromIdx, door: 1 }); paths.push({ x1: from.x, z1: from.z, x2: to.x, z2: to.z, w: 0.9, use: 1, node: nodes.length - 1 });
   }
-  const w = terr.nearestWater(layout.center.x, layout.center.z);
-  if (w && w.dist < 120) { const wx = layout.center.x + w.dx * w.dist, wz = layout.center.z + w.dz * w.dist; paths.push({ x1: layout.center.x, z1: layout.center.z, x2: wx, z2: wz, w: 1.4, use: 3 }); layout.waterAccess = { x: wx, z: wz }; }
+  // 踏まれ具合：その先につながる家の数（木の下流から足し上げる）
+  const cnt = new Array(nodes.length).fill(0); for (let i = nodes.length - 1; i > 0; i--) { cnt[i] += nodes[i].door ? 1 : 0; if (nodes[i].par >= 0) cnt[nodes[i].par] += cnt[i]; }
+  for (const p of paths) { p.use = Math.max(1, cnt[p.node]); p.w = Math.min(2.2, 0.8 + 0.22 * Math.sqrt(p.use)); }
+  // 水場への道：水に一番近い道の点から、水辺まで
+  let wb = null, wd = 1e9; for (const n of nodes) { const w = terr.nearestWater(n.x, n.z); if (w && w.dist < wd) { wd = w.dist; wb = { n, w }; } }
+  if (wb && wd < 120) { const wx = wb.n.x + wb.w.dx * wb.w.dist, wz = wb.n.z + wb.w.dz * wb.w.dist; if (wd > 1) paths.push({ x1: wb.n.x, z1: wb.n.z, x2: wx, z2: wz, w: 1.4, use: 3 }); layout.waterAccess = { x: wx, z: wz }; }
   layout.paths = paths; layout.nodes = nodes.length;
-  // 踏まれ具合：広場に近い道ほど太く
-  for (const p of paths) { const d = Math.hypot((p.x1 + p.x2) / 2 - layout.center.x, (p.z1 + p.z2) / 2 - layout.center.z); p.w = p.w * (d < layout.plaza.r + 12 ? 1.35 : 1); }
 }
 // 柵：集落の外側を囲む。道と水場の方向は開けておく
 function buildFence(layout, spec) {
@@ -204,7 +235,7 @@ function syncLayout(layout, spec, households, day) {
     const anc = h.kin !== undefined ? (layout.items.find(i => i.role === 'dwelling' && i.cluster === h.kin && i.state === 'ok') || null) : null, ref = anc || layout.center;
     let vac = null, vd = 1e9; for (const i of layout.items) { if (i.role !== 'dwelling' || i.state !== 'vacant') continue; const d = Math.hypot(i.x - ref.x, i.z - ref.z); if (d < vd) { vd = d; vac = i; } }
     if (vac) { delete layout.byHouse[vac.house]; vac.house = h.house; vac.cluster = h.kin; vac.state = 'ok'; vac.vacantSince = null; vac.members = h.members; layout.byHouse[h.house] = vac.id; out.reoccupied++; continue; }
-    const nb = addBuilding(layout, spec, 'dwelling', h.house, h.members, anc ? { x: anc.x, z: anc.z } : layout.center, anc ? { radius: 8, spread: 14, prefDist: 0 } : { radius: layout.plaza.r + 5, spread: 20, prefDist: layout.plaza.r + 14 }, 0);
+    const nb = addBuilding(layout, spec, 'dwelling', h.house, h.members, anc ? { x: anc.x, z: anc.z } : layout.center, anc ? { radius: 8, spread: 14, prefDist: 0 } : { grow: true }, 0);
     if (nb) { nb.builtYear = Math.floor(day / YEAR); nb.cluster = h.kin; out.added++; }
   }
   if (out.added || out.removed) buildPaths(layout, spec);
@@ -216,7 +247,7 @@ function applyRequests(layout, spec, households, day) {
   const res = { built: 0, renovated: 0, demolished: 0 };
   for (const q of layout.queue.splice(0)) {
     const id = layout.byHouse[q.house], b = id ? layout.items.find(i => i.id === id) : null;
-    if (q.type === 'build' && !b) { const h = households.find(x => x.house === q.house); if (h) { const nb = addBuilding(layout, spec, 'dwelling', h.house, h.members, layout.center, { radius: layout.plaza.r + 5, spread: 20, prefDist: layout.plaza.r + 14 }, 0); if (nb) { nb.builtYear = Math.floor(day / YEAR); res.built++; } } }
+    if (q.type === 'build' && !b) { const h = households.find(x => x.house === q.house); if (h) { const nb = addBuilding(layout, spec, 'dwelling', h.house, h.members, layout.center, { grow: true }, 0); if (nb) { nb.builtYear = Math.floor(day / YEAR); res.built++; } } }
     else if (q.type === 'renovate' && b) { const nd = Arch.designBuilding(spec.seed, spec.trad, b.role, b.id, b.members, 0); for (const k of ['plan', 'wallH', 'roof', 'wall', 'door', 'windows', 'ornament', 'tint', 'trim', 'trimHue']) b[k] = nd[k]; b.builtYear = Math.floor(day / YEAR); b.age = 0; res.renovated++; }
     else if (q.type === 'demolish' && b) { b.state = 'removed'; delete layout.byHouse[q.house]; res.demolished++; }
   }
