@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {worldKey,order,rootFixture,worldPart,militaryPart,validRoot,inFlight} from '../fixtures/checkpoint-world.mjs';
-const api=await import('../../src/persistence/world-checkpoint.mjs').catch(e=>{if(e.code!=='ERR_MODULE_NOT_FOUND')throw e;return {};});
+import * as api from '../../src/persistence/world-checkpoint.mjs';
 function setup(extra={}){assert.equal(typeof api.createWorldCheckpoint,'function','world checkpoint gate must exist');const root=rootFixture();
  const store=api.createWorldCheckpoint({worldKey,world:root,participants:[militaryPart,worldPart],getDay:r=>r.world.clock.day,validate:validRoot,...extra});return {root,store};}
 
@@ -66,4 +66,15 @@ test('rejects a loader that reuses active mutable data, including ArrayBuffer vi
  const alias={...worldPart,restore:sv=>({...worldPart.restore(sv),history:root.world.history})};
  const guarded=setup({world:root,participants:[alias,militaryPart]}).store;
  assert.throws(()=>guarded.restore(saved),/active/);assert.equal(guarded.current,root);
+});
+test('cross-world or different-recipient delivery records cannot justify restored receipt state',()=>{
+ for(const edit of [{worldKey:'other'},{recipientId:3}]){
+  const {root,store}=setup();inFlight(root);const saved=store.capture('save-1');Object.assign(saved.sections.world.data.transport.deliveries.get('o1'),edit);
+  assert.throws(()=>store.restore(saved));assert.equal(store.current,root);
+ }
+});
+test('shared ArrayBuffer aliases and reused checkpoint IDs are rejected',()=>{
+ const {root,store}=setup();const saved=store.capture('save-1');assert.throws(()=>store.capture('save-1'),/checkpointId/);
+ const alias={...worldPart,restore:sv=>{const w=worldPart.restore(sv);w.people.npc.birth=new Int32Array(root.world.people.npc.birth.buffer);return w;}};
+ const guarded=setup({world:root,participants:[alias,militaryPart]}).store;assert.throws(()=>guarded.restore(saved),/active/);assert.equal(guarded.current,root);
 });

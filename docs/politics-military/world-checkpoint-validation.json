@@ -1,0 +1,157 @@
+{
+  "stage": "P3b world-owned checkpoint, real-person courier motion and canonical food movement in an isolated world",
+  "base": "09df5dd49677dc4383846db1facf2125c34c473e",
+  "initialGateAssertions": 82,
+  "finalAssertions": 105,
+  "commands": [
+    {
+      "command": [
+        "node",
+        "tests/economy/food-transfer.test.mjs"
+      ],
+      "exitCode": 0,
+      "counts": {
+        "tests": "8",
+        "pass": "8",
+        "fail": "0"
+      }
+    },
+    {
+      "command": [
+        "node",
+        "tests/geography-adapter.test.mjs"
+      ],
+      "exitCode": 0,
+      "counts": {
+        "tests": "11",
+        "pass": "11",
+        "fail": "0"
+      }
+    },
+    {
+      "command": [
+        "node",
+        "tests/persistence/transport-supply-checkpoint.test.mjs"
+      ],
+      "exitCode": 0,
+      "counts": {
+        "tests": "5",
+        "pass": "5",
+        "fail": "0"
+      }
+    },
+    {
+      "command": [
+        "node",
+        "tests/persistence/world-checkpoint.test.mjs"
+      ],
+      "exitCode": 0,
+      "counts": {
+        "tests": "12",
+        "pass": "12",
+        "fail": "0"
+      }
+    },
+    {
+      "command": [
+        "node",
+        "tests/politics-military/assignment-ledger.test.mjs"
+      ],
+      "exitCode": 0,
+      "counts": {
+        "tests": "15",
+        "pass": "15",
+        "fail": "0"
+      }
+    },
+    {
+      "command": [
+        "node",
+        "tests/politics-military/order-ledger.test.mjs"
+      ],
+      "exitCode": 0,
+      "counts": {
+        "tests": "22",
+        "pass": "22",
+        "fail": "0"
+      }
+    },
+    {
+      "command": [
+        "node",
+        "tests/politics-military/order-route.test.mjs"
+      ],
+      "exitCode": 0,
+      "counts": {
+        "tests": "5",
+        "pass": "5",
+        "fail": "0"
+      }
+    },
+    {
+      "command": [
+        "node",
+        "tests/politics-military/people-military-session.test.mjs"
+      ],
+      "exitCode": 0,
+      "counts": {
+        "tests": "13",
+        "pass": "13",
+        "fail": "0"
+      }
+    },
+    {
+      "command": [
+        "node",
+        "tests/politics-military/person-reference.test.mjs"
+      ],
+      "exitCode": 0,
+      "counts": {
+        "tests": "6",
+        "pass": "6",
+        "fail": "0"
+      }
+    },
+    {
+      "command": [
+        "node",
+        "tests/transport/courier-state.test.mjs"
+      ],
+      "exitCode": 0,
+      "counts": {
+        "tests": "8",
+        "pass": "8",
+        "fail": "0"
+      }
+    }
+  ],
+  "invariantsObserved": {
+    "population": 6,
+    "foodTotalKg": 120,
+    "communityAfterDeliveryKg": [
+      110,
+      10
+    ],
+    "cargoAfterDeliveryKg": 0,
+    "resumePopulationDays": 60
+  },
+  "selfReviewFixes": [
+    "Cross-world/recipient delivery evidence rejected",
+    "World travel-hour budget cannot be re-spent with another operation ID",
+    "Courier command identity, speed profile and consumed interval history checked together",
+    "Writable inventory endpoints checked before either debit; native Map receipt commit"
+  ],
+  "review": "Author self-review, single agent. No independent reviewer.",
+  "notIntegrated": [
+    "Published game HTML/IndexedDB",
+    "Final whole-world migration/schema and physical-clock coupling",
+    "Population labor/health/food consumption while travelling",
+    "Weather/fatigue/AI selection/3D courier rendering",
+    "Water/fodder/ammunition and non-food supply"
+  ],
+  "notRun": [
+    "Browser UI (no UI changed)",
+    "Full-world 60/100-year regression",
+    "Field battle/building durability rerun (canonical files unchanged; previously verified P0c)"
+  ]
+}
