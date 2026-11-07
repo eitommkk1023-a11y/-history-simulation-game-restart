@@ -607,6 +607,17 @@ body.rpg-menu-open .hud, body.rpg-menu-open #joystick, body.rpg-menu-open #actio
 
 .rv-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding-bottom: 10px; border-bottom: 1px solid #81918a33; }
 .rv-head h2 { margin: 2px 0 0; font-size: 20px; font-weight: 600; }
+body.god-on #joystick, body.god-on #actions, body.god-on #uiToggle, body.god-on #hudGoal, body.god-on #hudStatus, body.god-on #hudHot, body.god-on #hudVig, body.god-on #hudDanger, body.god-on #hudMode, body.god-on #hudCompass, body.god-on #miniZoom, body.god-on #hudTalk { display: none !important; }
+#godLabels { position: fixed; left: 0; top: 0; z-index: 60; pointer-events: none; }
+#godLabels .gl { position: fixed; transform: translate(-50%, -100%); pointer-events: auto; min-height: 30px; padding: 2px 8px; border-radius: 8px; border: 1px solid #ffffff55; background: #0e1a2acc; color: #f1eee0; font: 11px/1.25 system-ui, sans-serif; text-align: center; white-space: nowrap; }
+#godLabels .gl b { display: block; font-size: 12px; } #godLabels .gl i { font-style: normal; color: #b9cdb0; }
+#godLabels .gl.s2 { border-color: #62d26f; } #godLabels .gl.s1 { border-color: #ecc94b; } #godLabels .gl.s0 { border-color: #b9b9b9; } #godLabels .gl.on { background: #3b4f2ecc; border-color: #fff; }
+#godBar { position: fixed; z-index: 120; right: calc(8px + env(safe-area-inset-right)); top: calc(8px + env(safe-area-inset-top)); width: min(250px, 46vw); max-height: calc(100vh - 16px); overflow-y: auto; display: none; padding: 8px; border-radius: 10px; background: #0e1a2aee; color: #e8f0f8; border: 1px solid #ffffff2a; font: 12px/1.5 system-ui, sans-serif; -webkit-overflow-scrolling: touch; }
+body.god-on #godBar { display: block; }
+#godBar .gb-top { display: flex; align-items: center; gap: 6px; } #godBar .gb-top b { flex: 1; font-size: 13px; } #godBar button { min-height: 34px; padding: 2px 8px; background: #21303a; color: #e4dec6; border: 1px solid #3b4d57; border-radius: 6px; font-size: 12px; }
+#godBar .gb-time { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; } #godBar .gb-time button { flex: 1 1 28%; } #godBar .gb-time button.on { border-color: #f0ca68; background: #3a3a22; }
+#godBar .gb-opts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 6px; } #godBar select { min-height: 30px; background: #21303a; color: #e4dec6; border: 1px solid #3b4d57; border-radius: 6px; font-size: 12px; }
+#godBar .gb-pop { font-size: 11px; color: #c4cdbb; margin: 2px 0; } #godBar .gi-row { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; border-bottom: 1px solid #ffffff14; } #godBar .gi-row b { font-weight: 500; text-align: right; }
 .rpg-mv { margin-top: 8px; font-size: 12px; } .rpg-mv-key { font-size: 11px; color: #b8c4b0; margin: 4px 0; line-height: 1.7; } .rpg-mv-key u { display: inline-block; width: 10px; height: 10px; margin: 0 2px 0 6px; vertical-align: -1px; } .rpg-mv-list { max-height: 150px; overflow-y: auto; margin-top: 6px; -webkit-overflow-scrolling: touch; } .rpg-mv-row { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 34px; background: #21303a; color: #e4dec6; border: 1px solid #3b4d57; border-radius: 6px; margin-bottom: 3px; padding: 2px 8px; font-size: 12px; text-align: left; } .rpg-mv-row.on { border-color: #f0ca68; } .rpg-mv-row i { width: 10px; height: 10px; border-radius: 2px; border: 2px solid #fff; flex: none; } .rpg-mv-row small { margin-left: auto; color: #9db0a0; }
 .rv-site { font-size: 12px; color: #a9c29c; border: 1px solid #5b7a52; border-radius: 14px; padding: 4px 10px; } .rv-hidden { display: none; }
 .rv-stage { padding: 4px 12px; border: 1px solid #b39860; border-radius: 14px; color: #e5cc97; font-size: 13px; }
@@ -665,7 +676,7 @@ body.bvw-on .hud, body.bvw-on #joystick, body.bvw-on #actions, body.bvw-on #mini
 </style>
 <div id="menu" class="sheet">
   <div class="shead"><b>メニュー</b><button id="menuClose">閉じる</button></div>
-  <div class="sfilter"><button id="menuTitle">タイトルへ戻る</button><button id="menuMortal">死亡：あり</button><button id="menuGod" class="dev-only">暮らしの消耗・素材：なし・無限</button><button id="menuTech" class="dev-only">あなたの民族に栽培・牧畜を与える</button><button id="menuPerf" class="dev-only">性能を測る（実機用・約1分）</button><button id="menuBt1" class="dev-only">野戦：敵が攻めてくる</button><button id="menuBt2" class="dev-only">野戦：敵が罠を張る</button><button id="menuBt3" class="dev-only">野戦：敵は守る</button><button id="menuBt4" class="dev-only">野戦：騎兵と荷馬車</button><button id="menuDevBar" class="dev-only">開発ツール（上のボタン列）</button><button id="menuHist">歴史を見る</button><button id="menuExport">ファイルに書き出す</button><button id="menuImport">ファイルから読み込む</button></div>
+  <div class="sfilter"><button id="menuTitle">タイトルへ戻る</button><button id="menuGodView">神モード（空から見守る）</button><button id="menuMortal">死亡：あり</button><button id="menuGod" class="dev-only">暮らしの消耗・素材：なし・無限</button><button id="menuTech" class="dev-only">あなたの民族に栽培・牧畜を与える</button><button id="menuPerf" class="dev-only">性能を測る（実機用・約1分）</button><button id="menuBt1" class="dev-only">野戦：敵が攻めてくる</button><button id="menuBt2" class="dev-only">野戦：敵が罠を張る</button><button id="menuBt3" class="dev-only">野戦：敵は守る</button><button id="menuBt4" class="dev-only">野戦：騎兵と荷馬車</button><button id="menuDevBar" class="dev-only">開発ツール（上のボタン列）</button><button id="menuHist">歴史を見る</button><button id="menuExport">ファイルに書き出す</button><button id="menuImport">ファイルから読み込む</button></div>
   <input type="file" id="menuFile" accept=".json,application/json" style="display:none">
   <div id="menuSlots" class="scrollable"></div>
   <div id="menuMsg"></div>
@@ -11765,6 +11776,58 @@ function vitalsDie(cause) {
 }
 globalThis.__wohVitalsDie = vitalsDie;
 document.getElementById('deathOk')?.addEventListener('click', () => document.getElementById('deathBox').classList.remove('show'));
+// ---- 神モード（空から見守る）：入口・操作盤・時間の速さ・村の情報。描画と入力は 3D 側（__wohGodView）。プレイヤーの状態は、入るときの状態に戻す
+(() => {
+  const GOD_TIMES = { pause: null, real: [3, 0], d1: [0, 0], d10: [0, 2], m1: [1, 0] };
+  let snap = null, godHist = [], lastDay = -1, bar = null;
+  const pad = n => Math.round(n).toLocaleString('ja-JP'), esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const msg = t => { const d = document.createElement('div'); d.textContent = t; d.style.cssText = 'position:fixed;z-index:200;left:50%;top:18%;transform:translateX(-50%);padding:8px 14px;border-radius:10px;background:#0e1a2aee;color:#fff;font:13px system-ui'; document.body.appendChild(d); setTimeout(() => d.remove(), 2800); };
+  function build() {
+    if (bar) return; bar = document.createElement('div'); bar.id = 'godBar';
+    bar.innerHTML = '<div class="gb-top"><b>神モード</b><button id="godExit">出る</button></div><div class="gb-pop" id="godPop"></div><div class="gb-time">' + [['pause', '⏸ 止める'], ['real', '標準'], ['d1', '日×1'], ['d10', '日×10'], ['m1', '月×1']].map(([k, n]) => '<button data-gt="' + k + '">' + n + '</button>').join('') + '</div>' +
+      '<div class="gb-opts"><label><input type="checkbox" id="godLbl" checked> 村の名前</label><label>村人の大きさ <select id="godSz"><option value="0.5">小</option><option value="1" selected>標準</option><option value="2">大</option></select></label></div>' +
+      '<div class="gb-pop">ドラッグ：移動／2本指：拡大・回転／村の名前：そこへ飛ぶ／村人をタップ：詳細／キー：WASD・QE・RF</div><div id="godInfo"></div>';
+    document.body.appendChild(bar);
+    bar.querySelector('#godExit').onclick = exit;
+    bar.querySelector('.gb-time').addEventListener('click', e => { const b = e.target.closest('[data-gt]'); if (!b) return; setTime(b.dataset.gt); });
+    bar.querySelector('#godLbl').onchange = e => window.__wohGodView.setOpts({ labelsOn: e.target.checked });
+    bar.querySelector('#godSz').onchange = e => window.__wohGodView.setOpts({ scaleMul: +e.target.value });
+    for (const ev of ['pointerdown', 'pointerup', 'touchstart', 'wheel']) bar.addEventListener(ev, e => e.stopPropagation());
+  }
+  function setTime(k) {
+    const t = GOD_TIMES[k]; if (!t) { clockSetPlaying(false); } else { clock.mode = t[0]; clock.speed = t[1]; clock.acc = 0; clockSetPlaying(true); }
+    timebarUpdate(); for (const b of bar.querySelectorAll('[data-gt]')) b.classList.toggle('on', b.dataset.gt === k);
+  }
+  function enter() {
+    const r = window.__wohGodView && window.__wohGodView.enter(); if (!r || !r.ok) { msg((r && r.why) || '神モードに入れません'); return false; }
+    build(); const st = forageSt; snap = { mortal: st.mortal, hp: st.hp, sp: st.sp, water: st.water, kcal: st.kcal, dyingDays: st.dyingDays, injuredUntil: st.injuredUntil };
+    st.mortal = false; godHist = []; lastDay = -1; setTime('real'); refresh(); return true;
+  }
+  function exit() {
+    if (!window.__wohGodView.active) return; window.__wohGodView.exit(); const st = forageSt;
+    if (snap) { for (const k of Object.keys(snap)) if (snap[k] !== undefined) st[k] = snap[k]; snap = null; }   // 神モードの間の消耗はなかったことにする
+    if (bar) { bar.remove(); bar = null; } try { window.__wohForageBagRender && window.__wohForageBagRender(); } catch (e) { }
+  }
+  function ratioText() {
+    const gs = people ? people.groups.filter(g => g.alive) : [], pop = gs.reduce((a, g) => a + (g.pop || 0), 0), day = clock.day;
+    if (day !== lastDay && (!godHist.length || day - godHist[godHist.length - 1].day >= 30)) { godHist.push({ day, pop }); lastDay = day; if (godHist.length > 500) godHist.shift(); }
+    let tr = ''; const old = godHist.find(x => day - x.day <= 360 && day - x.day >= 300) || godHist[0]; if (old && day - old.day >= 90) { const yrs = (day - old.day) / 360; tr = '（年あたり ' + ((Math.pow(pop / Math.max(1, old.pop), 1 / yrs) - 1) * 100).toFixed(2) + '%）'; }
+    return '総人口 ' + pad(pop) + '人・集団 ' + gs.length + '・村 ' + gs.filter(g => g.settle === 2).length + tr;
+  }
+  function info(sel) {
+    const box = document.getElementById('godInfo'); if (!box) return; const W = window.WohPeople;
+    if (sel && sel.gid) { const g = people.groups[sel.gid - 1]; if (!g) { box.innerHTML = ''; return; } const gr = W.peopleGrowth(people, g.id), hh = W.peopleHouseholds(people, g.id);
+      const LV = ['野営（移動）', '半定住', '定住（村）'], row = (a, b) => '<div class="gi-row"><span>' + a + '</span><b>' + b + '</b></div>';
+      box.innerHTML = '<h4 style="margin:6px 0 2px;font-size:13px">' + esc(peGrpName(g.id)) + '</h4>' + row('民族', esc(peEthName(g.ethId))) + row('形態', LV[g.settle || 0] + '・' + esc(gr.label)) + row('立地', g.site ? W.SITE_LABEL[g.site.kind] : '不明') + row('人口', Math.round(g.pop) + '人（世帯 ' + hh.length + '）') + row('食料の充足', Math.round((g.fed || 0) * 100) + '%') + row('生業', (gr.farm ? '農耕' : '') + (gr.herd ? (gr.farm ? '・' : '') + '牧畜' : '') || '採集・狩猟・漁') + (g.layout ? row('建物', g.layout.items.filter(b => b.state !== 'removed').length + '棟') : '') + '<button id="godMap" style="width:100%;margin-top:6px">詳細マップで見る</button>';
+      bar.querySelector('#godMap').onclick = () => { try { window.__wohMap.focusVillage(g.id, { detail: true }); } catch (e) { } }; }
+    else if (sel && sel.npc !== undefined && sel.npc !== null) box.innerHTML = '<div class="gb-pop">村人を選びました（下に詳細が出ます）</div>'; else box.innerHTML = '';
+  }
+  function refresh() { if (!bar || !window.__wohGodView.active) return; const p = bar.querySelector('#godPop'); if (p) p.textContent = ratioText(); }
+  setInterval(refresh, 1000); window.addEventListener('woh-god-select', e => { if (bar) info(e.detail); });
+  document.getElementById('menuGodView')?.addEventListener('click', () => { try { menuShow(false); } catch (e) { } try { window.__wohRpgMenu.close(); } catch (e) { } setTimeout(enter, 50); });
+  document.addEventListener('keydown', e => { if (!window.__wohGodView || !window.__wohGodView.active) return; if (e.code === 'Escape') { e.preventDefault(); exit(); } }, true);
+  window.__wohGod = { enter, exit, setTime, get active() { return !!(window.__wohGodView && window.__wohGodView.active); } };
+})();
 document.getElementById('menuPerf')?.addEventListener('click', async () => {
   try { menuShow(false); } catch (e) { }
   let box = document.getElementById('perfBox'); if (box) box.remove();
@@ -12620,6 +12683,7 @@ function peopleVillageSync() {
   if (changed) { names.sorted = null; if (typeof labelsUpdate === 'function') labelsUpdate(); }
 }
 function peEthName(id) { const e = people && people.ethnicities[id - 1]; const n = e ? peopleEthName(e) : ''; return n || ('第' + id + '民族'); }
+globalThis.__wohGrpName = (id) => peGrpName(id);
 function peGrpName(id) { const g = people && people.groups[id - 1]; const n = g ? peopleGroupName(g) : ''; return n || ('集団' + id); }
 const PE_EVENT_TEXT = {
   famine: e => `${peEthName(e.eth)}の${peGrpName(e.group)}で食料が足りない月が続いている`,
@@ -15341,6 +15405,7 @@ function setFirstPerson(on){
 function updateCamera(){
   if(overview&&state?.map){state.map.update();draw();return;}
   if(bvw){bvwCamera();draw();return;}
+  if(god){godCamera();draw();return;}
   if(firstPerson){
     const eye=marker.position.clone();eye.y+=crouched?1.0:1.58;
     const cp=Math.cos(pitch);
@@ -15751,6 +15816,7 @@ function frame(time){
     const animate=!overview&&state.settle>0;state.settle=Math.max(0,state.settle-Math.min(dt,.05));
     if(animate)animatePlayer(dt);
     const grassChanged=pf('草',()=>state.grass?.tick());
+    const godMoved=god?pf('神モード',()=>godTick(dt)):false;
     const npcChanged=pf('NPC・家畜・施設',()=>npcTick(dt));
     const propsChanged=pf('置き物',()=>propsFrame(performance.now()));
     let bvChanged=false;try{bvChanged=pf('戦闘画面',()=>bvFrame(dt));}catch(e){if(!BV.err){BV.err=1;console.warn('battle',e);}}
@@ -15789,7 +15855,7 @@ function adoptNativeWorld(){
 window.addEventListener('woh-world-ready',adoptNativeWorld);
 
 // ---- 周辺の住民（NPC）の3D表示：近くの最大60人を、部品（頭・胴・腕・脚）ごとにまとめて描く（描画は6回）。位置は npc-view.js が個人ID・世帯・職業・時刻から計算する（保存しない）
-const NPC_MAX=60,NPC_RANGE=160,NPC_GROUP_RANGE=520;
+const NPC_MAX=500,NPC_RANGE=160,NPC_GROUP_RANGE=520;let npcGodScale=1,npcRangeNow=NPC_RANGE,npcLimit=60,npcGroupRange=NPC_GROUP_RANGE;   // 神モードでは、描く範囲・人数を広げ、村人を大きく描く
 let npcParts=null,npcPrevCount=0,npcList=[],npcScanAt=0,npcUpdAt=0,npcCands=[],npcCamps=new Map(),npcSel=null,npcRing=null,npcCard=null;
 const npcM=new THREE.Matrix4(),npcBase=new THREE.Matrix4(),npcLoc=new THREE.Matrix4(),npcQ=new THREE.Quaternion(),npcP=new THREE.Vector3(),npcS=new THREE.Vector3(),npcY=new THREE.Vector3(0,1,0),npcCol=new THREE.Color(),npcV=new THREE.Vector3();
 const NPC_SKIN=[0xf1c9a5,0xd9a47a,0xb9825a,0x8d5b3d];
@@ -15814,7 +15880,7 @@ function npcCardUpdate(pe,V){
 }
 function npcScan(pe,V){
   npcCamps.clear();
-  for(const g of pe.groups){if(!g.alive)continue;const cc2=globalThis.WohPeople.peCampCenter(g),q=state.terrain.gridToMeters(cc2.x,cc2.y);if(Math.hypot(q.xM-markerPoint.xM,q.yM-markerPoint.yM)<NPC_GROUP_RANGE)npcCamps.set(g.id,q);}
+  for(const g of pe.groups){if(!g.alive)continue;const cc2=globalThis.WohPeople.peCampCenter(g),q=state.terrain.gridToMeters(cc2.x,cc2.y);if(Math.hypot(q.xM-markerPoint.xM,q.yM-markerPoint.yM)<npcGroupRange)npcCamps.set(g.id,q);}
   npcCands=npcCamps.size?V.viewCandidates(pe,new Set(npcCamps.keys()),600):[];
   dwScan(pe,V);
   npcCardUpdate(pe,V);
@@ -15824,21 +15890,21 @@ function npcUpdate(pe,V,now){
   for(const i of npcCands){
     if(P.death[i]!==0x7fffffff)continue;const c=npcCamps.get(P.group[i]);if(!c)continue;
     const p=V.viewPosition(P,i,t),xM=c.xM+p.x,yM=c.yM+p.z,d=Math.hypot(xM-markerPoint.xM,yM-markerPoint.yM);
-    if(d<=NPC_RANGE)vis.push({i,xM,yM,d,p});
+    if(d<=npcRangeNow)vis.push({i,xM,yM,d,p});
   }
   vis.sort((a,b)=>a.d-b.d);npcList=[];let k=0;const N=npcParts;
   for(const e of vis){
-    if(k>=NPC_MAX)break;
+    if(k>=npcLimit)break;
     const gd=groundAt(e.xM,e.yM);if(!gd||gd.waterDepthM>.4)continue;
     const q=state.terrain.toLocal(e.xM,e.yM,gd.elevationM,state.origin),sc=V.viewScale(P,e.i),col=V.viewColor(pe,e.i);
-    npcQ.setFromAxisAngle(npcY,e.p.heading);npcP.set(q.x,q.y,q.z);npcS.set(sc,sc,sc);npcBase.compose(npcP,npcQ,npcS);
+    npcQ.setFromAxisAngle(npcY,e.p.heading);npcP.set(q.x,q.y,q.z);const sg=sc*npcGodScale;npcS.set(sg,sg,sg);npcBase.compose(npcP,npcQ,npcS);
     const ph=now/1000*(2.2+e.p.speed*1.1)+e.i*.7,sw=e.p.moving?Math.sin(ph)*.7*Math.min(1,e.p.speed/1.5):0;
     const put=(mesh,ax,px,py,pz,color)=>{npcLoc.makeRotationX(ax);npcLoc.setPosition(px,py,pz);npcM.multiplyMatrices(npcBase,npcLoc);mesh.setMatrixAt(k,npcM);mesh.setColorAt(k,color);};
     npcCol.setRGB(col[0]/255,col[1]/255,col[2]/255);const cloth=npcCol.clone();
     put(N.torso,0,0,0,0,cloth);put(N.armL,sw,-.22,1.38,0,cloth);put(N.armR,-sw,.22,1.38,0,cloth);
     put(N.head,0,0,0,0,npcCol.clone().setHex(NPC_SKIN[Math.abs(e.i*2654435761|0)%4]));
     const dark=cloth.clone().multiplyScalar(.55);put(N.legL,-sw,-.09,.82,0,dark);put(N.legR,sw,.09,.82,0,dark);
-    npcList.push({i:e.i,x:q.x,y:q.y,z:q.z,sc});k++;
+    npcList.push({i:e.i,x:q.x,y:q.y,z:q.z,sc:sc*npcGodScale});k++;
   }
   for(const m of Object.values(N)){m.count=k;m.instanceMatrix.needsUpdate=true;if(m.instanceColor)m.instanceColor.needsUpdate=true;m.visible=k>0;}
   const s=npcSel!==null?npcList.find(e=>e.i===npcSel):null;
@@ -16179,6 +16245,87 @@ function bvwExit(done){
  el.addEventListener('pointerup',up,true);el.addEventListener('pointercancel',e=>{if(stop(e))bvw.ptr.delete(e.pointerId);},true);
  el.addEventListener('wheel',e=>{if(!bvw)return;e.preventDefault();bvw.h=Math.max(40,Math.min(220,bvw.h*(e.deltaY>0?1.12:0.89)));updateCamera();},{passive:false,capture:true});}
 globalThis.__wohBuildView={enter:bvwEnter,exit:bvwExit,get active(){return !!bvw;},get state(){return bvw?{kind:bvw.kind,x:bvw.x,z:bvw.z,rot:bvw.rot,ok:bvw.ok,why:bvw.why,placed:bvw.placed,h:bvw.h}:null;},setSpot(x,z){if(bvw){bvw.placed=true;bvwSetSpot(x,z);}}};
+
+// ---- 神モード：空から自由に動いて、村の動きを見守る（どの共同体にも属さない視点）。プレイヤーは元の場所に残り、モードを出ると元の状態に戻る。
+// 高く上がるほど、村人を大きく描き、描く範囲と人数を広げる。ふだんの操作（歩く・視点）には渡さない
+let god=null;
+const GOD_H_MIN=14,GOD_H_MAX=1500;
+function godCamera(){const c=god,t=c.target,cp=Math.cos(c.pitch),sp=Math.sin(c.pitch);camera.position.set(t.x+c.h*cp*Math.sin(c.yaw),t.y+c.h*sp,t.z+c.h*cp*Math.cos(c.yaw));camera.lookAt(t.x,t.y,t.z);}
+function godEnter(o){
+  if(god)return {ok:true};
+  if(overview||!state||!markerPoint||bvw||globalThis.__wohBattleOn)return {ok:false,why:'いまは神モードに入れません（3Dの場所が決まっていない／別のモードの途中）'};
+  const m=marker.position;
+  god={target:new THREE.Vector3(m.x,m.y,m.z),h:(o&&o.h)||110,yaw:0,pitch:1.1,ptr:new Map(),keys:new Set(),moved:0,pinch:0,pinchAng:0,
+    scaleMul:1,labelsOn:true,home:{xM:markerPoint.xM,yM:markerPoint.yM},fp:firstPerson,fov:camera.fov,lastStream:{x:markerPoint.xM,y:markerPoint.yM,t:0},lastLabel:0,labels:[],sel:0,fly:null,gy:0};
+  if(firstPerson)setFirstPerson(false);camera.fov=BASE_FOV;camera.updateProjectionMatrix();
+  marker.visible=false;document.body.classList.add('god-on');globalThis.__wohGodOn=true;npcSel=null;if(npcCard)npcCard.style.display='none';globalThis.__wohNative.animate('god',true);
+  godLabelBox(true);updateCamera();return {ok:true};
+}
+function godExit(){
+  const c=god;if(!c)return;god=null;globalThis.__wohGodOn=false;globalThis.__wohNative.animate('god',false);
+  npcGodScale=1;npcRangeNow=NPC_RANGE;npcLimit=60;npcGroupRange=NPC_GROUP_RANGE;
+  document.body.classList.remove('god-on');godLabelBox(false);
+  camera.fov=c.fov;camera.updateProjectionMatrix();placeMarker(c.home.xM,c.home.yM,false);marker.visible=true;if(c.fp)setFirstPerson(true);
+  npcScanAt=0;updateCamera();
+}
+function godLabelBox(on){let b=document.getElementById('godLabels');if(on&&!b){b=document.createElement('div');b.id='godLabels';document.body.appendChild(b);}else if(!on&&b)b.remove();}
+const godProj=new THREE.Vector3();
+function godLabels(now){
+  const c=god,pe=window.__geo?.people,box=document.getElementById('godLabels');if(!c||!pe||!box||!state)return;if(now-c.lastLabel<250)return;c.lastLabel=now;if(!c.labelsOn){box.innerHTML='';return;}
+  const rect=renderer.domElement.getBoundingClientRect(),out=[];camera.updateMatrixWorld();
+  for(const g of pe.groups){if(!g.alive)continue;const cc=globalThis.WohPeople.peCampCenter(g),q=state.terrain.gridToMeters(cc.x,cc.y),lp=state.terrain.toLocal(q.xM,q.yM,groundAt(q.xM,q.yM)?.elevationM??state.origin.elevationM,state.origin);
+    godProj.set(lp.x,lp.y+8,lp.z).project(camera);if(godProj.z>1||godProj.x<-1.05||godProj.x>1.05||godProj.y<-1.05||godProj.y>1.05)continue;
+    out.push({g,sx:(godProj.x*.5+.5)*rect.width+rect.left,sy:(-godProj.y*.5+.5)*rect.height+rect.top,pop:g.pop||0});}
+  out.sort((a,b)=>b.pop-a.pop);const shown=[],R=46;   // 近い印は、人口の多いほうを優先（重なって読めなくならないように）
+  for(const o of out){if(shown.length>=48)break;if(shown.some(s=>Math.abs(s.sx-o.sx)<R*1.5&&Math.abs(s.sy-o.sy)<R*.5))continue;shown.push(o);}
+  const nm=globalThis.__wohGrpName,LV=['野営','半定住','村'];
+  box.innerHTML=shown.map(o=>'<button class="gl'+(c.sel===o.g.id?' on':'')+' s'+(o.g.settle||0)+'" data-gid="'+o.g.id+'" style="left:'+o.sx.toFixed(0)+'px;top:'+o.sy.toFixed(0)+'px"><b>'+(nm?nm(o.g.id):('集団'+o.g.id))+'</b><i>'+LV[o.g.settle||0]+'・'+Math.round(o.pop)+'人</i></button>').join('');
+}
+function godFlyTo(gid,h){
+  const c=god,pe=window.__geo?.people,g=pe&&pe.groups[gid-1];if(!c||!g)return false;const cc=globalThis.WohPeople.peCampCenter(g),q=state.terrain.gridToMeters(cc.x,cc.y);
+  c.sel=gid;c.fly={xM:q.xM,yM:q.yM,h:h||Math.min(c.h,130),t0:performance.now()};return true;
+}
+function godTick(dt){
+  const c=god;if(!c)return false;const now=performance.now();let ch=false;
+  // キーボード（画面の向きに合わせて動く）：WASD／矢印＝移動、Q・E＝回転、R・F＝拡大縮小、Shift＝速く
+  const K=c.keys,kx=(K.has('KeyD')||K.has('ArrowRight')?1:0)-(K.has('KeyA')||K.has('ArrowLeft')?1:0),kz=(K.has('KeyS')||K.has('ArrowDown')?1:0)-(K.has('KeyW')||K.has('ArrowUp')?1:0);
+  if(kx||kz){const sp=c.h*(K.has('ShiftLeft')||K.has('ShiftRight')?2.4:0.8)*dt,s=Math.sin(c.yaw),co=Math.cos(c.yaw);c.target.x+=(kx*co+kz*s)*sp;c.target.z+=(-kx*s+kz*co)*sp;ch=true;}
+  if(K.has('KeyQ')){c.yaw-=dt*1.2;ch=true;}if(K.has('KeyE')){c.yaw+=dt*1.2;ch=true;}
+  if(K.has('KeyR')){c.h=Math.max(GOD_H_MIN,c.h*(1-dt*1.2));ch=true;}if(K.has('KeyF')){c.h=Math.min(GOD_H_MAX,c.h*(1+dt*1.2));ch=true;}
+  if(c.fly){const f=c.fly,k=Math.min(1,(now-f.t0)/900),e=k*k*(3-2*k),tx=f.xM-state.origin.xM,tz=f.yM-state.origin.yM;if(k===1&&!f.set){f.set=true;}c.target.x+=(tx-c.target.x)*Math.min(1,dt*3.2);c.target.z+=(tz-c.target.z)*Math.min(1,dt*3.2);c.h+=(f.h-c.h)*Math.min(1,dt*2.4);ch=true;if(Math.hypot(tx-c.target.x,tz-c.target.z)<1.5&&Math.abs(f.h-c.h)<2)c.fly=null;}
+  // 世界の端で止める
+  const xM=c.target.x+state.origin.xM,yM=c.target.z+state.origin.yM,W=state.terrain.widthM,H=state.terrain.heightM;
+  if(xM<0||yM<0||xM>W||yM>H){c.target.x=Math.max(-state.origin.xM,Math.min(W-state.origin.xM,c.target.x));c.target.z=Math.max(-state.origin.yM,Math.min(H-state.origin.yM,c.target.z));ch=true;}
+  const gx=c.target.x+state.origin.xM,gy=c.target.z+state.origin.yM;
+  // 注目点の地面の高さ（なめらかに追う）
+  const gd=groundAt(gx,gy);if(gd){const ty=gd.elevationM-state.origin.elevationM;if(Math.abs(ty-c.target.y)>.05){c.target.y+=(ty-c.target.y)*Math.min(1,dt*6);ch=true;}}
+  // 読み込みの中心（地形・集落・村人）を、カメラの注目点に合わせる。動いたときだけ、間隔を空けて
+  if(now-c.lastStream.t>250&&Math.hypot(gx-c.lastStream.x,gy-c.lastStream.y)>Math.max(20,c.h*.25)){c.lastStream={x:gx,y:gy,t:now};placeMarker(gx,gy,false);marker.visible=false;npcScanAt=0;}
+  // 村人の見え方：高いほど、大きく・広く・多く
+  npcGodScale=Math.max(1,Math.min(14,c.h/18))*c.scaleMul;npcRangeNow=Math.min(1100,c.h*1.7+160);npcLimit=NPC_MAX;npcGroupRange=Math.min(1800,npcRangeNow*1.5+400);
+  godLabels(now);
+  if(ch)updateCamera();return ch;
+}
+// 入力：ドラッグ（移動）・2本指（拡大縮小と回転）・ホイール（拡大縮小）・Shift＋ドラッグ／右ドラッグ（回転・傾き）・キー
+{const el=renderer.domElement;
+ const stop=e=>{if(!god)return false;e.stopImmediatePropagation();return true;};
+ const ground=(dx,dy)=>{const k=2*Math.tan(camera.fov*Math.PI/360)*god.h/renderer.domElement.clientHeight/Math.max(.35,Math.sin(god.pitch)),s=Math.sin(god.yaw),c=Math.cos(god.yaw);god.target.x-=(dx*c+dy*s*Math.sin(god.pitch)/Math.max(.35,Math.sin(god.pitch)))*k;god.target.z-=(-dx*s+dy*c)*k;};
+ el.addEventListener('pointerdown',e=>{if(!stop(e))return;god.fly=null;god.ptr.set(e.pointerId,{x:e.clientX,y:e.clientY,x0:e.clientX,y0:e.clientY,btn:e.button});god.moved=0;try{el.setPointerCapture(e.pointerId);}catch(er){}if(god.ptr.size===2){const [a,b]=[...god.ptr.values()];god.pinch=Math.hypot(a.x-b.x,a.y-b.y);god.pinchAng=Math.atan2(b.y-a.y,b.x-a.x);}},true);
+ el.addEventListener('pointermove',e=>{if(!stop(e))return;const p=god.ptr.get(e.pointerId);if(!p)return;const dx=e.clientX-p.x,dy=e.clientY-p.y;p.x=e.clientX;p.y=e.clientY;god.moved=Math.max(god.moved,Math.hypot(e.clientX-p.x0,e.clientY-p.y0));
+   if(god.ptr.size===2){const [a,b]=[...god.ptr.values()],d=Math.hypot(a.x-b.x,a.y-b.y),ang=Math.atan2(b.y-a.y,b.x-a.x);if(god.pinch>0)god.h=Math.max(GOD_H_MIN,Math.min(GOD_H_MAX,god.h*god.pinch/Math.max(8,d)));god.yaw-=Math.atan2(Math.sin(ang-god.pinchAng),Math.cos(ang-god.pinchAng));god.pinch=d;god.pinchAng=ang;god.moved=99;updateCamera();}
+   else if(p.btn===2||e.shiftKey){god.yaw-=dx*.008;god.pitch=Math.max(.35,Math.min(1.5,god.pitch+dy*.006));god.moved=99;updateCamera();}
+   else if(god.moved>6){ground(dx,dy);updateCamera();}},true);
+ const up=e=>{if(!stop(e))return;const p=god.ptr.get(e.pointerId);god.ptr.delete(e.pointerId);if(!p)return;
+   if(god.moved<=8&&god.ptr.size===0){const hitLbl=document.elementFromPoint(e.clientX,e.clientY);const b=hitLbl&&hitLbl.closest&&hitLbl.closest('.gl');if(b){godFlyTo(+b.dataset.gid);globalThis.dispatchEvent(new CustomEvent('woh-god-select',{detail:{gid:+b.dataset.gid}}));}else if(npcTapAt(e.clientX,e.clientY)){globalThis.dispatchEvent(new CustomEvent('woh-god-select',{detail:{npc:npcSel}}));}else{god.sel=0;globalThis.dispatchEvent(new CustomEvent('woh-god-select',{detail:{}}));}}};
+ el.addEventListener('pointerup',up,true);el.addEventListener('pointercancel',e=>{if(stop(e))god.ptr.delete(e.pointerId);},true);
+ el.addEventListener('wheel',e=>{if(!god)return;e.preventDefault();god.h=Math.max(GOD_H_MIN,Math.min(GOD_H_MAX,god.h*(e.deltaY>0?1.12:0.89)));updateCamera();},{passive:false,capture:true});
+ el.addEventListener('contextmenu',e=>{if(god)e.preventDefault();});
+ // ラベルのタップ（ラベルは別の要素）
+ document.addEventListener('click',e=>{if(!god)return;const b=e.target.closest&&e.target.closest('.gl');if(b){godFlyTo(+b.dataset.gid);globalThis.dispatchEvent(new CustomEvent('woh-god-select',{detail:{gid:+b.dataset.gid}}));}},true);
+ const kd=e=>{if(!god||/INPUT|TEXTAREA|SELECT/.test(e.target.tagName))return;if(['KeyW','KeyA','KeyS','KeyD','KeyQ','KeyE','KeyR','KeyF','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight'].includes(e.code)){god.keys.add(e.code);e.stopImmediatePropagation();e.preventDefault();}};
+ const ku=e=>{if(!god)return;god.keys.delete(e.code);};window.addEventListener('keydown',kd,true);window.addEventListener('keyup',ku,true);window.addEventListener('blur',()=>{if(god)god.keys.clear();});}
+globalThis.__wohGodView={enter:godEnter,exit:godExit,flyTo:godFlyTo,get active(){return !!god;},get state(){return god?{h:god.h,yaw:god.yaw,pitch:god.pitch,sel:god.sel,xM:god.target.x+state.origin.xM,yM:god.target.z+state.origin.yM,npcScale:npcGodScale,npcShown:npcList.length,labels:god.labels.length}:null;},
+  setOpts(o){if(!god)return;if(o.scaleMul)god.scaleMul=o.scaleMul;if(o.labelsOn!==undefined){god.labelsOn=!!o.labelsOn;god.lastLabel=0;}},setView(o){if(!god)return;if(o.h)god.h=Math.max(GOD_H_MIN,Math.min(GOD_H_MAX,o.h));if(o.yaw!==undefined)god.yaw=o.yaw;if(o.pitch)god.pitch=o.pitch;if(o.xM!==undefined){god.target.x=o.xM-state.origin.xM;god.target.z=o.yM-state.origin.yM;}updateCamera();}};
 
 // 性能の計測の手順：村の中／川の近く／原野で、視点を止めた場合と回した場合を、それぞれ測る。GPUの時間は測れない（描画命令の発行にかかった時間と、1フレームの間隔で見る）
 const PERF_PCT=(a,q)=>{if(!a.length)return 0;const b=[...a].sort((x,y)=>x-y);return b[Math.min(b.length-1,Math.floor(q*b.length))];};
