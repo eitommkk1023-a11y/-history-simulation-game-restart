@@ -1,0 +1,30 @@
+{
+  "checks": [
+    "fixture is explicitly separate from main world",
+    "ID zero assigned without changing population",
+    "retry creates neither extra assignment nor history event",
+    "duplicate assignment rejected in browser",
+    "mixed batch failure is atomic",
+    "wrong unit release is rejected",
+    "explicit release succeeds",
+    "released person can be reassigned",
+    "no implicit authority for other actors",
+    "save/restore preserves roster and outbox acknowledgement",
+    "invalid restore leaves live ledger untouched",
+    "all browser actions preserve canonical people jobs RNG and statistics",
+    "390x844 page fits viewport",
+    "390x844 action targets remain touch-sized",
+    "822x286 page fits viewport",
+    "822x286 action targets remain touch-sized",
+    "1180x820 page fits viewport",
+    "1180x820 action targets remain touch-sized",
+    "no runtime errors",
+    "no dependency network requests"
+  ],
+  "errors": [],
+  "requests": [
+    "http://assignment.test/"
+  ],
+  "actual_iOS_hardware": false,
+  "scope": "isolated development fixture, not main-game integration"
+}

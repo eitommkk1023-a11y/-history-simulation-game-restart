@@ -1,0 +1,625 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>World of History — 人員配属 接続試験</title><style>
+:root{color-scheme:light;font:16px system-ui,sans-serif;color:#22323d;background:#edf1f1}*{box-sizing:border-box}body{margin:0}main{max-width:1100px;margin:auto;padding:24px 16px 40px}h1{font-size:clamp(23px,4vw,32px);margin:4px 0 12px}h2{font-size:19px;margin:0 0 16px}p{line-height:1.65}.eyebrow{font-size:12px;letter-spacing:.15em;color:#47606a}.notice{background:#fff2cc;border-left:4px solid #b4872b;padding:12px 16px}.metrics{display:flex;gap:14px;flex-wrap:wrap;margin:18px 0}.metric{background:#193f4c;color:white;border-radius:8px;padding:12px 18px}.metric strong{font-size:24px;margin-right:6px}.grid{display:grid;grid-template-columns:1.5fr 1fr;gap:18px}.panel{background:white;border:1px solid #d8e1e3;border-radius:12px;padding:20px;min-width:0}label{display:block;margin:12px 0 5px}select,button,textarea{font:inherit}select,button{min-height:46px;border:1px solid #acbcc1;border-radius:6px;padding:8px 12px}select{width:100%;background:white}button{cursor:pointer;background:#edf3f3;color:#183e4a}button.primary{background:#175566;color:white;border-color:#175566}button:disabled{opacity:.45;cursor:default}.buttons{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}#status{padding:12px 16px;min-height:50px;background:#e3f0ed;border-radius:8px;margin:16px 0;line-height:1.5}#status[data-ok=false]{background:#ffe7dc}table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:12px 6px;border-bottom:1px solid #e0e7e8;text-align:left}td:first-child{width:56px}input[type=checkbox]{width:23px;height:23px;accent-color:#175566}.table-wrap{overflow-x:auto}small,.muted{color:#516974;line-height:1.6}textarea{width:100%;height:180px;border:1px solid #acbcc1;border-radius:6px;padding:12px;font-family:monospace;font-size:12px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.6}details{margin-top:16px}summary{cursor:pointer;min-height:44px;padding-top:10px}@media(max-width:760px){.grid{grid-template-columns:1fr}main{padding:18px 12px}.panel{padding:16px}th,td{padding:11px 5px}.metric{padding:10px 12px}.metric strong{font-size:22px}}
+</style></head><body><main>
+<div class="eyebrow">WORLD OF HISTORY · P0b DEVELOPMENT TEST</div><h1>人員配属の接続試験</h1>
+<p class="notice">本作とは別の、検査用の住民6人を使う小世界です。人物IDは既存の人口コードから参照します。<strong>本作の住民・セーブは読み込みません。</strong>徴募制度・部隊の集合・移動・戦闘は未接続です。</p>
+<div class="metrics"><div class="metric"><strong id="populationCount">—</strong>生存するテスト住民</div><div class="metric"><strong id="assignedCount">—</strong>配属記録</div><div class="metric"><strong id="revision">—</strong>成功操作</div><div class="metric"><strong id="pendingCount">—</strong>未確認の履歴候補</div></div>
+<div id="status" role="status" aria-live="polite">準備中…</div>
+<div class="grid"><section class="panel"><h2>既存人物の名簿</h2><small>配属しても人口・職業・実位置は変わりません。配属記録と現地への集合は別です。</small><div class="table-wrap"><table><thead><tr><th>選択</th><th>人物ID</th><th>共同体</th><th>配属先</th><th>実位置</th></tr></thead><tbody id="peopleRows"></tbody></table></div></section>
+<section class="panel"><h2>配属・解除</h2><label for="actor">操作する人物</label><select id="actor"></select><label for="unit">配属先のテスト部隊</label><select id="unit"><option value="a">テスト部隊A</option><option value="b">テスト部隊B</option></select><p class="muted">検査用の固定条件：Aの許可者は人物0、Bは人物1です。本作の階級・権限制の仕様を決めるものではありません。</p>
+<div class="buttons"><button class="primary" id="assign">配属を記録</button><button id="release">配属を解除</button></div><button id="retry" disabled>直前の操作を同じ内容で再送</button><p class="muted" id="lastOperation">まだ操作していません。</p>
+</section></div>
+<section class="panel" style="margin-top:18px"><h2>配属台帳だけを保存・復元</h2><p class="muted">世界のセーブ形式は変更しません。別の世界や不正な台帳を読み込んだ場合、現在の台帳は保持します。</p><div class="buttons"><button id="save">保存テキストを作る</button><button id="load">この内容で復元</button><button id="download">JSONをダウンロード</button></div><label for="snapshot">配属台帳の保存データ</label><textarea id="snapshot" spellcheck="false"></textarea>
+<details><summary>履歴候補と受取確認の試験</summary><p class="muted">本作の歴史・思想にはまだ送信していません。下の操作は受取確認の模擬です。未確認の候補は保存・復元後も残ります。</p><button id="ack">先頭1件の受取確認を模擬</button><pre id="events"></pre></details></section>
+</main><script>'use strict';
+/* World of History NPC システム：段階1（個人ID・ID から決まる能力値・変化だけ保存・出生/結婚/死亡）＋段階2（職業・技能・成長）
+ * - 全住民に個人ID（配列の添字）。生まれつきの性格・能力・潜在能力は「Seed＋ID（＋両親）」から計算し、保存しない。
+ * - 保存するのは人生で変わった分（性格の変化、訓練による能力の変化、技能）だけ。
+ * - 判定は月に1回（人ごとに日がずれる）、記録は日付つき。同じ Seed なら同じ結果（整数ハッシュと固定順の乱数のみ）。
+ * ブラウザでも Node でも動く（外部依存なし）。 */
+(function (root) {
+  const NONE = 0xffffffff, ALIVE = 0x7fffffff, YEAR = 360, MONTH = 30;
+  // 項目。性格は反対の傾向を1本の軸にした（0＝一方の端、255＝もう一方の端）。項目の順番は変えない（末尾にだけ足す）
+  const PERSONALITY = ['社交性', '共感性', '感情安定性', '慎重さ', '好奇心', '誠実性', '野心', '柔軟性', '信頼傾向'];
+  const COGNITIVE = ['学習力', '計画力', '判断力', '記憶力', '発想力', '洞察力', '注意力'];
+  const PHYSICAL = ['筋力', '持久力', '瞬発力', '敏捷性', '器用さ'];
+  const STAT_NAMES = [...PERSONALITY, ...COGNITIVE, ...PHYSICAL];
+  const NP = PERSONALITY.length, NC = COGNITIVE.length, NPH = PHYSICAL.length;
+  const NABIL = NC + NPH, NSTAT = NP + NABIL;   // 能力＝認知＋身体。能力番号 a ＝ 項目番号 k − NP。潜在能力は能力ごとに1つ
+  const SI = {}; STAT_NAMES.forEach((n, k) => { SI[n] = k; });
+
+  function mix(a, b, c, d) {
+    let h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul((b + 0x7f4a7c15) | 0, 0xc2b2ae35);
+    h ^= h >>> 15; h = Math.imul(h ^ ((c + 0x165667b1) | 0), 0x27d4eb2f); h ^= h >>> 13;
+    h = Math.imul(h ^ ((d + 0x1b873593) | 0), 0x85ebca6b); h ^= h >>> 16; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 13;
+    return h >>> 0;
+  }
+  function bell(h) { return Math.round(((h & 255) + ((h >>> 8) & 255) + ((h >>> 16) & 255)) / 3); }   // 0..255の釣鐘型
+  const clamp = (v) => v < 0 ? 0 : v > 255 ? 255 : v;
+
+  // ---- 職業（0＝無職：子ども・引退した人など）。train＝仕事で伸びる能力、apt＝向き不向きに使う項目、skill＝仕事で伸びる技能（技能番号＝職業番号−1）
+  const NJOB = 12, NSKILL = NJOB - 1;
+  const JOBS = [
+    { name: '無職' },
+    { name: '採集者', skill: '採集', train: [['持久力', 1], ['器用さ', 1]], apt: [['持久力', 1], ['器用さ', 1], ['注意力', .5]] },
+    { name: '狩人', skill: '狩猟', train: [['持久力', 1], ['敏捷性', 1]], apt: [['持久力', 1], ['敏捷性', 1], ['注意力', .7], ['慎重さ', .3]] },
+    { name: '漁師', skill: '漁労', train: [['器用さ', 1], ['持久力', 1]], apt: [['器用さ', 1], ['持久力', 1], ['注意力', .4]] },
+    { name: '道具製作者', skill: '材料加工', train: [['器用さ', 1.2]], apt: [['器用さ', 1], ['発想力', .7], ['注意力', .4]] },
+    { name: '建築従事者', skill: '建築', train: [['筋力', 1], ['持久力', 1]], apt: [['筋力', 1], ['持久力', .7], ['計画力', .5]] },
+    { name: '運搬者', skill: '輸送', train: [['筋力', 1], ['持久力', 1]], apt: [['筋力', 1], ['持久力', 1]] },
+    { name: '治療者', skill: '治療', train: [['器用さ', 1]], apt: [['器用さ', .8], ['共感性', 1], ['注意力', .7], ['学習力', .5]] },
+    { name: '警備者', skill: '警戒', train: [['持久力', 1], ['敏捷性', 1]], apt: [['持久力', .7], ['敏捷性', .7], ['注意力', 1], ['感情安定性', .6]] },
+    { name: '農民', skill: '農業', train: [['筋力', 1], ['持久力', 1]], apt: [['筋力', .7], ['持久力', 1], ['計画力', .4], ['誠実性', .4]] },
+    { name: '牧畜従事者', skill: '家畜管理', train: [['持久力', 1]], apt: [['持久力', 1], ['注意力', .6], ['共感性', .4]] },
+    { name: '交易者', skill: '商業', train: [['洞察力', 1]], apt: [['社交性', 1], ['洞察力', 1], ['信頼傾向', .5], ['計画力', .4]] },
+  ];
+  JOBS.forEach((j) => { for (const key of ['train', 'apt']) if (j[key]) j[key] = j[key].map(([n, w]) => { if (!(n in SI)) throw new Error('項目名が不明: ' + n); return [SI[n], w]; }); });
+  const J_FARM = 9, J_HERD = 10, J_TRADE = 11;
+  const SOC_K = 6;   // 1人が記録する、家族以外の関係の数（信頼・好意・尊敬の3つの値を持つ）
+  // 仕事以外の活動で伸びる能力（プレイヤーが選べる「学ぶ」「体を鍛える」）
+  const ACT_TRAIN = { study: [['学習力', 1], ['洞察力', .6], ['記憶力', .6], ['計画力', .4]], body: [['筋力', 1], ['持久力', 1], ['敏捷性', .7], ['瞬発力', .7]] };
+  for (const k in ACT_TRAIN) ACT_TRAIN[k] = ACT_TRAIN[k].map(([n, w]) => [SI[n], w]);
+
+  // ---- 欲求（資料の第6章）：生まれつきの強さは性格から計算（保存しない）。仕事が満たす度合い（JOB_APPEAL）は仮の値
+  const NEEDS = ['生存・安全', '家族', '財産', '権力・地位', '信仰・思想', '知識', '自由'];
+  const NNEED = NEEDS.length;
+  const JOB_APPEAL = [
+    null,
+    [.7, .5, .3, .1, .2, .3, .6], [.7, .5, .4, .3, .2, .3, .7], [.7, .5, .4, .1, .2, .3, .6], [.5, .5, .6, .3, .2, .6, .4],
+    [.5, .6, .6, .4, .3, .4, .3], [.5, .5, .5, .2, .1, .3, .5], [.5, .6, .4, .6, .6, .7, .3], [.8, .4, .4, .7, .3, .2, .2],
+    [.8, .6, .5, .2, .3, .2, .2], [.7, .6, .6, .3, .3, .3, .5], [.4, .4, .8, .6, .2, .6, .7],
+  ];
+  // 全体の平均（測定値）。個人の「ほかの人と比べた違い」を見るために使う
+  const NEED_MEAN = [.73, .45, .43, .48, .36, .45, .43];
+  const JOB_ABAR = Array.from({ length: NNEED }, (_, n) => { let t = 0; for (let j = 1; j < NJOB; j++) t += JOB_APPEAL[j][n]; return t / (NJOB - 1); });
+  // 年齢による能力の変化（成長期と衰え）。k は項目番号
+  function ageFactor(k, a) {
+    if (k < NP + NC) { if (a < 18) return 0.5 + 0.5 * (a / 18); return a <= 55 ? 1 : Math.max(0.5, 1 - 0.006 * (a - 55)); }   // 認知
+    if (a < 20) return 0.45 + 0.55 * (a / 20);
+    if (a <= 30) return 1;
+    const rate = k === SI['瞬発力'] || k === SI['敏捷性'] ? 0.014 : k === SI['器用さ'] ? 0.006 : k === SI['筋力'] ? 0.008 : 0.009;
+    return Math.max(0.35, 1 - rate * (a - 30));
+  }
+  // 能力の成長量の期待値（1か月）：訓練量 × (0.5＋潜在能力) × 伸びしろ。現在値が高いほど伸びにくい
+  function growthExpected(cur, pot, rate) { return rate * (0.5 + pot / 255) * (1 - cur / 255); }
+
+  class Population {
+    constructor(seed, groups, cap = 1024) {
+      this.seed = seed >>> 0; this.n = 0; this.cap = 0; this.day = 0;
+      this.rng = (this.seed ^ 0xa5a5a5a5) >>> 0 || 1;
+      this.delta = new Map();          // 性格の変化など（まれ）。key = id*64+項目 → 変化量
+      this.pool = [];   // 結婚相手候補の男性（遅延削除）
+      this.focus = new Map();   // 重要人物
+      this.stats = { births: 0, deaths: 0, marriages: 0, jobChanges: 0, retired: 0 };
+      this.members = [];   // 集団ごとの住民の番号（交流の相手を選ぶ用。移った人・亡くなった人は、選ぶときに取り除く）
+      this.groupEth = new Uint16Array(0); this.ethSecondary = new Map(); this.adultAgeFn = null; this.pendingCause = 0;
+      this.actId = -1; this.actKind = 'auto'; this.actJob = 0;   // プレイヤーの人物の今の活動（auto／work／gather／hunt／fish／study／body／family）。actJob＝活動が食料の仕事のときの職業番号
+      this.crossFn = null; this.residenceFn = null; this.onCross = null;   // 集団をまたぐ結婚：相手の集団を選ぶ／夫が妻の集団へ移るか／記録
+      this.hazardFn = null; this.fertFn = null; this.onBirth = null; this.onDeath = null;   // 民族・集団の状況（飢え・寒さ・病気）を人の死亡・出産に反映するための関数
+      this.gdemand = new Float32Array(0); this.gflags = new Uint8Array(0); this.gcount = new Uint32Array(0); this.gwork = new Uint32Array(0); this.groups = 0;
+      this.ensureGroups(groups);
+      this._alloc(cap);
+    }
+    // ---- 人間関係：家族以外の相手との、信頼・好意・尊敬（0〜255、128が普通）。交流のたびに、お互いの性格・年齢・技能で変わる
+    _pers(i) { if (!(this.flags[i] & 16)) { const o = i * 4; this.pers[o] = this.stat(i, SI['社交性']); this.pers[o + 1] = this.stat(i, SI['共感性']); this.pers[o + 2] = this.stat(i, SI['誠実性']); this.pers[o + 3] = this.stat(i, SI['信頼傾向']); this.flags[i] |= 16; } return i * 4; }
+    _skillOf(i) { const j = this.job[i]; return j ? this.skills[i * NSKILL + j - 1] : 0; }
+    // 相手を選ぶ：mode 'job'＝同じ仕事の人／それ以外＝同じ集団の誰か（亡くなった人・移った人は取り除く）
+    _partner(i, mode) {
+      const g = this.group[i], L = this.members[g];
+      for (let t = 0; t < 6 && L.length > 1; t++) {
+        const k = Math.floor(this.random() * L.length), j = L[k];
+        if (this.death[j] !== ALIVE || this.group[j] !== g) { L[k] = L[L.length - 1]; L.pop(); continue; }
+        if (j === i || this.age(j) < 8 || (mode === 'job' && this.job[j] !== this.job[i])) continue;
+        return j;
+      }
+      return -1;
+    }
+    // i から見た j への関係の枠（なければ作る。いっぱいなら、一番ふつうの関係を置き換える。置き換える相手がいなければ -1）
+    _slot(i, j, create) {
+      const b = i * SOC_K; let weak = -1, wd = 1e9;
+      for (let s = 0; s < SOC_K; s++) {
+        const r = this.relId[b + s];
+        if (r === j) return b + s;
+        if (r === NONE) { if (create) { this.relId[b + s] = j; const v = (b + s) * 3; this.relV[v] = this.relV[v + 1] = this.relV[v + 2] = 128; return b + s; } return -1; }
+        const v = (b + s) * 3, d = Math.abs(this.relV[v] - 128) + Math.abs(this.relV[v + 1] - 128) + Math.abs(this.relV[v + 2] - 128);
+        if (d < wd) { wd = d; weak = s; }
+      }
+      if (create && weak >= 0 && wd < 14) { this.relId[b + weak] = j; const v = (b + weak) * 3; this.relV[v] = this.relV[v + 1] = this.relV[v + 2] = 128; return b + weak; }
+      return -1;
+    }
+    _bond(i, j) {   // i が j との交流で感じたこと
+      const slot = this._slot(i, j, true); if (slot < 0) return;
+      const pi = this._pers(i), pj = this._pers(j), P = this.pers, v = slot * 3, R = this.relV;
+      const likable = (0.4 * P[pj] + 0.35 * P[pj + 1] + 0.25 * P[pj + 2]) / 255;   // j の人あたりのよさ
+      const dLike = (likable - 0.5) * 16 + (P[pi] / 255 - 0.5) * 5 + (this.random() - 0.5) * 6;
+      const dTrust = ((P[pj + 2] / 255) - 0.5) * 14 * (0.5 + P[pi + 3] / 255) + (this.random() - 0.5) * 4;
+      const dResp = ((this._skillOf(j) - this._skillOf(i)) / 255) * 10 + ((this.age(j) - this.age(i)) / 40) * 3 + (this.random() - 0.5) * 3;
+      const cl = (x) => x < 0 ? 0 : x > 255 ? 255 : x;
+      R[v] = cl(R[v] + this._round(Math.abs(dTrust)) * Math.sign(dTrust)); R[v + 1] = cl(R[v + 1] + this._round(Math.abs(dLike)) * Math.sign(dLike)); R[v + 2] = cl(R[v + 2] + this._round(Math.abs(dResp)) * Math.sign(dResp));
+    }
+    _interact(i) {
+      for (let k = 0; k < 2; k++) {
+        let j = -1;
+        if (this.random() < 0.55) {   // 顔なじみとよく会う：すでに関係のある相手から選ぶ
+          const s = Math.floor(this.random() * SOC_K), r = this.relId[i * SOC_K + s];
+          if (r !== NONE && this.death[r] === ALIVE && this.group[r] === this.group[i]) j = r;
+        }
+        if (j < 0) j = this._partner(i, k === 0 ? 'job' : 'any');
+        if (j >= 0) { this._bond(i, j); this._bond(j, i); }
+      }
+    }
+    // i から見た j（家族以外）：[信頼, 好意, 尊敬]。記録がなければ null
+    bondOf(i, j) { const s = this._slot(i, j, false); return s < 0 ? null : [this.relV[s * 3], this.relV[s * 3 + 1], this.relV[s * 3 + 2]]; }
+    // 結婚相手を探す（プレイヤーの人物が「家族」の活動を選んだとき）：同じ集団の、親族でない、異性の独身の成人。見つかれば結婚する
+    _seekPartner(i, a) {
+      const g = this.group[i], cand = [];
+      for (let j = 0; j < this.n; j++) {
+        if (j === i || this.death[j] !== ALIVE || this.group[j] !== g || this.sex[j] === this.sex[i] || this.spouse[j] !== NONE) continue;
+        if (this.age(j) < this.adultAge(j) || Math.abs(this.birth[i] - this.birth[j]) > 15 * YEAR) continue;
+        if ((this.mother[i] !== NONE && this.mother[i] === this.mother[j]) || (this.father[i] !== NONE && this.father[i] === this.father[j]) || this.mother[i] === j || this.father[i] === j || this.mother[j] === i || this.father[j] === i) continue;
+        cand.push(j);
+      }
+      if (!cand.length) return false;
+      const j = cand[Math.floor(this.random() * cand.length)], m = this.sex[i] === 1 ? i : j, w = this.sex[i] === 1 ? j : i;
+      this.spouse[m] = w; this.spouse[w] = m; this.house[m] = m; this.house[w] = m; this.stats.marriages++;
+      return true;
+    }
+    // 民族の確定：育った集団の民族。両親の民族が違えば副次的な帰属に残す
+    _assignEth(i) {
+      const e = this.groupEth[this.group[i]]; if (!e) return; this.eth[i] = e;
+      const m = this.mother[i]; if (m !== NONE && this.eth[m] && this.eth[m] !== e) this.ethSecondary.set(i, [this.eth[m]]);
+    }
+    // 民族・集団の数を増やす（分裂で集団が増えるとき）
+    ensureGroups(n) {
+      if (n <= this.groups) return;
+      const g0 = this.groups, grow = (a, per) => { const b = new a.constructor(n * per); b.set(a); return b; };
+      this.groupEth = grow(this.groupEth, 1); this.gdemand = grow(this.gdemand, NJOB); this.gflags = grow(this.gflags, 1); this.gcount = grow(this.gcount, NJOB); this.gwork = grow(this.gwork, 1);
+      this.groups = n; while (this.pool.length < n) this.pool.push([]); while (this.members.length < n) this.members.push([]);
+      for (let g = g0; g < n; g++) this.setGroup(g, {});
+    }
+    // 別の集団へ移る（職業の人数の集計と、結婚候補の列を直す）
+    moveToGroup(i, g2) { const j = this.job[i]; if (j) this._setJob(i, 0); this.group[i] = g2; this.members[g2].push(i); this.flags[i] &= ~1; if (j) this._setJob(i, j); }
+    _alloc(cap) {
+      const grow = (name, T, per, fill) => { const a = new T(cap * per); if (fill !== undefined) a.fill(fill); if (this[name]) a.set(this[name].subarray(0, this.n * per)); this[name] = a; };
+      grow('birth', Int32Array, 1); grow('death', Int32Array, 1, ALIVE); grow('sex', Uint8Array, 1); grow('group', Uint16Array, 1);
+      grow('mother', Uint32Array, 1, NONE); grow('father', Uint32Array, 1, NONE); grow('spouse', Uint32Array, 1, NONE);
+      grow('job', Uint8Array, 1); grow('flags', Uint8Array, 1);   // flags: bit0 結婚候補の列に入っている／bit1 生まれつきの値を計算済み／bit2 職業を選んだことがある／bit3 引退
+      grow('eth', Uint16Array, 1); grow('house', Uint32Array, 1, NONE); grow('cause', Uint8Array, 1);   // 主たる民族（0＝育ち中で未確定）／世帯ID／死因（0＝生存）
+      grow('relId', Uint32Array, SOC_K, NONE); grow('relV', Uint8Array, SOC_K * 3); grow('pers', Uint8Array, 4);   // 関係の相手／信頼・好意・尊敬／性格の計算結果（社交性・共感性・誠実性・信頼傾向）
+      grow('skills', Uint8Array, NSKILL);        // 技能（0〜255）
+      grow('train', Int8Array, NABIL);           // 訓練による能力の変化
+      grow('gen', Uint8Array, NABIL * 2);        // 生まれつきの能力・潜在能力の計算結果（働き始める年齢で埋める）
+      this.cap = cap;
+    }
+    random() { let x = this.rng; x ^= x << 13; x >>>= 0; x ^= x >>> 17; x ^= x << 5; x >>>= 0; this.rng = x; return x / 4294967296; }
+    // 確率的な丸め：1.3 なら 30% の確率で 2、70% で 1（整数の配列で小さな成長を表すため）
+    _round(x) { const f = Math.floor(x); return f + (this.random() < x - f ? 1 : 0); }
+    // 民族ごとの環境と技術。demand＝仕事の必要度（職業選択の重み）
+    setGroup(g, env) {
+      const e = Object.assign({ gather: .3, hunt: .25, fish: .15, farm: 0, herd: 0, trade: 0 }, env), d = this.gdemand.subarray(g * NJOB, g * NJOB + NJOB);
+      d.fill(0); d[1] = e.gather; d[2] = e.hunt; d[3] = e.fish; d[4] = .06; d[5] = .08; d[6] = .05; d[7] = .04; d[8] = .05; d[J_FARM] = .35 * e.farm; d[J_HERD] = .15 * e.herd; d[J_TRADE] = .06 * e.trade;
+      this.gflags[g] = (e.farm > 0 ? 1 : 0) | (e.herd > 0 ? 2 : 0) | (e.trade > 0 ? 4 : 0);
+    }
+    _add(group, sex, birthDay, mother, father) {
+      if (this.n >= this.cap) this._alloc(this.cap * 2);
+      const i = this.n++; this.members[group].push(i); this.birth[i] = birthDay; this.sex[i] = sex; this.group[i] = group; this.mother[i] = mother; this.father[i] = father;
+      return i;
+    }
+    addFounder(group, ageYears) { return this._add(group, this.random() < .5 ? 0 : 1, this.day - Math.floor(ageYears * YEAR + this.random() * YEAR), NONE, NONE); }
+    // 生まれつきの値（保存しない）。両親が分かれば両親の平均寄り。さかのぼりは3世代まで
+    genetic(id, k, depth = 0) {
+      const f = bell(mix(this.seed, id, k, 1));
+      const m = this.mother[id], p = this.father[id];
+      if (m === NONE || p === NONE || depth >= 3) return f;
+      return clamp(Math.round(0.5 * (this.genetic(m, k, depth + 1) + this.genetic(p, k, depth + 1)) + (f - 127.5) * 0.7));
+    }
+    _fillGen(i) { const o = i * NABIL * 2; for (let a = 0; a < NABIL; a++) { this.gen[o + a] = this.genetic(i, NP + a); this.gen[o + NABIL + a] = this.genetic(i, NSTAT + a); } this.flags[i] |= 2; }
+    base(id, k) { return k >= NP && (this.flags[id] & 2) ? this.gen[id * NABIL * 2 + k - NP] : this.genetic(id, k); }
+    potential(id, a) { return (this.flags[id] & 2) ? this.gen[id * NABIL * 2 + NABIL + a] : this.genetic(id, NSTAT + a); }
+    // 現在値。性格＝生まれつき＋人生での変化。能力＝(生まれつき＋訓練) × 年齢による係数
+    stat(id, k) {
+      if (k < NP) return clamp(this.genetic(id, k) + (this.delta.get(id * 64 + k) || 0));
+      return clamp(Math.round((this.base(id, k) + this.train[id * NABIL + k - NP]) * ageFactor(k, this.age(id))));
+    }
+    addDelta(id, k, amount) { const key = id * 64 + k; const v = Math.max(-128, Math.min(127, (this.delta.get(key) || 0) + amount)); if (v) this.delta.set(key, v); else this.delta.delete(key); }
+    // 成人の年齢（文化＝民族ごとに違う。既定18歳）。見習い（職業を選ぶ）は成人の4年前、結婚は成人から
+    adultAge(i) { const e = this.eth[i] || this.groupEth[this.group[i]]; return this.adultAgeFn ? this.adultAgeFn(e) : 18; }
+    age(id) { return ((this.day - this.birth[id]) / YEAR); }
+    alive(id) { return this.death[id] === ALIVE; }
+    // 職業への向き：項目の重み付き平均（0〜1）
+    aptitude(id, job) {
+      const L = JOBS[job].apt; let s = 0, w = 0;
+      for (const [k, wt] of L) { if (!wt) continue; s += this.stat(id, k) * wt; w += wt; }
+      return w ? s / w / 255 : 0;
+    }
+    // 職業を選ぶ：必要度（空きが多い仕事ほど高い）×向き×家族の職業×ばらつき。今の職業には慣性がある
+    pickJob(i) {
+      const g = this.group[i], cur = this.job[i], fl = this.gflags[g];
+      const d = this.gdemand.subarray(g * NJOB, g * NJOB + NJOB), cnt = this.gcount.subarray(g * NJOB, g * NJOB + NJOB), work = Math.max(1, this.gwork[g]);
+      let tot = 0; for (let j = 1; j < NJOB; j++) if (this._avail(j, fl)) tot += d[j];
+      if (tot <= 0) return 0;
+      const father = this.father[i], fj = father !== NONE && this.death[father] === ALIVE ? this.job[father] : 0;
+      const sc = new Float64Array(NJOB); let sum = 0, w = this._w || (this._w = new Float32Array(NNEED)); this.needWeights(i, w);
+      for (let j = 1; j < NJOB; j++) {
+        if (!this._avail(j, fl) || d[j] <= 0) continue;
+        const t = d[j] / tot, share = cnt[j] / work;
+        let v = Math.min(25, Math.max(0.02, Math.pow(t / (share + 0.02), 2))) * Math.pow(0.15 + this.aptitude(i, j), 3) * Math.exp(4 * this.jobAppeal(w, j)) * (0.7 + 0.6 * this.random());
+        if (j === fj) v *= 1.6; if (j === cur) v *= 1.5;
+        sc[j] = v; sum += v;
+      }
+      let r = this.random() * sum; for (let j = 1; j < NJOB; j++) { r -= sc[j]; if (r <= 0 && sc[j] > 0) return j; }
+      return cur;
+    }
+    // 欲求の重み（0〜1）：性格と、家族の状況・年齢から。保存しない
+    needWeights(i, out = new Float32Array(NNEED)) {
+      const g = (n) => this.genetic(i, SI[n]) / 255, a = this.age(i);
+      const stab = g('感情安定性'), cau = g('慎重さ'), emp = g('共感性'), amb = g('野心'), soc = g('社交性'), cur = g('好奇心'), hon = g('誠実性'), fle = g('柔軟性');
+      const fam = (this.spouse[i] !== NONE ? .25 : 0) + (a >= 20 && a < 45 ? .15 : 0);
+      out[0] = Math.min(1, .45 + (1 - stab) * .3 + cau * .25);
+      out[1] = Math.min(1, .2 + emp * .35 + fam);
+      out[2] = Math.min(1, .15 + amb * .25 + cau * .2 + hon * .1);
+      out[3] = Math.min(1, amb * .75 + soc * .2);
+      out[4] = Math.min(1, .1 + (1 - fle) * .3 + emp * .15 + (a > 45 ? .15 : 0));
+      out[5] = Math.min(1, cur * .6 + this.genetic(i, SI['学習力']) / 255 * .3);
+      out[6] = Math.min(1, cur * .25 + (1 - hon) * .2 + (1 - cau) * .3 + (a < 30 ? .1 : 0));
+      return out;
+    }
+    // 職業の魅力（0〜1）＝欲求の重みで平均した、仕事が満たす度合い
+    // 魅力（正なら平均より魅力的）＝ Σ (欲求の重み−全体の平均) × (その職業が満たす度合い−職業全体の平均)
+    jobAppeal(w, j) { const A = JOB_APPEAL[j]; let s = 0; for (let n = 0; n < NNEED; n++) s += (w[n] - NEED_MEAN[n]) * (A[n] - JOB_ABAR[n]); return s; }
+    // いま一番強い欲求（重み×まだ満たされていない度合い。満たされ具合は呼び出し側が与える：民族ごとの状態、なければ中間）
+    topNeed(i) { const w = this.needWeights(i), sat = this.satisfaction ? this.satisfaction(i) : null; let b = 0, bv = -1; for (let n = 0; n < NNEED; n++) { const v = w[n] / NEED_MEAN[n] * (1 - (sat ? sat[n] : .5)); if (v > bv) { bv = v; b = n; } } return b; }
+    // 重要人物（資料の第3層）：詳細に考える人。民族・職業・出来事などの理由と、開始日を持つ。個人ID・経験・家族は維持する
+    promote(i, reason) { this.focus.set(i, { reason, since: this.day, goal: this.topNeed(i) }); }
+    demote(i) { this.focus.delete(i); }
+    _avail(j, fl) { return j === J_FARM ? !!(fl & 1) : j === J_HERD ? !!(fl & 2) : j === J_TRADE ? !!(fl & 4) : true; }
+    _setJob(i, j) {
+      const g = this.group[i], old = this.job[i];
+      if (old) { this.gcount[g * NJOB + old]--; this.gwork[g]--; }
+      this.job[i] = j; if (j) { this.gcount[g * NJOB + j]++; this.gwork[g]++; }
+    }
+    // 技能を使った分だけ伸ばす（職業以外の活動でも使える：例えば農民が狩りをする）。months＝活動した月数
+    practice(i, skill, months, intensity = 1) {
+      const learn = this.stat(i, SI['学習力']), s = this.skills[i * NSKILL + skill], a = this.age(i);
+      const x = months * intensity * (0.5 + learn / 255) * (1 - s / 255) * (a < 16 ? 0.5 : a < 50 ? 1 : 0.6);
+      this.skills[i * NSKILL + skill] = Math.min(255, s + this._round(x));
+    }
+    // 世界の開始時：初期の人々が「それまでの人生」で身につけた職業・技能・訓練を、年齢から一括で決める（世界の生成中に1回だけ）。
+    // 14歳から今までの月数ぶん、毎月の成長式を指数関数で積んだもの。引退済みの高齢者も含む
+    initFounders() {
+      for (let i = 0; i < this.n; i++) {
+        if (this.death[i] !== ALIVE) continue;
+        const a = this.age(i); if (a >= 12 && !this.eth[i]) this._assignEth(i);
+        if (this.flags[i] & 4) continue;
+        const w0 = this.adultAge(i) - 4; if (a < w0) continue;
+        const segs = [[w0, w0 + 2, 0.5, 0.5, 1], [w0 + 2, 30, 1, 1, 1], [30, 50, 1, 1, 0.6], [50, 60, 0.6, 1, 0.3]];   // [始め,終わり歳, 技能の速さ, 訓練の速さ, 訓練の年齢係数]
+        this._fillGen(i); this.flags[i] |= 4;
+        const j = this.pickJob(i); if (!j) continue;
+        this._setJob(i, j);
+        const learn = this.base(i, SI['学習力']) / 255;
+        // 今の職業に就いてからの年数：転職は年約2.4%（月0.2%）の確率で起こるので、勤続年数は指数分布
+        const til = Math.min(a, 60, w0 + (a < 50 ? -Math.log(1 - this.random()) / 0.024 : 1e9));
+        let u = 255;   // 技能の「伸びしろ」255−s
+        for (const [s0, s1, rs] of segs) { if (til <= s0) break; const m = (Math.min(til, s1) - s0) * 12; u *= Math.exp(-rs * (0.5 + learn) * m / 255); }
+        this.skills[i * NSKILL + j - 1] = Math.min(255, this._round(255 - u));
+        for (const [k, w] of JOBS[j].train) {
+          const ab = k - NP, b0 = this.base(i, k), pot = this.potential(i, ab);
+          let uu = 255 - b0;
+          for (const [s0, s1, , rt, ag] of segs) { if (til <= s0) break; const m = (Math.min(til, s1) - s0) * 12; uu *= Math.exp(-0.1 * w * rt * ag * (0.5 + pot / 255) * m / 255); }
+          this.train[i * NABIL + ab] = Math.min(127, Math.max(0, this._round(255 - b0 - uu)));
+        }
+        if (a >= 60 && this.random() < 1 - Math.pow(0.97, (a - 60) * 12)) { this._setJob(i, 0); this.flags[i] |= 8; }   // 引退
+      }
+    }
+    // 年間の死亡率（昔の社会のたたき台。乳児20%・成人は加齢で急上昇）
+    static qDeath(a) { return a < 1 ? 0.20 : a < 5 ? 0.04 : a < 15 ? 0.008 : 0.005 + 0.0003 * Math.exp(0.09 * a); }
+    _die(i, cause) { this.death[i] = this.day; this.cause[i] = cause || this.pendingCause || 1; this.pendingCause = 0; this.stats.deaths++; this._setJob(i, 0); const s = this.spouse[i]; if (s !== NONE && this.spouse[s] === i) this.spouse[s] = NONE; this.spouse[i] = NONE; }
+    _work(i, a) {
+      // 訓練：仕事で使う能力が伸びる（見習いの間は半分）。プレイヤーの人物は、選んだ活動で伸びる
+      let train, skill = -1;
+      if (i === this.actId && this.actKind !== 'auto' && this.actKind !== 'work') {
+        if (this.actJob) { train = JOBS[this.actJob].train; skill = this.actJob - 1; }
+        else if (ACT_TRAIN[this.actKind]) train = ACT_TRAIN[this.actKind];
+        else return;   // 家族との時間：訓練しない
+      } else { const j = this.job[i]; train = JOBS[j].train; skill = j - 1; }
+      const focus = i === this.actId && ACT_TRAIN[this.actKind] ? 6 : 1;   // 学ぶ・体を鍛えるに専念している間は、仕事の合間の訓練の6倍［仮］
+      const rate = (a < this.adultAge(i) - 2 ? 0.5 : 1) * focus, ag = a < 30 ? 1 : a < 50 ? 0.6 : 0.3;
+      for (const [k, w] of train) {
+        const ab = k - NP, cur = this.stat(i, k), pot = this.potential(i, ab);
+        const x = this._round(growthExpected(cur, pot, 0.1 * w * rate * ag)), idx = i * NABIL + ab;
+        if (x) this.train[idx] = Math.min(127, this.train[idx] + x);
+      }
+      if (skill >= 0) this.practice(i, skill, 1, rate);
+    }
+    _visit(i) {
+      if (this.death[i] !== ALIVE) return;
+      const a = this.age(i);
+      const qm = this.hazardFn ? 1 - Math.exp(-this.hazardFn(a, this.group[i], i) / 12) : 1 - Math.pow(1 - Population.qDeath(a), 1 / 12);
+      if (a >= 120) { this._die(i, 1); return; }   // 寿命の上限
+      if (this.random() < qm) { if (this.onDeath) this.onDeath(i); this._die(i); return; }
+      if (!this.eth[i] && a >= 12) this._assignEth(i);   // 12歳：育った集団の民族になる（親の民族は副次的な帰属として残る）
+      const adult = this.adultAge(i);
+      if (a >= 10) this._interact(i);   // 交流（人間関係）
+      // 仕事：14歳で見習いとして職業を選ぶ／まれに転職／60歳以降に引退
+      if (a >= adult - 4 && !(this.flags[i] & 8)) {
+        if (!(this.flags[i] & 2)) this._fillGen(i);
+        if (!(this.flags[i] & 4)) { const j = this.pickJob(i); if (j) { this._setJob(i, j); } this.flags[i] |= 4; }
+        else if (a >= 60 && this.random() < 0.03) { this._setJob(i, 0); this.flags[i] |= 8; this.stats.retired++; }
+        else if (this.job[i] && a < 50 && this.random() < 0.003) { const j = this.pickJob(i); if (j && j !== this.job[i]) { this._setJob(i, j); this.stats.jobChanges++; } }
+        if (this.job[i] || (i === this.actId && this.actKind !== 'auto' && this.actKind !== 'work')) this._work(i, a);
+      }
+      if (a < adult) return;
+      const g = this.group[i];
+      if (i === this.actId && this.actKind === 'family' && this.spouse[i] === NONE && this.random() < 0.3 && this._seekPartner(i, a)) return;   // 家族の時間：結婚相手を探す
+      if (this.sex[i] === 1) {   // 男性：結婚候補の列に入る
+        if (!(this.flags[i] & 1) && this.spouse[i] === NONE) { this.flags[i] |= 1; this.pool[g].push(i); }
+        return;
+      }
+      if (this.spouse[i] === NONE) {   // 女性：未婚なら候補から探す。文化によっては、隣の集団の男性から選ぶ（crossFn）
+        if (this.random() < 0.15) {
+          const g2 = this.crossFn ? (this.crossFn(g, i) || g) : g, pl = this.pool[g2];
+          for (let t = 0; t < 4 && pl.length; t++) {
+            const k = Math.floor(this.random() * pl.length), j = pl[k];
+            if (this.death[j] !== ALIVE || this.spouse[j] !== NONE || this.group[j] !== g2) { pl[k] = pl[pl.length - 1]; pl.pop(); this.flags[j] &= ~1; continue; }
+            const kin = this.mother[i] !== NONE && (this.mother[i] === this.mother[j] || this.father[i] === this.father[j]);
+            if (kin || Math.abs(this.birth[i] - this.birth[j]) > 15 * YEAR) continue;
+            pl[k] = pl[pl.length - 1]; pl.pop(); this.flags[j] &= ~1;
+            this.spouse[i] = j; this.spouse[j] = i; this.house[i] = j; this.house[j] = j; this.stats.marriages++;   // 新しい世帯（夫のIDが世帯ID）
+            if (g2 !== g) { this.stats.crossMarriages = (this.stats.crossMarriages || 0) + 1; const husbandMoves = this.residenceFn ? this.residenceFn(g, g2) : false; if (husbandMoves) this.moveToGroup(j, g); else this.moveToGroup(i, g2); if (this.onCross) this.onCross(i, j, g, g2); }
+            break;
+          }
+        }
+        return;
+      }
+      {   // 既婚女性：出産（年あたりの出生率。fertFn があれば民族の食料の状況を反映）
+        const pf = this.fertFn ? this.fertFn(a, g, i) : (a < 42 ? 0.17 : 0);
+        if (pf > 0 && this.random() < pf / 12) {
+          const c = this._add(g, this.random() < .5 ? 0 : 1, this.day, i, this.spouse[i]); this.house[c] = this.house[i]; this.stats.births++; if (this.onBirth) this.onBirth(g);
+        }
+      }
+    }
+    // 1日進める：人ごとに月に1回だけ判定する（id % 30 が日付と合う人）
+    stepDay() {
+      this.day++;
+      for (let i = this.day % MONTH; i < this.n; i += MONTH) this._visit(i);
+    }
+    stepYear() { for (let d = 0; d < YEAR; d++) this.stepDay(); }
+    livingCount() { let c = 0; for (let i = 0; i < this.n; i++) if (this.death[i] === ALIVE) c++; return c; }
+    checksum() { let h = this.seed; for (let i = 0; i < this.n; i++) h = mix(h, this.birth[i], this.death[i], (this.mother[i] ^ this.spouse[i]) + this.job[i] * 65537 + this.skills[i * NSKILL + Math.max(0, this.job[i] - 1)]); return h; }
+    // 保存：変化分だけ（性格の変化・訓練・技能は0でない所だけ）。技能は職業の技能のほか、実際に伸ばした技能すべて
+    save() {
+      const pairs = [], tr = [], sk = [];
+      for (const [k, v] of this.delta) pairs.push(k, v);
+      for (let i = 0; i < this.n; i++) {
+        for (let a = 0; a < NABIL; a++) { const v = this.train[i * NABIL + a]; if (v) tr.push(i * 16 + a, v); }
+        for (let s = 0; s < NSKILL; s++) { const v = this.skills[i * NSKILL + s]; if (v) sk.push(i * 16 + s, v); }
+      }
+      return { personality: Int32Array.from(pairs), train: Int32Array.from(tr), skills: Int32Array.from(sk) };
+    }
+  }
+  const api = { SOC_K, ACT_TRAIN, NEEDS, JOB_APPEAL, Population, STAT_NAMES, PERSONALITY, COGNITIVE, PHYSICAL, NSTAT, NP, NABIL, NJOB, NSKILL, JOBS, SI, ageFactor, growthExpected, mix, bell, YEAR, MONTH };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohNpc = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script><script>const AssignmentAPI=(()=>{/** P0 read-only bridge. IDs belong to the existing world; no people are created here.
+ * This validates references, not recruitment eligibility, command authority or arrival.
+ * Caller must revalidate at execution time; this is not a reservation/assignment ledger.
+ */
+function inspectRoster(people, personIds) {
+  const p = people?.npc;
+  if (!p || !Number.isSafeInteger(p.n) || !p.group || !p.eth || typeof p.alive !== 'function') {
+    throw new TypeError('canonical population is required');
+  }
+  if (!Array.isArray(personIds)) throw new TypeError('personIds must be an array');
+  const seen = new Set(), issues = [], members = [];
+  for (const id of personIds) {
+    if (!Number.isSafeInteger(id) || id < 0 || id >= p.n) {
+      issues.push({code: 'unknown-person', personId: id}); continue;
+    }
+    if (seen.has(id)) { issues.push({code: 'duplicate-person', personId: id}); continue; }
+    seen.add(id);
+    if (!p.alive(id)) { issues.push({code: 'person-not-alive', personId: id}); continue; }
+    members.push(Object.freeze({personId: id, communityId: p.group[id],
+      ethnicityId: p.eth[id] || p.groupEth[p.group[id]], observedDay: p.day,
+      physicalPosition: null}));
+  }
+  return {ok: issues.length === 0, members: issues.length ? [] : members, issues};
+}
+
+
+
+const FORMAT = 'woh.military.assignments';
+const copy = value => JSON.parse(JSON.stringify(value));
+const validId = id => (typeof id === 'string' && id.trim().length > 0) || (Number.isSafeInteger(id) && id >= 0);
+const fail = (code, detail = {}) => ({ok: false, code, ...detail});
+
+function normalize(input) {
+  if (!input || !['assign', 'release'].includes(input.action) ||
+      typeof input.operationId !== 'string' || !input.operationId.trim() ||
+      !Number.isSafeInteger(input.actorId) || input.actorId < 0 || !validId(input.unitId) ||
+      !Array.isArray(input.personIds) || input.personIds.some(id => !Number.isSafeInteger(id) || id < 0) ||
+      (input.expectedRevision !== undefined && (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0))) {
+    throw new TypeError('invalid assignment command');
+  }
+  if (!input.personIds.length) throw new TypeError('empty roster');
+  if (new Set(input.personIds).size !== input.personIds.length) throw new TypeError('duplicate person');
+  const c = {action: input.action, operationId: input.operationId, actorId: input.actorId,
+    unitId: input.unitId, personIds: [...input.personIds].sort((a, b) => a - b)};
+  if (input.expectedRevision !== undefined) c.expectedRevision = input.expectedRevision;
+  return c;
+}
+
+/** Referenced-person sidecar; no creation of people, units, rank, stock, movement or authority.
+ * authorize is a synchronous, read-only world port. Only explicit true permits mutation.
+ * Snapshot journal is trusted save data validated structurally, not a proof of past authority.
+ */
+function createAssignmentLedger({worldKey, people, resolveUnit, authorize} = {}, snapshot) {
+  if (typeof worldKey !== 'string' || !worldKey.trim()) throw new TypeError('canonical worldKey is required');
+  inspectRoster(people, []);
+  if (typeof resolveUnit !== 'function') throw new TypeError('canonical resolveUnit is required');
+  const population = people.npc, assignments = new Map(), operations = [], operationIndex = new Map(), acknowledged = new Set();
+  let executing = false;
+  function requireBoundWorld() {
+    if (people.npc !== population) throw new TypeError('canonical population reference changed; recreate the adapter');
+  }
+  const exists = id => Number.isSafeInteger(id) && id >= 0 && id < population.n;
+  function unit(id) { const value = resolveUnit(id); return value?.id === id ? value : null; }
+  function conflict(c) {
+    for (const personId of c.personIds) {
+      const old = assignments.get(personId);
+      if (c.action === 'assign' && old) return fail('already-assigned', {personId, assignedUnitId: old.unitId});
+      if (c.action === 'release' && (!old || old.unitId !== c.unitId)) return fail('not-assigned-to-unit', {personId});
+    }
+    return null;
+  }
+  function commit(c, day) {
+    for (const personId of c.personIds) {
+      if (c.action === 'assign') assignments.set(personId, {personId, unitId: c.unitId, assignedBy: c.actorId, assignedDay: day});
+      else assignments.delete(personId);
+    }
+    operationIndex.set(c.operationId, operations.length);
+    operations.push({command: c, day});
+  }
+  function receipt(index, replayed) {
+    const record = operations[index];
+    return {ok: true, operationId: record.command.operationId, revision: index + 1, day: record.day, replayed};
+  }
+
+  if (snapshot != null) {
+    try {
+      if (snapshot.format !== FORMAT || snapshot.version !== 1 || snapshot.worldKey !== worldKey ||
+          !Array.isArray(snapshot.operations) || !Array.isArray(snapshot.acknowledged)) throw Error('format or world');
+      for (const record of snapshot.operations) {
+        const c = normalize(record?.command);
+        if (!Number.isSafeInteger(record.day) || record.day > population.day ||
+            (operations.length && record.day < operations.at(-1).day) || operationIndex.has(c.operationId) ||
+            (c.expectedRevision !== undefined && c.expectedRevision !== operations.length) ||
+            !exists(c.actorId) || c.personIds.some(id => !exists(id)) || !unit(c.unitId) || conflict(c)) throw Error('invalid journal');
+        // Rebuild historical committed facts without rerunning present-day authority or reviving people.
+        commit(c, record.day);
+      }
+      for (const id of snapshot.acknowledged) {
+        if (!operationIndex.has(id) || acknowledged.has(id)) throw Error('invalid acknowledgement');
+        acknowledged.add(id);
+      }
+    } catch (error) {
+      throw new TypeError('invalid assignment snapshot: ' + error.message);
+    }
+  }
+
+  function perform(input) {
+      let c;
+      try { c = normalize(input); } catch (error) { return fail('invalid-command', {reason: error.message}); }
+      const prior = operationIndex.get(c.operationId);
+      if (prior !== undefined) {
+        return JSON.stringify(operations[prior].command) === JSON.stringify(c)
+          ? receipt(prior, true) : fail('operation-id-conflict');
+      }
+      if (c.expectedRevision !== undefined && c.expectedRevision !== operations.length) return fail('stale-revision');
+      if (!exists(c.actorId)) return fail('unknown-actor');
+      if (!population.alive(c.actorId)) return fail('actor-not-alive');
+      let target;
+      try { target = unit(c.unitId); } catch { return fail('unit-unavailable'); }
+      if (!target) return fail('unknown-unit');
+      if (c.action === 'assign' && target.active === false) return fail('unit-inactive');
+      try {
+        const request = Object.freeze({...c, personIds: Object.freeze([...c.personIds]), worldKey, day: population.day});
+        if (typeof authorize !== 'function' || authorize(request) !== true) return fail('not-authorized');
+      } catch { return fail('authority-unavailable'); }
+      // Recheck canonical people after the external authority callback, before any ledger mutation.
+      if (people.npc !== population) return fail('world-reference-changed');
+      if (!exists(c.actorId) || !population.alive(c.actorId)) return fail('actor-not-alive');
+      try { target = unit(c.unitId); } catch { return fail('unit-unavailable'); }
+      if (!target) return fail('unknown-unit');
+      if (c.action === 'assign' && target.active === false) return fail('unit-inactive');
+      if (c.action === 'assign') {
+        const result = inspectRoster(people, c.personIds);
+        if (!result.ok) return fail(result.issues[0].code, {personId: result.issues[0].personId});
+      } else if (c.personIds.some(id => !exists(id))) return fail('unknown-person');
+      const problem = conflict(c); if (problem) return problem;
+      if (!Number.isSafeInteger(population.day) || (operations.length && population.day < operations.at(-1).day)) return fail('world-clock-reversed');
+      commit(c, population.day);
+      return receipt(operations.length - 1, false);
+  }
+  return {
+    get revision() { return operations.length; },
+    execute(input) {
+      if (people.npc !== population) return fail('world-reference-changed');
+      if (executing) return fail('ledger-busy');
+      executing = true;
+      try { return perform(input); } finally { executing = false; }
+    },
+    assignments() {
+      requireBoundWorld();
+      return [...assignments.values()].sort((a, b) => a.personId - b.personId)
+        .map(record => ({...record, exists: exists(record.personId), alive: exists(record.personId) && population.alive(record.personId)}));
+    },
+    pendingEvents() {
+      requireBoundWorld();
+      return operations.filter(record => !acknowledged.has(record.command.operationId)).map(({command: c, day}) =>
+        ({id: c.operationId, type: 'military.person-assignment', action: c.action, worldKey, day,
+          actorId: c.actorId, unitId: c.unitId, personIds: [...c.personIds]}));
+    },
+    acknowledgeEvent(id) {
+      requireBoundWorld();
+      if (executing) return false;
+      if (!operationIndex.has(id) || acknowledged.has(id)) return false;
+      acknowledged.add(id); return true;
+    },
+    save() {
+      requireBoundWorld();
+      return {format: FORMAT, version: 1, worldKey, operations: copy(operations), acknowledged: [...acknowledged].sort()};
+    }
+  };
+}
+;return {createAssignmentLedger};})();</script><script>(() => {
+  const npc=new WohNpc.Population(321,2);
+  for(let i=0;i<6;i++)npc.addFounder(1,25);
+  const people={npc}, units=new Map([['a',{id:'a',commanderId:0}],['b',{id:'b',commanderId:1}]]);
+  const ports={worldKey:'isolated-military-test-v1',people,resolveUnit:id=>units.get(id),authorize:c=>units.get(c.unitId)?.commanderId===c.actorId};
+  let ledger=AssignmentAPI.createAssignmentLedger(ports),counter=0,last=null;
+  const $=id=>document.getElementById(id);
+  const text={
+    'already-assigned':'すでに配属先があります。先に現在の配属を解除してください。',
+    'not-assigned-to-unit':'選択した部隊への配属ではありません。',
+    'not-authorized':'この人物には、選択した部隊の配属を変更する許可がありません。',
+    'operation-id-conflict':'同じ操作IDを違う内容には使えません。',
+    'stale-revision':'台帳が更新されています。現在の状態で操作し直してください。',
+    'invalid-command':'対象の人物を1人以上選んでください。',
+    'person-not-alive':'生存していない人物が含まれています。'
+  };
+  function message(body,ok=true){$('status').textContent=body;$('status').dataset.ok=String(ok);}
+  function render(){
+    $('populationCount').textContent=npc.livingCount();$('assignedCount').textContent=ledger.assignments().length;
+    $('revision').textContent=ledger.revision;$('pendingCount').textContent=ledger.pendingEvents().length;
+    const records=new Map(ledger.assignments().map(a=>[a.personId,a]));
+    const selected=new Set([...document.querySelectorAll('[data-person]:checked')].map(x=>Number(x.dataset.person)));
+    $('peopleRows').replaceChildren();
+    for(let id=0;id<npc.n;id++){
+      const row=document.createElement('tr'),choice=document.createElement('td'),check=document.createElement('input');check.type='checkbox';check.dataset.person=id;check.setAttribute('aria-label',`人物${id}を選択`);check.checked=selected.has(id);choice.append(check);row.append(choice);
+      for(const value of [String(id),String(npc.group[id]),records.has(id)?`部隊${records.get(id).unitId.toUpperCase()}`:'なし','未取得・移動未接続']){const td=document.createElement('td');td.textContent=value;row.append(td);}
+      $('peopleRows').append(row);
+    }
+    $('retry').disabled=!last;$('events').textContent=JSON.stringify(ledger.pendingEvents(),null,2);
+  }
+  for(let id=0;id<npc.n;id++){const option=document.createElement('option');option.value=id;option.textContent=`人物${id}`;$('actor').append(option);}
+  function execute(command){
+    const result=ledger.execute(command);
+    if(result.ok)message(result.replayed?'同じ操作を再送しました。配属・成功操作・履歴候補は増えていません。':command.action==='assign'?'配属を記録しました。人物の現在地や人口は変更していません。':'配属を解除しました。人物の現在地や人口は変更していません。');
+    else message(text[result.code]||`操作できません：${result.code}`,false);
+    $('lastOperation').textContent=`直前の操作ID：${command.operationId}`;render();return result;
+  }
+  function act(action){
+    const used=new Set(ledger.save().operations.map(o=>o.command.operationId));let operationId;
+    do{operationId=`test-op-${++counter}`;}while(used.has(operationId));
+    last={action,operationId,actorId:Number($('actor').value),unitId:$('unit').value,personIds:[...document.querySelectorAll('[data-person]:checked')].map(x=>Number(x.dataset.person)),expectedRevision:ledger.revision};
+    execute(last);
+  }
+  $('assign').onclick=()=>act('assign');$('release').onclick=()=>act('release');$('retry').onclick=()=>{if(last)execute(last);};
+  $('save').onclick=()=>{$('snapshot').value=JSON.stringify(ledger.save(),null,2);message('配属台帳を保存テキストにしました。人口の保存データではありません。');};
+  $('load').onclick=()=>{try{const loaded=AssignmentAPI.createAssignmentLedger(ports,JSON.parse($('snapshot').value));ledger=loaded;last=ledger.save().operations.at(-1)?.command||null;render();message('配属台帳を復元しました。現在の人口や位置は変更していません。');}catch{message('復元できませんでした。世界識別子・形式・人物や部隊の参照を確認してください。現在の台帳は保持しています。',false);}};
+  $('download').onclick=()=>{const data=JSON.stringify(ledger.save(),null,2),url=URL.createObjectURL(new Blob([data],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='woh-test-assignment-ledger.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+  $('ack').onclick=()=>{const first=ledger.pendingEvents()[0];if(first){ledger.acknowledgeEvent(first.id);message('履歴候補1件の受取確認を模擬しました。本作には送信していません。');}else message('未確認の履歴候補はありません。');render();};
+  render();message('テスト世界を準備しました。人物を選び、配属・解除・保存を試せます。');
+  window.__assignmentSandbox={people,units,get ledger(){return ledger;},get lastCommand(){return last;}};
+})();
+</script></body></html>
