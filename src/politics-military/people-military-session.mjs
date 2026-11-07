@@ -45,6 +45,7 @@ export function createPeopleMilitarySession({worldKey, people, savePeople, loadP
   return {
     get people() {return current.people;},
     get revision() {return current.ledger.revision;},
+    isBoundTo(key, targetPeople) {return current.ledger.isBoundTo(key, targetPeople);},
     execute(command) {
       if (busy) return {ok:false, code:'session-busy'};
       return exclusive(()=>current.ledger.execute(command));

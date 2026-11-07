@@ -115,6 +115,7 @@ export function createAssignmentLedger({worldKey, people, resolveUnit, authorize
   }
   return {
     get revision() { return operations.length; },
+    isBoundTo(key, targetPeople) { return key === worldKey && targetPeople === people && people.npc === population; },
     execute(input) {
       if (people.npc !== population) return fail('world-reference-changed');
       if (executing) return fail('ledger-busy');
