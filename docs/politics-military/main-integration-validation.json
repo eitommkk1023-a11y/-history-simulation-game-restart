@@ -1,0 +1,159 @@
+{
+  "repository": "eitommkk1023-a11y/-history-simulation-game-restart",
+  "branch": "codex/politics-main-integration",
+  "baseMain": "16796365d5021f3a23f3f535b522b726db261127",
+  "preservedP3b": "40ebc2622e3381d0e2f3aec7f9b4503754130759",
+  "nodeAssertions": 120,
+  "node": [
+    {
+      "file": "tests/economy/food-transfer.test.mjs",
+      "exit": 0,
+      "counts": {
+        "tests": "8",
+        "pass": "8",
+        "fail": "0"
+      }
+    },
+    {
+      "file": "tests/geography-adapter.test.mjs",
+      "exit": 0,
+      "counts": {
+        "tests": "11",
+        "pass": "11",
+        "fail": "0"
+      }
+    },
+    {
+      "file": "tests/integration/main-embeds.test.mjs",
+      "exit": 0,
+      "counts": {
+        "tests": "3",
+        "pass": "3",
+        "fail": "0"
+      }
+    },
+    {
+      "file": "tests/integration/main-military.test.mjs",
+      "exit": 0,
+      "counts": {
+        "tests": "5",
+        "pass": "5",
+        "fail": "0"
+      }
+    },
+    {
+      "file": "tests/integration/main-save.test.mjs",
+      "exit": 0,
+      "counts": {
+        "tests": "4",
+        "pass": "4",
+        "fail": "0"
+      }
+    },
+    {
+      "file": "tests/integration/people-daily.test.mjs",
+      "exit": 0,
+      "counts": {
+        "tests": "3",
+        "pass": "3",
+        "fail": "0"
+      }
+    },
+    {
+      "file": "tests/persistence/transport-supply-checkpoint.test.mjs",
+      "exit": 0,
+      "counts": {
+        "tests": "5",
+        "pass": "5",
+        "fail": "0"
+      }
+    },
+    {
+      "file": "tests/persistence/world-checkpoint.test.mjs",
+      "exit": 0,
+      "counts": {
+        "tests": "12",
+        "pass": "12",
+        "fail": "0"
+      }
+    },
+    {
+      "file": "tests/politics-military/assignment-ledger.test.mjs",
+      "exit": 0,
+      "counts": {
+        "tests": "15",
+        "pass": "15",
+        "fail": "0"
+      }
+    },
+    {
+      "file": "tests/politics-military/order-ledger.test.mjs",
+      "exit": 0,
+      "counts": {
+        "tests": "22",
+        "pass": "22",
+        "fail": "0"
+      }
+    },
+    {
+      "file": "tests/politics-military/order-route.test.mjs",
+      "exit": 0,
+      "counts": {
+        "tests": "5",
+        "pass": "5",
+        "fail": "0"
+      }
+    },
+    {
+      "file": "tests/politics-military/people-military-session.test.mjs",
+      "exit": 0,
+      "counts": {
+        "tests": "13",
+        "pass": "13",
+        "fail": "0"
+      }
+    },
+    {
+      "file": "tests/politics-military/person-reference.test.mjs",
+      "exit": 0,
+      "counts": {
+        "tests": "6",
+        "pass": "6",
+        "fail": "0"
+      }
+    },
+    {
+      "file": "tests/transport/courier-state.test.mjs",
+      "exit": 0,
+      "counts": {
+        "tests": "8",
+        "pass": "8",
+        "fail": "0"
+      }
+    }
+  ],
+  "actualMainBrowserChecks": 17,
+  "actualMainHtmlSha256": "1f3cb29c1862aaed72099a639343448c86997f61587add15b0c38fc436004962",
+  "browserResult": "main-browser-validation.json",
+  "unchangedClaudeSourceBlocks": {
+    "generator-src": "61f07332b114334a85ffe8cf1c16b7409fffb0db782657ea2846638c29df4e8e",
+    "fauna-src": "02afd45e69923a056743074a67739a1c0ad8f66e088f0dd4af691f3c3969a7ec",
+    "rock-src": "7bfed0ffa79f43be1840b21d67f4ca3e5831c61861ecf33e0c54f6d5b518250c"
+  },
+  "review": "Single-agent author review, per supervisor instruction. No independent reviewer.",
+  "limitations": [
+    "Military mission setup tested via developer-only API using real generated NPCs; normal political UI/authority and autonomous dispatch not implemented",
+    "Explicit test population increase; not normal-play demographic growth",
+    "PC headless Chromium; no physical mobile device or long-term 60/100-year regression",
+    "Partial physical position adoption for registered actors; all-world NPC position ownership not complete",
+    "Host save format maintained; old readers do not preserve new military extensions",
+    "100k-ID month is synchronous and exceeds a 36ms frame budget; asynchronous world stepping remains future performance work"
+  ],
+  "remoteStatus": {
+    "preservedBranch": "codex/politics-military-p0",
+    "localP3aP3bAhead": 7,
+    "remoteLastObserved": "f3d1ee6ff712e3c058ea9179e26c5774feef4194",
+    "backupBundle": "World-of-History-P3b-history.bundle",
+    "push": "pending explicit response to public-repository approval question; no remote write this turn"
+  }
+}

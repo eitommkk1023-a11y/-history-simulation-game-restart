@@ -1,0 +1,3 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';
+const html=readFileSync(new URL('../../World-of-History-v30-development.html',import.meta.url),'utf8');
+for(const [tag,path]of [['npc-core','npc/npc-core.js'],['people-core','npc/people-core.js'],['politics-main-bundle','tools/politics-military/main-military.bundle.js']])test('main embeds exactly the tested '+tag,()=>{const marker='<script id="'+tag+'">',start=html.indexOf(marker)+marker.length,end=html.indexOf('</script>',start);assert.equal(html.slice(start,end).trim(),readFileSync(new URL('../../'+path,import.meta.url),'utf8').trim());});
