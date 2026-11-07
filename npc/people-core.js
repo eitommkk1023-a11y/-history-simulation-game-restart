@@ -22,6 +22,7 @@ const PE = {
   HELPER_SHARE: 0.35,                             // 仕事に就いていない10〜13歳・兼任の人が、採集に回る割合［仮］
   KNOW_DEFAULT: 0.15,                             // その仕事の人がいないときの技能（0〜1）［仮］
   FERT_ADJ: 1.5,
+  AGRI_FERT: 0.12, AGRI_DIS: 0.15, AGRI_STARV: 0.4,   // 農耕・牧畜の効果［仮］：食料に占める割合（0.6で最大）に応じて、出生が増え（定住・離乳が早い）、基本の病気の死亡と飢えが減る（蓄えと安定した栄養）
   // 定住：0野営地（移動）→1半定住→2村。同じ場所に安定してとどまり、食料が豊かな場所で村になる［仮］
   SETTLE1_MONTHS: 60, SETTLE2_MONTHS: 120,     // 半定住・村になるまでの、同じ場所での安定した月数
   SETTLE2_POP: 50, SETTLE2_FED: 0.97, SETTLE2_P: 0.03,   // 村になる条件（人口・食料の充足）と確率（1か月）
@@ -1424,18 +1425,19 @@ function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
     if (g.hunger === 3) ev.push({ type: 'famine', imp: 1, relevant: rel(g.ethId), group: g.id, eth: g.ethId, x: g.x, y: g.y });
   } else g.hunger = 0;
   // ---- 状況を表に書く：住民は毎日の判定でこの表を使う（出生・飢え・寒さ・病気）
-  hz.fert[id] = peClamp01((g.fed - PE.FERT_FOOD[0]) / (PE.FERT_FOOD[1] - PE.FERT_FOOD[0]));
+  const agri = peClamp01((g.farmFrac || 0) / 0.6);   // 農耕・牧畜が食料に占める割合の効き
+  hz.fert[id] = peClamp01((g.fed - PE.FERT_FOOD[0]) / (PE.FERT_FOOD[1] - PE.FERT_FOOD[0])) * (1 + PE.AGRI_FERT * agri);
   if (g.epi > 0) g.epi--;
   else if (rng() < PE.EPI_P * pop / 200 * (1 - 0.25 * peFacil(g).well)) {
     g.epi = PE.EPI_MONTHS[0] + Math.floor(rng() * (PE.EPI_MONTHS[1] - PE.EPI_MONTHS[0] + 1));
     ev.push({ type: 'epidemic', imp: 1, relevant: rel(g.ethId), group: g.id, eth: g.ethId, x: g.x, y: g.y });
   }
-  hz.starv[id] = PE.STARV_H * Math.pow(1 - ratio, 1.5) * (1 - 0.8 * (g.share || 0)) * (1 - 0.15 * peCover('hearth', peFacil(g).hearth, g.pop) - 0.35 * peCover('granary', peFacil(g).granary, g.pop));   // 分けているほど、共同の炉があるほど、足りないときに飢える人が出にくい
+  hz.starv[id] = PE.STARV_H * Math.pow(1 - ratio, 1.5) * (1 - PE.AGRI_STARV * agri) * (1 - 0.8 * (g.share || 0)) * (1 - 0.15 * peCover('hearth', peFacil(g).hearth, g.pop) - 0.35 * peCover('granary', peFacil(g).granary, g.pop));   // 分けているほど、共同の炉があるほど、足りないときに飢える人が出にくい
   let snow = 0; if (ctx.snow) snow = ctx.snow[home] || 0;
   const harsh = peClamp01((PE.COLD_T[0] - T) / PE.COLD_T[1]) + peClamp01((snow - 50) / 100) * 0.3;
   hz.cold[id] = PE.COLD_H * harsh * (1 - PE.COLD_KNOW * kH) * (1 + (1 - ratio));
   hz.dis[id] = (g.epi > 0 ? PE.EPI_H : 0) + Math.max(0, pop / PE.CROWD_POP - 1) * PE.CROWD_H;
-  hz.hungerDis[id] = 1 + (1 - ratio);
+  hz.hungerDis[id] = (1 + (1 - ratio)) * (1 - PE.AGRI_DIS * agri);
   // ---- 移動
   g.radius = peRadius(pop);
   peSettleStep(people, g, S, world, ev, rel, home, people.ethSpeed || 1);
