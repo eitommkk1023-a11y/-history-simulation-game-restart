@@ -38,7 +38,19 @@ function overlaps(a, b, m) { if (a.round && b.round) return Math.hypot(a.x - b.x
 
 // ---- 配置の本体
 const MAX_SLOPE = { dwelling: 26, hall: 14, storehouse: 22, workshop: 20, rack: 30 };
-function newLayout(gid) { return { version: 1, gid, center: { x: 0, z: 0 }, items: [], paths: [], plaza: { r: 5, kind: 'open' }, axis: { a: 0, k: 0 }, nTarget: 0, byHouse: {}, fields: [], fence: [], queue: [], nextSeq: 1, history: null, resolved: false }; }
+function newLayout(gid) { return { version: 2, log: [], gid, center: { x: 0, z: 0 }, items: [], paths: [], plaza: { r: 5, kind: 'open' }, axis: { a: 0, k: 0 }, nTarget: 0, byHouse: {}, fields: [], fence: [], queue: [], nextSeq: 1, history: null, resolved: false }; }
+// ---- 履歴：集落全体の記録（log）と、建物ごとの記録（b.rec）。day は暦の絶対日（開始より前は負）。by は世界共通ID（世帯＝夫の人物ID）。
+// synthetic：ゲーム開始前の歴史から作った推定（実際に起きた出来事ではない）。取得できない項目は入れない
+const PURPOSE = { dwelling: '世帯の住まい', hall: '集会・祭祀', storehouse: '食料・道具の保管', workshop: '道具づくり', rack: '魚・肉の干し物' };
+const LOG_CAP = 600;
+function logEv(layout, day, type, b, extra) { const e = Object.assign({ day, type }, b ? { id: b.id, role: b.role, house: b.house } : {}, extra || {}); layout.log.push(e); if (layout.log.length > LOG_CAP) layout.log.splice(1, layout.log.length - LOG_CAP); return e; }
+function mkRec(b, day, why, by, synthetic) { b.rec = { builtDay: day, why, by: by === undefined ? null : by, purpose: PURPOSE[b.role] || b.role, synthetic: !!synthetic, edits: [] }; return b.rec; }
+// 古い保存（version 1・履歴なし）を今の形にそろえる。位置・形は変えない
+function upgradeLayout(layout) {
+  if (!layout) return layout; if (!layout.log) layout.log = []; if (!layout.plaza.kind) layout.plaza.kind = 'open'; if (!layout.axis) layout.axis = { a: 0, k: 0 }; if (layout.nTarget === undefined) layout.nTarget = layout.items.filter(i => i.role === 'dwelling').length;
+  for (const b of layout.items) if (!b.rec) mkRec(b, Math.round((b.builtYear || 0) * YEAR), 'unknown', b.house >= 0 && b.house < 1e6 ? b.house : null, true);
+  layout.version = 2; return layout;
+}
 // 地面：建物の足元の高さを数点で測る
 function groundOf(terr, b) {
   const pts = [[0, 0]], hw = b.plan.w / 2, hd = (b.plan.kind === 'rect' ? b.plan.d : b.plan.w) / 2, cs = Math.cos(b.rot), sn = Math.sin(b.rot);
@@ -137,7 +149,7 @@ function addBuilding(layout, spec, role, house, members, anchor, opts, builtAge)
 // ---- 集落全体の配置
 // spec：{ seed, gid, trad, hist, level, households:[{house, members, kin}], economy:{fish,gather,hunt,tool,farm,herd,trade}, terr:{height,slope,water,nearestWater,wet}, day }
 function layoutSettlement(spec) {
-  const { seed, gid, hist, level, households, economy, terr } = spec, layout = newLayout(gid); layout.history = hist;
+  const { seed, gid, hist, level, households, economy, terr } = spec, layout = newLayout(gid); layout.history = hist; const day0 = spec.day || 0;
   const nH = households.length;
   // 中心：平らで乾いた場所（焚き火と広場）。最初の候補の近くで探す
   // 水辺の村は、水から20〜40mの乾いた平地を好む（水が近すぎる・遠すぎるのを避ける）
@@ -173,9 +185,14 @@ function layoutSettlement(spec) {
   buildPaths(layout, spec);
   // 防衛設備（柵）
   if (hist.defense > 0) buildFence(layout, spec);
+  // 履歴：成立の記録と、開始前から建っていた建物の記録（推定）
+  logEv(layout, day0, 'found', null, { level, households: nH, synthetic: true, note: 'この記録の開始時点の集落（開始前の歴史は推定）' });
+  for (const b of layout.items) if (!b.rec) mkRec(b, Math.round(b.builtYear * YEAR), 'initial', b.state === 'ok' && b.house >= 0 && b.house < 1e6 ? b.house : null, true);
   layout.resolved = true; return layout;
 }
 function centroidOf(layout) { const d = layout.items.filter(i => i.role === 'dwelling' && i.state !== 'removed'); if (!d.length) return { x: layout.center.x, z: layout.center.z }; return { x: d.reduce((a, b) => a + b.x, 0) / d.length, z: d.reduce((a, b) => a + b.z, 0) / d.length }; }
+// 畑の広がりが変わったとき：建物は動かさず、畑だけ作り直す
+function refreshFields(layout, spec, nH, day) { layout.fields = []; if (spec.economy && spec.economy.farm) layoutFields(layout, spec, nH); layout.fieldLv = spec.economy && spec.economy.farmLv != null ? spec.economy.farmLv : null; logEv(layout, day || 0, 'fields', null, { n: layout.fields.length }); }
 function layoutFields(layout, spec, nH) {   // 畑：水に近い平らな所に、家の外側。農耕の仕組みが入ったときに使う
   const { terr, seed, gid } = spec, lv = spec.economy && spec.economy.farmLv != null ? spec.economy.farmLv : 3, n = Math.max(1, Math.ceil(nH * 0.5 * lv / 4)); const dws = layout.items.filter(i => i.role === 'dwelling');
   for (let k = 0; k < n * 6 && layout.fields.length < n; k++) {
@@ -224,32 +241,32 @@ function syncLayout(layout, spec, households, day) {
   // まず、いなくなった世帯の家を空き家→廃屋→撤去に進める
   for (const b of layout.items) {
     if (b.role !== 'dwelling' || b.house < 0 || b.house >= 4e6 || cur.has(b.house) || b.state === 'removed') continue;
-    if (b.vacantSince === null) { b.vacantSince = day; b.state = 'vacant'; out.vacated++; continue; }
+    if (b.vacantSince === null) { b.vacantSince = day; b.state = 'vacant'; out.vacated++; logEv(layout, day, 'vacate', b); continue; }
     const yrs = (day - b.vacantSince) / YEAR;
-    if (yrs > 12) { b.state = 'removed'; delete layout.byHouse[b.house]; out.removed++; } else if (yrs > 5 && b.state !== 'ruin') { b.state = 'ruin'; out.ruined++; }
+    if (yrs > 12) { b.state = 'removed'; delete layout.byHouse[b.house]; out.removed++; logEv(layout, day, 'remove', b, { why: '朽ちて撤去' }); } else if (yrs > 5 && b.state !== 'ruin') { b.state = 'ruin'; out.ruined++; logEv(layout, day, 'ruin', b); }
   }
   // 新しい世帯：空き家（廃屋でないもの）があれば、親族に近い空き家に入る。なければ建てる
   for (const h of households) {
     const id = layout.byHouse[h.house], b = id ? layout.items.find(i => i.id === id) : null;
-    if (b && b.state !== 'removed') { if (b.state === 'vacant' || b.vacantSince !== null) { b.state = 'ok'; b.vacantSince = null; out.reoccupied++; } b.members = h.members; continue; }
+    if (b && b.state !== 'removed') { if (b.state === 'vacant' || b.vacantSince !== null) { b.state = 'ok'; b.vacantSince = null; out.reoccupied++; logEv(layout, day, 'reoccupy', b, { by: h.house }); } b.members = h.members; continue; }
     const anc = h.kin !== undefined ? (layout.items.find(i => i.role === 'dwelling' && i.cluster === h.kin && i.state === 'ok') || null) : null, ref = anc || layout.center;
     let vac = null, vd = 1e9; for (const i of layout.items) { if (i.role !== 'dwelling' || i.state !== 'vacant') continue; const d = Math.hypot(i.x - ref.x, i.z - ref.z); if (d < vd) { vd = d; vac = i; } }
-    if (vac) { delete layout.byHouse[vac.house]; vac.house = h.house; vac.cluster = h.kin; vac.state = 'ok'; vac.vacantSince = null; vac.members = h.members; layout.byHouse[h.house] = vac.id; out.reoccupied++; continue; }
+    if (vac) { const prev = vac.house; delete layout.byHouse[vac.house]; vac.house = h.house; vac.cluster = h.kin; vac.state = 'ok'; vac.vacantSince = null; vac.members = h.members; layout.byHouse[h.house] = vac.id; out.reoccupied++; logEv(layout, day, 'reoccupy', vac, { by: h.house, prev }); if (vac.rec) vac.rec.edits.push({ day, type: 'reoccupy', by: h.house }); continue; }
     const nb = addBuilding(layout, spec, 'dwelling', h.house, h.members, anc ? { x: anc.x, z: anc.z } : layout.center, anc ? { radius: 8, spread: 14, prefDist: 0 } : { grow: true }, 0);
-    if (nb) { nb.builtYear = Math.floor(day / YEAR); nb.cluster = h.kin; out.added++; }
+    if (nb) { nb.builtYear = Math.floor(day / YEAR); nb.cluster = h.kin; out.added++; mkRec(nb, day, 'newhouse', h.house, false); logEv(layout, day, 'build', nb, { by: h.house, why: 'newhouse' }); }
   }
   if (out.added || out.removed) buildPaths(layout, spec);
   return out;
 }
 // ---- NPC による建設・改築・解体の要求（接続口）：{ type:'build'|'renovate'|'demolish', house, day }。NPC の意思決定が入るまでは、呼ぶ側が積む
-function requestBuild(layout, type, house, day) { layout.queue.push({ type, house, day }); }
+function requestBuild(layout, type, house, day, by) { layout.queue.push({ type, house, day, by }); }
 function applyRequests(layout, spec, households, day) {
   const res = { built: 0, renovated: 0, demolished: 0 };
   for (const q of layout.queue.splice(0)) {
     const id = layout.byHouse[q.house], b = id ? layout.items.find(i => i.id === id) : null;
-    if (q.type === 'build' && !b) { const h = households.find(x => x.house === q.house); if (h) { const nb = addBuilding(layout, spec, 'dwelling', h.house, h.members, layout.center, { grow: true }, 0); if (nb) { nb.builtYear = Math.floor(day / YEAR); res.built++; } } }
-    else if (q.type === 'renovate' && b) { const nd = Arch.designBuilding(spec.seed, spec.trad, b.role, b.id, b.members, 0); for (const k of ['plan', 'wallH', 'roof', 'wall', 'door', 'windows', 'ornament', 'tint', 'trim', 'trimHue']) b[k] = nd[k]; b.builtYear = Math.floor(day / YEAR); b.age = 0; res.renovated++; }
-    else if (q.type === 'demolish' && b) { b.state = 'removed'; delete layout.byHouse[q.house]; res.demolished++; }
+    if (q.type === 'build' && !b) { const h = households.find(x => x.house === q.house); if (h) { const nb = addBuilding(layout, spec, 'dwelling', h.house, h.members, layout.center, { grow: true }, 0); if (nb) { nb.builtYear = Math.floor(day / YEAR); res.built++; mkRec(nb, day, 'request', q.by !== undefined ? q.by : q.house, false); logEv(layout, day, 'build', nb, { by: q.by !== undefined ? q.by : q.house, why: 'request' }); } } }
+    else if (q.type === 'renovate' && b) { const nd = Arch.designBuilding(spec.seed, spec.trad, b.role, b.id, b.members, 0); for (const k of ['plan', 'wallH', 'roof', 'wall', 'door', 'windows', 'ornament', 'tint', 'trim', 'trimHue']) b[k] = nd[k]; b.builtYear = Math.floor(day / YEAR); b.age = 0; res.renovated++; if (b.rec) b.rec.edits.push({ day, type: 'renovate', by: q.by !== undefined ? q.by : q.house }); logEv(layout, day, 'renovate', b, { by: q.by !== undefined ? q.by : q.house }); }
+    else if (q.type === 'demolish' && b) { b.state = 'removed'; delete layout.byHouse[q.house]; res.demolished++; logEv(layout, day, 'demolish', b, { by: q.by !== undefined ? q.by : q.house }); }
   }
   if (res.built || res.demolished) buildPaths(layout, spec);
   return res;
@@ -277,6 +294,6 @@ function footprintPoints(b) {
   const ring = b.plan.kind === 'rect' ? [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]] : [0, 1, 2, 3, 4, 5, 6, 7].map(k => [Math.cos(k * Math.PI / 4) * hw, Math.sin(k * Math.PI / 4) * hw]);
   return [[0, 0]].concat(ring).map(([lx, lz]) => [lx * cs + lz * sn, -lx * sn + lz * cs]);
 }
-const api = { terrainFromSamples, footprintPoints, foundationFor: decideFoundation, settleHistory, layoutSettlement, syncLayout, requestBuild, applyRequests, shapeOf, overlaps };
+const api = { upgradeLayout, refreshFields, PURPOSE, terrainFromSamples, footprintPoints, foundationFor: decideFoundation, settleHistory, layoutSettlement, syncLayout, requestBuild, applyRequests, shapeOf, overlaps };
 if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohSettle = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
