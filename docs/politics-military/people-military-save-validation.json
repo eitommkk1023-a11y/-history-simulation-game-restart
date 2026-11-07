@@ -1,0 +1,118 @@
+{
+  "stage": "P0c people/military population-section adapter",
+  "base": "7e26632e7d239a083c3f27121ab8e2dc02c3611d",
+  "nodeAssertions": 45,
+  "commands": [
+    {
+      "command": [
+        "node",
+        "tests/geography-adapter.test.mjs"
+      ],
+      "exitCode": 0,
+      "counts": {
+        "tests": "11",
+        "pass": "11",
+        "fail": "0"
+      },
+      "tail": [
+        "ℹ cancelled 0",
+        "ℹ skipped 0",
+        "ℹ todo 0",
+        "ℹ duration_ms 23.38302"
+      ]
+    },
+    {
+      "command": [
+        "node",
+        "tests/politics-military/assignment-ledger.test.mjs"
+      ],
+      "exitCode": 0,
+      "counts": {
+        "tests": "15",
+        "pass": "15",
+        "fail": "0"
+      },
+      "tail": [
+        "ℹ cancelled 0",
+        "ℹ skipped 0",
+        "ℹ todo 0",
+        "ℹ duration_ms 31.413261"
+      ]
+    },
+    {
+      "command": [
+        "node",
+        "tests/politics-military/people-military-session.test.mjs"
+      ],
+      "exitCode": 0,
+      "counts": {
+        "tests": "13",
+        "pass": "13",
+        "fail": "0"
+      },
+      "tail": [
+        "ℹ cancelled 0",
+        "ℹ skipped 0",
+        "ℹ todo 0",
+        "ℹ duration_ms 120.705735"
+      ]
+    },
+    {
+      "command": [
+        "node",
+        "tests/politics-military/person-reference.test.mjs"
+      ],
+      "exitCode": 0,
+      "counts": {
+        "tests": "6",
+        "pass": "6",
+        "fail": "0"
+      },
+      "tail": [
+        "ℹ cancelled 0",
+        "ℹ skipped 0",
+        "ℹ todo 0",
+        "ℹ duration_ms 28.671118"
+      ]
+    },
+    {
+      "command": [
+        "node",
+        "npc/test-battle.js"
+      ],
+      "exitCode": 0,
+      "counts": {},
+      "tail": [
+        "  Aの損害のうち、背面・側面から受けた割合：基準 16% ／ 伏兵 27%",
+        "規模（400人・5分）：1ステップ（0.5秒）あたり 3.26ms",
+        "5000体（うち騎兵1000）：1ステップ 42.4ms",
+        "OK 35 件通過"
+      ]
+    },
+    {
+      "command": [
+        "node",
+        "npc/test-durability.js"
+      ],
+      "exitCode": 0,
+      "counts": {},
+      "tail": [
+        "   保存容量：60世帯・87棟で 131KB（素材・状態の追加分 116バイト／棟）",
+        "○ 素材・状態の追加分が、1棟あたり200バイト未満",
+        "○ 同じ入力なら、素材・状態も同じ（再現性）",
+        "全て合格"
+      ]
+    }
+  ],
+  "review": "Single-agent author self-review, per supervisor instruction. No independent reviewer.",
+  "notRun": [
+    "Full-world 60/100-year population regression (requires generator.js and world.bin)",
+    "Browser trial of new save adapter (existing P0b preview unchanged)"
+  ],
+  "canonicalFilesUnchanged": [
+    "npc/npc-core.js",
+    "npc/people-core.js",
+    "npc/battle.js",
+    "World-of-History-v30-development.html"
+  ]
+}
