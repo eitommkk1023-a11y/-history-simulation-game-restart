@@ -14,9 +14,9 @@ const SIG = () => { const pe = window.__geo.people, P = pe.npc; const L = pe.sta
   await ev(() => __wohGod.enter()); await p.waitForTimeout(1500);
   const s0 = await ev(SIG); const heap0 = await ev(() => Math.round(performance.memory.usedJSHeapSize / 1048576));
   // 高速：1年/秒・5年/秒・30年/秒 を10秒ずつ。実効の速さ（端末の限界）を測る
-  const res = {}; for (const k of ['y1', 'y5', 'y30']) { const d0 = await ev(() => window.__geo.clock.day); await ev((k) => __wohGod.setTime(k), k); await p.waitForTimeout(10000); const m = await ev(() => ({ day: window.__geo.clock.day, eff: __wohClockEff(), fast: !!globalThis.__wohFastSim })); res[k] = { years: ((m.day - d0) / 360).toFixed(1), perSec: ((m.day - d0) / 360 / 10).toFixed(2), eff: m.eff, fast: m.fast }; console.log(k, JSON.stringify(res[k])); }
-  t('1年/秒で高速進行する（実測）', parseFloat(res.y1.perSec) > 0.1);
-  t('高速進行中は3D描画を省く', res.y30.fast === true);
+  const res = {}; for (const k of ['m1', 'ymax']) { const d0 = await ev(() => window.__geo.clock.day); await ev((k) => __wohGod.setTime(k), k); await p.waitForTimeout(10000); const m = await ev(() => ({ day: window.__geo.clock.day, eff: __wohClockEff(), fast: !!globalThis.__wohFastSim })); res[k] = { years: ((m.day - d0) / 360).toFixed(1), perSec: ((m.day - d0) / 360 / 10).toFixed(2), eff: m.eff, fast: m.fast }; console.log(k, JSON.stringify(res[k])); }
+  t('月/秒で進行する（実測）', parseFloat(res.m1.perSec) > 0.03);
+  t('高速進行中は3D描画を省く', res.ymax.fast === true);
   await ev(() => __wohGod.setTime('pause')); await p.waitForTimeout(1500);
   const s1 = await ev(SIG); const heap1 = await ev(() => Math.round(performance.memory.usedJSHeapSize / 1048576)); console.log('進行後', JSON.stringify(s1).slice(0, 220), 'ヒープ', heap0, '→', heap1, 'MB');
   t('日付だけでなく、人口の記録（統計）が増えた', s1.stat > s0.stat + 4, s0.stat + ' → ' + s1.stat); t('住民の状態（検査値）が変わった＝実際に計算された', s1.chk !== s0.chk);
@@ -39,7 +39,7 @@ const SIG = () => { const pe = window.__geo.people, P = pe.npc; const L = pe.sta
   const sAfter = await p.evaluate(SIG); for (const k of ['day', 'chk', 'living', 'stat', 'last']) t('保存→読み込みで一致：' + k, JSON.stringify(sBefore[k]) === JSON.stringify(sAfter[k]), JSON.stringify(sBefore[k]) + ' / ' + JSON.stringify(sAfter[k]));
   t('集落の時刻・履歴も一致', sBefore.lay === sAfter.lay);
   // 読み込み後に高速進行を再開できる
-  const d2 = await p.evaluate(() => window.__geo.clock.day); await p.evaluate(() => { __wohGod.enter(); }); await p.waitForTimeout(1500); await p.evaluate(() => __wohGod.setTime('y5')); await p.waitForTimeout(6000); await p.evaluate(() => __wohGod.setTime('pause')); await p.waitForTimeout(1500);
+  const d2 = await p.evaluate(() => window.__geo.clock.day); await p.evaluate(() => { __wohGod.enter(); }); await p.waitForTimeout(1500); await p.evaluate(() => __wohGod.setTime('ymax')); await p.waitForTimeout(6000); await p.evaluate(() => __wohGod.setTime('pause')); await p.waitForTimeout(1500);
   const d3 = await p.evaluate(() => window.__geo.clock.day); t('読み込み後も、高速進行を再開できる', d3 - d2 > 360, ((d3 - d2) / 360).toFixed(1) + '年');
   const sg = await p.evaluate(SIG); t('再開後も統計が続く', sg.stat > sAfter.stat);
   console.log('errors', errs.slice(0, 4)); if (errs.length) bad++; console.log(bad ? 'FAIL ' + bad : 'ALL OK'); await ctx.close(); process.exit(bad ? 1 : 0);

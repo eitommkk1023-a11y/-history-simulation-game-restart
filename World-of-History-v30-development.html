@@ -614,11 +614,13 @@ body.god-on #joystick, body.god-on #actions, body.god-on #uiToggle, body.god-on 
 #godLabels .gl { position: fixed; transform: translate(-50%, -100%); pointer-events: auto; min-height: 30px; padding: 2px 8px; border-radius: 8px; border: 1px solid #ffffff55; background: #0e1a2acc; color: #f1eee0; font: 11px/1.25 system-ui, sans-serif; text-align: center; white-space: nowrap; }
 #godLabels .gl b { display: block; font-size: 12px; } #godLabels .gl i { font-style: normal; color: #b9cdb0; }
 #godLabels .gl.s2 { border-color: #62d26f; } #godLabels .gl.s1 { border-color: #ecc94b; } #godLabels .gl.s0 { border-color: #b9b9b9; } #godLabels .gl.on { background: #3b4f2ecc; border-color: #fff; }
-#godBar { position: fixed; z-index: 120; right: calc(8px + env(safe-area-inset-right)); top: calc(8px + env(safe-area-inset-top)); width: min(270px, 48vw); max-height: calc(100vh - 16px); overflow-y: auto; display: none; padding: 8px; border-radius: 10px; background: #0e1a2aee; color: #e8f0f8; border: 1px solid #ffffff2a; font: 12px/1.5 system-ui, sans-serif; -webkit-overflow-scrolling: touch; }
+#godBar { position: fixed; z-index: 120; right: calc(8px + env(safe-area-inset-right)); top: calc(8px + env(safe-area-inset-top)); width: min(270px, 48vw); max-height: calc(100vh - 16px); overflow-y: auto; display: none; padding: 8px; border-radius: 10px; background: #0e1a2aee; color: #e8f0f8; border: 1px solid #ffffff2a; font: 12px/1.5 system-ui, sans-serif; -webkit-overflow-scrolling: touch; touch-action: pan-y; overscroll-behavior: contain; }
 body.god-on #godBar { display: block; }
 #godBar .gb-top { display: flex; align-items: center; gap: 6px; } #godBar .gb-top b { flex: 1; font-size: 13px; } #godBar button { min-height: 34px; padding: 2px 8px; background: #21303a; color: #e4dec6; border: 1px solid #3b4d57; border-radius: 6px; font-size: 12px; }
 #godBar .gb-time { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; } #godBar .gb-time button { flex: 1 1 22%; min-height: 30px; padding: 2px 4px; } #godBar .gb-time button.on { border-color: #f0ca68; background: #3a3a22; }
 #godBar .gb-opts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 6px; } #godBar select { min-height: 30px; background: #21303a; color: #e4dec6; border: 1px solid #3b4d57; border-radius: 6px; font-size: 12px; }
+#godAdv { position: fixed; inset: 0; z-index: 300; display: flex; align-items: center; justify-content: center; background: #070d16f0; color: #e8f0f8; font: 14px system-ui, sans-serif; } #godAdv .ga-box { width: min(420px, 86vw); text-align: center; } #godAdv h3 { margin: 0 0 14px; font-size: 18px; color: #f0ca68; } #godAdv .ga-bar { height: 14px; border-radius: 7px; background: #26323c; overflow: hidden; } #godAdv .ga-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #c8a13a, #f0ca68); } #godAdv #gaTxt { margin-top: 12px; font-size: 16px; } #godAdv #gaSub { margin-top: 6px; font-size: 12px; color: #b9cdb0; } #godAdv button { margin-top: 18px; min-height: 44px; padding: 6px 18px; background: #21303a; color: #e4dec6; border: 1px solid #3b4d57; border-radius: 8px; font-size: 14px; }
+#godBar .gb-adv { display: flex; gap: 4px; align-items: center; margin: 5px 0; } #godBar .gb-adv button { flex: 1; min-height: 32px; } #godBar .gb-adv input { width: 70px; min-height: 32px; padding: 2px 6px; background: #21303a; color: #e4dec6; border: 1px solid #3b4d57; border-radius: 6px; font-size: 14px; }
 #godBar .gb-sec { margin: 6px 0; border-top: 1px solid #ffffff14; padding-top: 4px; } #godBar .gb-sec summary { font-weight: 600; font-size: 12px; min-height: 30px; display: flex; align-items: center; } .gb-fast { margin: 4px 0; padding: 6px 8px; border-radius: 8px; background: #3a2f12; border: 1px solid #c8a13a; font-size: 11px; } .gb-rk { display: grid; grid-template-columns: 18px 1fr; gap: 2px 6px; width: 100%; text-align: left; margin-bottom: 3px; } .gb-rk small { grid-column: 2; color: #b9cdb0; }
 #godBar .gb-pop { font-size: 11px; color: #c4cdbb; margin: 2px 0; } #godBar .gi-row { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; border-bottom: 1px solid #ffffff14; } #godBar .gi-row b { font-weight: 500; text-align: right; }
 .rpg-mv { margin-top: 8px; font-size: 12px; } .rpg-mv-key { font-size: 11px; color: #b8c4b0; margin: 4px 0; line-height: 1.7; } .rpg-mv-key u { display: inline-block; width: 10px; height: 10px; margin: 0 2px 0 6px; vertical-align: -1px; } .rpg-mv-list { max-height: 150px; overflow-y: auto; margin-top: 6px; -webkit-overflow-scrolling: touch; } .rpg-mv-row { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 34px; background: #21303a; color: #e4dec6; border: 1px solid #3b4d57; border-radius: 6px; margin-bottom: 3px; padding: 2px 8px; font-size: 12px; text-align: left; } .rpg-mv-row.on { border-color: #f0ca68; } .rpg-mv-row i { width: 10px; height: 10px; border-radius: 2px; border: 2px solid #fff; flex: none; } .rpg-mv-row small { margin-left: auto; color: #9db0a0; }
@@ -11817,18 +11819,21 @@ globalThis.__wohVitalsDie = vitalsDie;
 document.getElementById('deathOk')?.addEventListener('click', () => document.getElementById('deathBox').classList.remove('show'));
 // ---- 神モード（空から見守る）：入口・操作盤・時間の速さ・村の情報。描画と入力は 3D 側（__wohGodView）。プレイヤーの状態は、入るときの状態に戻す
 (() => {
-  const GOD_TIMES = { pause: null, real: [3, 0], d10: [0, 2], m1: [1, 0], y1: [4, 1], y5: [4, 3], y10: [4, 4], y30: [4, 5] };
+  const GOD_TIMES = { pause: null, real: [3, 0], d10: [0, 2], m1: [1, 0], ymax: [4, 5] };
   let snap = null, godHist = [], lastDay = -1, bar = null;
   const pad = n => Math.round(n).toLocaleString('ja-JP'), esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const msg = t => { const d = document.createElement('div'); d.textContent = t; d.style.cssText = 'position:fixed;z-index:200;left:50%;top:18%;transform:translateX(-50%);padding:8px 14px;border-radius:10px;background:#0e1a2aee;color:#fff;font:13px system-ui'; document.body.appendChild(d); setTimeout(() => d.remove(), 2800); };
   function build() {
-    if (bar) return; bar = document.createElement('div'); bar.id = 'godBar';
-    bar.innerHTML = '<div class="gb-top"><b>神モード</b><button id="godExit">出る</button></div><div class="gb-pop" id="godPop"></div><div class="gb-time">' + [['pause', '⏸ 止める'], ['real', '標準'], ['d10', '日×10'], ['m1', '月/秒'], ['y1', '1年/秒'], ['y5', '5年/秒'], ['y10', '10年/秒'], ['y30', '30年/秒']].map(([k, n]) => '<button data-gt="' + k + '">' + n + '</button>').join('') + '</div><div class="gb-pop" id="godRate"></div><div id="godFastMsg"></div>' +
+    if (bar) return; bar = document.createElement('div'); bar.id = 'godBar'; bar.className = 'scrollable';   // scrollable：画面全体の指の動きの止め方（スクロール禁止）から外す
+    bar.innerHTML = '<div class="gb-top"><b>神モード</b><button id="godExit">出る</button></div><div class="gb-pop" id="godPop"></div><div class="gb-time">' + [['pause', '⏸ 止める'], ['real', '標準'], ['d10', '日×10'], ['m1', '月/秒'], ['ymax', '最大速度']].map(([k, n]) => '<button data-gt="' + k + '">' + n + '</button>').join('') + '</div><div class="gb-pop" id="godRate"></div><div id="godFastMsg"></div>' +
+      '<div class="gb-sec"><b style="font-size:12px">年数を指定して進める</b><div class="gb-adv">' + [1, 5, 10, 30, 100].map(n => '<button data-ay="' + n + '">' + n + '年</button>').join('') + '</div><div class="gb-adv"><input id="godYears" type="number" min="1" max="1000" value="20" inputmode="numeric"><span>年</span><button id="godAdvGo">進める</button></div><div class="gb-pop">進行画面を出して、毎月の計算を省かずに進めます（待ち時間は端末しだい。途中で中止できます）。</div></div>' +
       '<details open class="gb-sec"><summary>人口の推移</summary><div class="gb-opts"><select id="godScope"><option value="world">世界全体</option><option value="region">地域</option><option value="group">選んだ集落</option></select><select id="godSpan"><option value="0">全期間</option><option value="18000">50年</option><option value="3600">10年</option></select><select id="godMetric"><option value="pop">人口</option><option value="bd">出生・死亡（年）</option><option value="vil">村の数</option></select></div><canvas id="godChart" width="480" height="200" style="width:100%;height:auto;background:#0b141e;border-radius:6px"></canvas><div class="gb-pop" id="godChartTxt"></div></details>' +
       '<details class="gb-sec"><summary>ランキング</summary><div class="gb-opts"><select id="godRankKind"><option value="pop">人口の多い順</option><option value="up">増えた順（50年）</option><option value="down">減った順（50年）</option><option value="dev">発展した集落（50年）</option></select></div><div id="godRank"></div></details>' +
       '<div id="godInfo"></div><details class="gb-sec"><summary>表示・操作</summary><div class="gb-opts"><label><input type="checkbox" id="godLbl" checked> 村の名前</label><label>村人の大きさ <select id="godSz"><option value="0.5">小</option><option value="1" selected>標準</option><option value="2">大</option></select></label></div><div class="gb-pop">ドラッグ：移動／2本指：拡大・回転／村の名前：そこへ飛ぶ／村人をタップ：詳細／キー：WASD・QE・RF</div></details>';
     document.body.appendChild(bar);
     bar.querySelector('#godExit').onclick = exit;
+    bar.querySelector('.gb-adv').addEventListener('click', e => { const b = e.target.closest('[data-ay]'); if (b) advanceYears(+b.dataset.ay); });
+    bar.querySelector('#godAdvGo').onclick = () => advanceYears(Math.max(1, Math.min(1000, Math.round(+bar.querySelector('#godYears').value || 1))));
     bar.querySelector('.gb-time').addEventListener('click', e => { const b = e.target.closest('[data-gt]'); if (!b) return; setTime(b.dataset.gt); });
     for (const id of ['godScope', 'godSpan', 'godMetric', 'godRankKind']) bar.querySelector('#' + id).onchange = () => { drawChart(); rank(); };
     bar.querySelector('#godRank').addEventListener('click', e => { const b = e.target.closest('[data-rk]'); if (!b) return; const gid = +b.dataset.rk; window.__wohGodView.flyTo(gid); sel = gid; info({ gid }); drawChart(); });
@@ -11839,6 +11844,27 @@ document.getElementById('deathOk')?.addEventListener('click', () => document.get
   function setTime(k) {
     const t = GOD_TIMES[k]; if (!t) { clockSetPlaying(false); } else { clock.mode = t[0]; clock.speed = t[1]; clock.acc = 0; clockSetPlaying(true); }
     timebarUpdate(); for (const b of bar.querySelectorAll('[data-gt]')) b.classList.toggle('on', b.dataset.gt === k);
+  }
+  // 年数を指定して進める：進行画面を出し、毎月の計算（人口・建築・修理・経済など）を省かずに、できるだけ速く進める。3Dは描かない。途中で中止できる
+  let batch = null;
+  async function advanceYears(years) {
+    if (batch || !(years > 0)) return; clockSetPlaying(false); clock.pending = 0;
+    const months = years * 12, t0 = performance.now(), day0 = clock.day, ov = document.createElement('div'); ov.id = 'godAdv';
+    ov.innerHTML = '<div class="ga-box"><h3>' + years + '年を進めています</h3><div class="ga-bar"><i id="gaFill"></i></div><div id="gaTxt"></div><div id="gaSub"></div><button id="gaCancel">中止（その月で止める）</button></div>'; document.body.appendChild(ov);
+    batch = { cancel: false }; ov.querySelector('#gaCancel').onclick = () => { batch.cancel = true; };
+    for (const ev of ['pointerdown', 'touchstart', 'wheel']) ov.addEventListener(ev, e => e.stopPropagation());
+    globalThis.__wohFastSim = true; globalThis.__wohBatchSim = true; let done = 0, lastUi = 0;
+    try {
+      while (done < months && !batch.cancel) {
+        const s = performance.now(); while (done < months && performance.now() - s < 60 && !batch.cancel) { clockStepMonth(); done++; }
+        const now = performance.now(); if (now - lastUi > 250) { lastUi = now; const el = (now - t0) / 1000, rate = done / Math.max(0.5, el), eta = (months - done) / Math.max(0.01, rate), pop = people ? people.groups.reduce((a, g) => a + (g.alive ? g.pop : 0), 0) : 0;
+          const f = ov.querySelector('#gaFill'); if (f) f.style.width = (done / months * 100).toFixed(1) + '%'; ov.querySelector('#gaTxt').textContent = fmtDate(clock.day) + '（' + (done / 12).toFixed(1) + ' / ' + years + '年）'; ov.querySelector('#gaSub').textContent = '総人口 ' + pad(pop) + '人・経過 ' + Math.round(el) + '秒・残り約 ' + Math.round(eta) + '秒（約 ' + (rate / 12).toFixed(2) + '年/秒）'; }
+        await new Promise(r => setTimeout(r, 0));
+      }
+    } finally {
+      globalThis.__wohFastSim = false; globalThis.__wohBatchSim = false; clockAfterStep(); try { globalThis.__wohNative?.updateCamera?.(); } catch (e) { }
+      const doneYears = ((clock.day - day0) / 360).toFixed(1), sec = Math.round((performance.now() - t0) / 1000); ov.remove(); batch = null; msg(doneYears + '年進めました（' + sec + '秒）' + (done < months ? '　※途中で中止' : '')); drawChart(); rank(); refresh();
+    }
   }
   function enter(quiet) {
     const r = window.__wohGodView && window.__wohGodView.enter(); if (!r || !r.ok) { if (quiet !== true) msg((r && r.why) || '神モードに入れません'); return false; }
@@ -13634,7 +13660,7 @@ function monthlyTick() {
   const m = clockMonth();
   faunaMonthTick(m);
   peopleMonthTick(m);
-  if (CLOCK_MODES[clock.mode].key === 'fast' && window.__wohMapData && window.__wohMapData.advanceAll) { try { window.__wohMapData.advanceAll(0); } catch (e) { console.error('集落の月の更新：', e); } }   // 高速でも、建築・修理・老朽化・住居の需要を毎月進める
+  if ((CLOCK_MODES[clock.mode].key === 'fast' || globalThis.__wohBatchSim) && window.__wohMapData && window.__wohMapData.advanceAll) { try { window.__wohMapData.advanceAll(0); } catch (e) { console.error('集落の月の更新：', e); } }   // 高速でも、建築・修理・老朽化・住居の需要を毎月進める
 }
 // 1日進める（天気も計算する）
 function clockStepDay() {
