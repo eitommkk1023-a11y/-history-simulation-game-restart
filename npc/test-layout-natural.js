@@ -42,10 +42,13 @@ ok(avg(wat, 'elong') > avg(inl, 'elong'), `水辺の村は内陸より細長い�
 { let n = 0, cnt = 0; for (const kind of ['river', 'coast', 'lake']) for (let seed = 1; seed <= 6; seed++) { const m = make(kind, seed, 2, 50), w = m.layout.waterAccess; cnt++; if (w) n++; } ok(n === cnt, `水辺では水場への道がある（${n}/${cnt}）`); }
 // 再現性・増築
 ok(JSON.stringify(make('river', 5, 2, 50).layout) === JSON.stringify(make('river', 5, 2, 50).layout), '同じ入力なら同じ集落');
-{ const m = make('lake', 4, 2, 40), before = new Map(live(m.layout).map(b => [b.id, [b.x, b.z]])); const hs = m.spec.households.concat(Array.from({ length: 8 }, (_, i) => ({ house: 9000 + i, members: 3 }))); const r = S.syncLayout(m.layout, m.spec, hs, 360 * 3); let moved = 0; for (const [id, p] of before) { const b = m.layout.items.find(i => i.id === id); if (b && (b.x !== p[0] || b.z !== p[1])) moved++; } ok(r.added === 8 && moved === 0, `8世帯の増築 ${JSON.stringify(r)}・既存の建物は動かない（動いた ${moved}）`);
-  const it = live(m.layout); let o = 0; for (let i = 0; i < it.length; i++) for (let j = i + 1; j < it.length; j++) if (S.overlaps(S.shapeOf(it[i]), S.shapeOf(it[j]), 0)) o++; ok(o === 0, `増築後も重ならない`);
-  // 増築は既存の建物のそばに（遠くへ飛び地にならない）
-  const added = it.filter(b => b.house >= 9000), far = added.filter(b => Math.min(...it.filter(o2 => !(o2.house >= 9000)).map(o2 => Math.hypot(o2.x - b.x, o2.z - b.z))) > 30).length; ok(far === 0, `増築は既存の建物の近く（30m超の飛び地 ${far}）`); }
+{ const m = make('lake', 4, 2, 40), before = new Map(live(m.layout).map(b => [b.id, [b.x, b.z, b.plan.w, b.plan.d]])); const hs = m.spec.households.concat(Array.from({ length: 8 }, (_, i) => ({ house: 9000 + i, members: 3 }))); let day = 0;
+  for (let k = 0; k < 36; k++) { day += 30; S.syncLayout(m.layout, m.spec, hs, day); }
+  const housed = hs.filter(h => { const id = m.layout.byHouse[h.house], b = id && m.layout.items.find(i => i.id === id); return b && b.state === 'ok'; }).length;
+  let moved = 0; for (const [id, p] of before) { const b = m.layout.items.find(i => i.id === id); if (b && !b.extended && (b.x !== p[0] || b.z !== p[1] || b.plan.w !== p[2] || b.plan.d !== p[3])) moved++; }
+  ok(housed === hs.length && moved === 0, `8世帯の増加：3年で全世帯が住まいを得る（${housed}/${hs.length}）・既存の建物は動かない（増築を除く。動いた ${moved}）`);
+  const it = live(m.layout); let o = 0; for (let i = 0; i < it.length; i++) for (let j = i + 1; j < it.length; j++) if (S.overlaps(S.shapeOf(it[i]), S.shapeOf(it[j]), 0)) o++; ok(o === 0, `増築・新築の後も重ならない`);
+  const added = it.filter(b => b.house >= 9000 && !before.has(b.id)), far = added.filter(b => Math.min(...it.filter(o2 => before.has(o2.id)).map(o2 => Math.hypot(o2.x - b.x, o2.z - b.z))) > 30).length; ok(far === 0, `新築は既存の建物の近く（30m超の飛び地 ${far}／${added.length}棟）`); }
 // 性能
 { const t0 = process.hrtime.bigint(); for (let i = 0; i < 5; i++) make('river', 2, 2, 90, 20 + i); const ms = Number(process.hrtime.bigint() - t0) / 5e6; ok(ms < 150, `90世帯の配置 ${ms.toFixed(0)}ms/回`); }
 console.log(fail ? `失敗 ${fail}` : '全て合格'); process.exit(fail ? 1 : 0);

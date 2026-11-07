@@ -7,6 +7,7 @@
 (function (root) {
 const Npc = typeof require !== 'undefined' ? require('./npc-core.js') : root.WohNpc;
 const Arch = typeof require !== 'undefined' ? require('./arch-gen.js') : root.WohArch;
+const Mat = typeof require !== 'undefined' ? require('./materials.js') : root.WohMat;
 const { mix } = Npc;
 const rnd = (a, b, c, d = 0) => mix(a, b, c, 7701 + d) / 4294967296;
 const YEAR = 360;
@@ -188,6 +189,7 @@ function layoutSettlement(spec) {
   // 履歴：成立の記録と、開始前から建っていた建物の記録（推定）
   logEv(layout, day0, 'found', null, { level, households: nH, synthetic: true, note: 'この記録の開始時点の集落（開始前の歴史は推定）' });
   for (const b of layout.items) if (!b.rec) mkRec(b, b.builtDay !== undefined ? b.builtDay : Math.round(b.builtYear * YEAR), 'initial', b.state === 'ok' && b.house >= 0 && b.house < 1e6 ? b.house : null, true);
+  { const env = envOf(spec); for (const b of layout.items) initLife(b, spec, env, b.age || 0, day0); layout.stock = stockInit(nH); layout.proj = []; layout.t = day0; layout.life = 1; }
   layout.resolved = true; return layout;
 }
 function centroidOf(layout) { const d = layout.items.filter(i => i.role === 'dwelling' && i.state !== 'removed'); if (!d.length) return { x: layout.center.x, z: layout.center.z }; return { x: d.reduce((a, b) => a + b.x, 0) / d.length, z: d.reduce((a, b) => a + b.z, 0) / d.length }; }
@@ -235,40 +237,166 @@ function buildFence(layout, spec) {
   for (let k = 0; k < n; k++) { const a = k / n * Math.PI * 2, x = layout.center.x + Math.cos(a) * R, z = layout.center.z + Math.sin(a) * R; if (gates.some(g => da(a, g) < 0.09)) continue; if (terr.water(x, z) > 0.2 || terr.slope(x, z) > 35) continue; post.push({ x, z, h: 1.8 + hist.defense * 0.5 }); }
   layout.fence = post;
 }
-// ---- 世帯の変化に合わせて更新する（新しい世帯の家を建てる・いなくなった世帯の家を空き家→廃屋→撤去）。day は暦の日数
-function syncLayout(layout, spec, households, day) {
-  const cur = new Set(households.map(h => h.house)), out = { added: 0, vacated: 0, ruined: 0, removed: 0, reoccupied: 0 };
-  // まず、いなくなった世帯の家を空き家→廃屋→撤去に進める
+// ======== 建物の寿命・手入れ・住居の需要と工事（第2〜4段）========
+// 部位（基礎・骨組み・壁・屋根・床・開口部）ごとの健全度 cond[0..5]（1＝新品、0＝崩壊）。固定の寿命はなく、素材×品質×環境×手入れで変わる。月単位でまとめて計算する。
+const PBASE = [0.8, 0.7, 1, 0.75, 0.9, 1.2], GRADE_JP = ['良好', '軽度の傷み', '中度の傷み', '重度の傷み', '崩壊'];
+const grade = (h) => h > 0.8 ? 0 : h > 0.6 ? 1 : h > 0.4 ? 2 : h > 0.2 ? 3 : 4;
+const total = (c) => 0.6 * Math.min(c[0], c[1]) + 0.4 * (c[2] + c[3] + c[4] + c[5]) / 4, safety = (c) => Math.min(c[0], c[1]);
+const r3 = (x) => Math.round(x * 1000) / 1000;
+function envOf(spec) { const e = (spec.trad && spec.trad.src && spec.trad.src.env) || { tempC: 12, precip: 1000, wood: 0.5, stone: 0.3, clay: 0.3, grass: 0.4, forest: 0.3, wetland: 0.1 }; return Mat.withAnimal(e, spec.economy); }
+// 部位iの年あたりの劣化（手入れなし）：素材の傾向 × 気候（湿り・雨・凍結）× 品質（粗い1.3・標準1・精密0.75）
+function yearRate(b, i, env) {
+  const m = Mat.MATERIALS[b.pm[i]]; if (!m) return 0.03; const humid = Math.max(0, Math.min(1, (env.precip || 1000) / 1500)), warm = Math.max(0, Math.min(1, ((env.tempC === undefined ? 12 : env.tempC) - 3) / 20)), rain = Math.max(0, Math.min(1, (env.precip || 1000) / 1200)), frost = Math.max(0, Math.min(1, (2 - (env.tempC === undefined ? 12 : env.tempC)) / 12));
+  return m.yr * (0.55 + m.rot * humid * warm * 1.4 + m.wet * (rain * 0.9 + frost * 0.5)) * [1.3, 1, 0.75][b.q === undefined ? 1 : b.q] * PBASE[i];
+}
+// 建物に素材・品質・状態をつける。ageYears：築年数（開始前の建物は、作った時点までの履歴から推定）。state：ok／vacant／ruin
+function initLife(b, spec, env, ageYears, day0) {
+  const know = spec.trad && spec.trad.know, tech = spec.trad ? spec.trad.tech : 0.4, u = (k) => rnd(spec.seed, b.id, 900 + k);
+  b.pm = Mat.partsOf(b, env, know); b.q = Mat.qualityOf(tech, know, u(0)); const c = [], last = {};
+  for (let i = 0; i < 6; i++) { const r = Math.max(0.0015, yearRate(b, i, env)); let h;
+    if (b.state === 'ok') { const T = (1 - 0.42) / r * (0.85 + u(1 + i) * 0.5), structural = i < 2, since = structural ? ageYears : ageYears % T; h = 1 - r * since; if (!structural && ageYears >= T) last[i] = day0 - Math.round(since * YEAR); if (structural) h = Math.max(h, 0.3 + u(10 + i) * 0.2); }
+    else if (b.state === 'vacant') h = 1 - r * ageYears * 1.15; else h = 0.08 + u(20 + i) * 0.22;   // 空き家：手入れが途絶えて傷む／廃屋：かなり傷んでいる
+    c.push(r3(Math.max(0.05, Math.min(0.99, h)))); }
+  if (b.state === 'ruin') c[1] = Math.min(c[1], 0.15); b.cond = c;
+  if (b.rec) for (const i of Object.keys(last).slice(0, 3)) b.rec.edits.push({ day: last[i], type: 'replace', part: Mat.PARTS[i], synthetic: true });   // 開始前の修繕（推定）
+}
+// 旧い保存・古い建物にも素材・状態をつける（位置・形は変えない）
+function ensureLife(layout, spec, day) {
+  if (layout.life) return; const env = envOf(spec);
+  for (const b of layout.items) { if (b.pm) continue; if (b.state === 'removed') continue; initLife(b, spec, env, Math.max(0, (day - (b.builtDay !== undefined ? b.builtDay : (b.builtYear || 0) * YEAR)) / YEAR), day); }
+  const nH = Math.max(1, (spec.households || []).length); layout.stock = layout.stock || stockInit(nH); layout.proj = layout.proj || []; layout.t = layout.t === undefined ? day : layout.t; layout.life = 1;
+}
+const stockCap = (nH) => 120 + 14 * nH;
+function stockInit(nH) { const o = {}; for (const f of Mat.FAMILIES) o[f] = Math.round(stockCap(nH) * 0.3); o.metal = 0; return o; }
+const afford = (stock, cost) => Object.keys(cost).every(f => (stock[f] || 0) >= cost[f]), spend = (stock, cost, k) => { for (const f of Object.keys(cost)) stock[f] = Math.max(0, r3((stock[f] || 0) - cost[f] * (k === undefined ? 1 : k))); };
+const edit = (b, e) => { if (!b.rec) return; b.rec.edits.push(e); if (b.rec.edits.length > 12) b.rec.edits.splice(0, b.rec.edits.length - 12); };
+// 月の生産：働ける人手 × 資源の豊かさ（暮らし・知識で変わる）。蓄えには上限がある
+function produce(layout, spec, households) {
+  const env = envOf(spec), pop = households.reduce((a, h) => a + (h.members || 0), 0), workers = pop * 0.3, nH = Math.max(1, households.length), know = spec.trad && spec.trad.know, st = layout.stock, cap = stockCap(nH);
+  const rich = { wood: env.wood + (env.forest || 0) * 0.3, stone: env.stone, earth: Math.max(0.25, env.clay || 0), plant: Math.max(env.grass || 0, env.wetland || 0, 0.15) + (env.forest || 0) * 0.1, animal: env.animal, metal: (!know || know.plank !== undefined) && (env.stone || 0) > 0.2 ? 0.08 : 0 };
+  for (const f of Mat.FAMILIES) st[f] = Math.min(cap, r3((st[f] || 0) + workers * Math.min(1, rich[f]) * 0.12));
+}
+// 月の劣化と手入れ。屋根が傷むと雨漏りで床・骨組み・壁の傷みが速くなる（連鎖）
+function decayAndMaintain(layout, spec, day, tick) {
+  const env = envOf(spec), st = layout.stock;
   for (const b of layout.items) {
-    if (b.role !== 'dwelling' || b.house < 0 || b.house >= 4e6 || cur.has(b.house) || b.state === 'removed') continue;
-    if (b.vacantSince === null) { b.vacantSince = day; b.state = 'vacant'; out.vacated++; logEv(layout, day, 'vacate', b); continue; }
-    const yrs = (day - b.vacantSince) / YEAR;
-    if (yrs > 12) { b.state = 'removed'; delete layout.byHouse[b.house]; out.removed++; logEv(layout, day, 'remove', b, { why: '朽ちて撤去' }); } else if (yrs > 5 && b.state !== 'ruin') { b.state = 'ruin'; out.ruined++; logEv(layout, day, 'ruin', b); }
+    if (b.state === 'removed' || b.state === 'building' || !b.cond) continue; const c = b.cond, leak = 1 + 3 * Math.max(0, 0.5 - c[3]);
+    for (let i = 0; i < 6; i++) { const r = yearRate(b, i, env) / 12 * (i === 3 || i === 5 ? 1 : leak) * (b.state === 'ruin' ? 1.6 : 1); c[i] = r3(Math.max(0, c[i] - r)); }
+    if (b.state === 'ok' && b.house >= 0 && (b.hh ? b.hh.length : 1) > 0) {   // 住んでいる家は、手入れされる（屋根・壁・床・開口部を先に。骨組みと基礎は大きく傷んだときだけ）
+      const attention = 0.5 + 0.3 * (spec.trad ? spec.trad.tech : 0.4) + 0.15 * (rnd(spec.seed, b.id, 950 + (tick % 97)) - 0.5);
+      if (rnd(spec.seed, b.id, 960 + tick) < attention) { let worst = -1, wh = 1; for (const i of [3, 2, 4, 5, 1, 0]) { const th = i === 3 ? 0.5 : i < 2 ? 0.35 : 0.42; if (c[i] < th && c[i] < wh) { wh = c[i]; worst = i; } }
+        if (worst >= 0) { const full = Mat.costOf(b, b.pm), fam = Mat.MATERIALS[b.pm[worst]].fam, units = (full[fam] || 1) * (c[worst] < 0.25 ? 0.5 : 0.2) / (Mat.PARTS.length / 3), cost = { [fam]: Math.max(0.5, units) };
+          if (afford(st, cost)) { const rep = c[worst] < 0.25; spend(st, cost); c[worst] = r3(Math.min(0.97, rep ? 0.95 : c[worst] + 0.5)); edit(b, { day, type: rep ? 'replace' : 'repair', part: Mat.PARTS[worst] }); if (rep) logEv(layout, day, 'replace', b, { part: Mat.PARTS[worst] }); } } }
+    }
+    // 状態の移り変わり：骨組み・基礎が傷みすぎたら使えなくなり（廃屋）、さらに進むと崩れる。屋根だけの傷みで建物は消えない
+    if ((b.state === 'ok' || b.state === 'vacant') && safety(c) < 0.18) { const prev = b.state; b.state = 'ruin'; if (prev === 'ok') releaseResidents(layout, b); logEv(layout, day, 'ruin', b, { why: 'decay' }); }
+    else if (b.state === 'ruin' && safety(c) < 0.04) collapse(layout, b, day);
   }
-  // 新しい世帯：空き家（廃屋でないもの）があれば、親族に近い空き家に入る。なければ建てる
+}
+function releaseResidents(layout, b) { for (const h of (b.hh || [b.house])) if (layout.byHouse[h] === b.id) delete layout.byHouse[h]; b.hh = []; }
+function collapse(layout, b, day) {   // 崩れた建物：重い部品を捨て、位置・用途・履歴だけ残す（保存容量の節約）
+  b.state = 'removed'; layout.pathsDirty = true; releaseResidents(layout, b); logEv(layout, day, 'collapse', b);
+  for (const k of ['roof', 'wall', 'door', 'windows', 'ornament', 'trim', 'trimHue', 'ground', 'found', 'entrance', 'cond', 'pm', 'tint', 'wallH']) delete b[k];
+}
+const capOf = (b) => { const a = b.plan.kind === 'round' ? Math.PI * b.plan.w * b.plan.w / 4 : b.plan.w * b.plan.d; return Math.max(2, Math.round(a / 4.2)); };
+const membersOf = (layout, b, byHouse) => (b.hh || [b.house]).reduce((a, h) => a + ((byHouse && byHouse.get(h)) || 0), 0);
+// 設計だけ先に作って、必要量を見積もる（同じ key・世帯の大きさなら、建てるときも同じ設計）
+function previewCost(layout, spec, role, members) { const key = spec.gid * 100003 + layout.nextSeq, b = Arch.designBuilding(spec.seed, spec.trad, role, key, members, 0); b.found = { kind: spec.trad && spec.trad.stilts > 0.5 ? 'stilts' : 'shallow' }; return Mat.costOf(b, Mat.partsOf(b, envOf(spec), spec.trad && spec.trad.know)); }
+function tentify(b, spec) {   // 仮小屋：材料が足りないとき、家族が先に建てる簡素な住まい（天幕・小屋掛け）
+  b.shelter = 'tent'; b.plan.w *= 0.85; if (b.plan.d) b.plan.d *= 0.85; b.wallH = 0.5; if (b.plan.kind === 'rect') { b.roof.kind = 'gable'; b.plan.d = Math.max(b.plan.d, b.plan.w * 1.3); } else b.roof.kind = 'cone';
+  b.roof.pitch = 58; b.roof.h = Math.tan(58 * Math.PI / 180) * (b.roof.kind === 'gable' ? b.plan.w : Math.min(b.plan.w, b.plan.d || b.plan.w)) / 2; b.roof.overhang = 0.15; b.windows = 0; b.ornament = 0; b.trim = false;
+}
+function addProject(layout, p) { p.id = layout.projSeq = (layout.projSeq || 0) + 1; layout.proj.push(p); return p; }
+// 住居の需要：家のない世帯は、空き家・同居・増築・新築・仮小屋を比べて選ぶ。材料が足りなければ工事は待ち（中断）になる
+function demand(layout, spec, households, day, tick) {
+  const byHouse = new Map(households.map(h => [h.house, h.members])), items = layout.items, live = items.filter(b => b.role === 'dwelling' && b.state !== 'removed');
+  const housed = (h) => { const id = layout.byHouse[h.house], b = id && items.find(i => i.id === id); return !!b && (b.state === 'ok' || b.state === 'vacant' || b.state === 'building'); };
+  const inProj = new Set(layout.proj.filter(p => p.house !== undefined && p.state === 'active').map(p => p.house));   // 待ち（材料不足）の世帯は、毎月もう一度判断する
+  let started = 0, labor = Math.max(0.5, Math.min(2, Math.sqrt(households.reduce((a, h) => a + h.members, 0) / 40)));
   for (const h of households) {
-    const id = layout.byHouse[h.house], b = id ? layout.items.find(i => i.id === id) : null;
-    if (b && b.state !== 'removed') { if (b.state === 'vacant' || b.vacantSince !== null) { b.state = 'ok'; b.vacantSince = null; out.reoccupied++; logEv(layout, day, 'reoccupy', b, { by: h.house }); } b.members = h.members; continue; }
-    const anc = h.kin !== undefined ? (layout.items.find(i => i.role === 'dwelling' && i.cluster === h.kin && i.state === 'ok') || null) : null, ref = anc || layout.center;
-    let vac = null, vd = 1e9; for (const i of layout.items) { if (i.role !== 'dwelling' || i.state !== 'vacant') continue; const d = Math.hypot(i.x - ref.x, i.z - ref.z); if (d < vd) { vd = d; vac = i; } }
-    if (vac) { const prev = vac.house; delete layout.byHouse[vac.house]; vac.house = h.house; vac.cluster = h.kin; vac.state = 'ok'; vac.vacantSince = null; vac.members = h.members; layout.byHouse[h.house] = vac.id; out.reoccupied++; logEv(layout, day, 'reoccupy', vac, { by: h.house, prev }); if (vac.rec) vac.rec.edits.push({ day, type: 'reoccupy', by: h.house }); continue; }
-    const nb = addBuilding(layout, spec, 'dwelling', h.house, h.members, anc ? { x: anc.x, z: anc.z } : layout.center, anc ? { radius: 8, spread: 14, prefDist: 0 } : { grow: true }, 0);
-    if (nb) { nb.builtYear = Math.floor(day / YEAR); nb.cluster = h.kin; out.added++; mkRec(nb, day, 'newhouse', h.house, false); logEv(layout, day, 'build', nb, { by: h.house, why: 'newhouse' }); }
+    if (housed(h) || inProj.has(h.house) || started >= 3) continue;
+    const kinB = h.kin !== undefined ? live.filter(b => b.cluster === h.kin && b.state === 'ok') : [], refB = kinB[0] || null, ref = refB || layout.center, noise = (k) => (rnd(spec.seed, h.house, 970 + k + tick) - 0.5) * 0.3, longH = spec.trad && spec.trad.longhouse ? 0.1 : 0;
+    const opts = [];
+    for (const b of live) if (b.state === 'vacant' && b.cond && total(b.cond) > 0.4) opts.push({ k: 'reuse', b, cost: 0.15 + Math.hypot(b.x - ref.x, b.z - ref.z) / 250 - (b.cluster === h.kin ? 0.1 : 0) + noise(1) });
+    for (const b of kinB) { const m = membersOf(layout, b, byHouse), after = (m + h.members) / capOf(b); if (after <= 1.05) opts.push({ k: 'cohabit', b, cost: 0.22 + after * 0.15 - longH + noise(2) }); else if (after <= 1.7) opts.push({ k: 'extend', b, cost: 0.42 + after * 0.1 + noise(3) }); }
+    opts.push({ k: 'new', cost: 0.62 + noise(4) }); const stalled = layout.proj.find(p => p.house === h.house && p.state === 'stalled');
+    const need = previewCost(layout, spec, 'dwelling', h.members); const can = afford(layout.stock, need);
+    opts.sort((a, b) => a.cost - b.cost); let pick = opts.find(o => o.k !== 'new' && o.k !== 'extend') && opts[0].k !== 'new' && opts[0].k !== 'extend' ? opts[0] : opts[0];
+    if (pick.k === 'new' && !can) { const cohab = opts.find(o => o.k === 'cohabit'); const stall = stalled ? (day - stalled.since) / 30 : 0;
+      if (stall >= 18) { pick = { k: 'shelter' }; } else { if (!stalled) { addProject(layout, { kind: 'new', house: h.house, state: 'stalled', since: day, need, why: 'shortage' }); logEv(layout, day, 'stall', null, { house: h.house, by: h.house, why: Object.keys(need).filter(f => (layout.stock[f] || 0) < need[f]).join('・') }); } continue; } }
+    if (pick.k === 'extend') { const ext = Math.round(capOf(pick.b) * 0.5 * 4.2); const cost = Mat.costOf({ plan: { kind: 'rect', w: pick.b.plan.w, d: Math.max(2, ext / Math.max(2, pick.b.plan.w)) }, wallH: pick.b.wallH, roof: pick.b.roof }, pick.b.pm); if (!afford(layout.stock, cost)) { pick = { k: 'new', cost: 1 }; if (!can) continue; } else { spend(layout.stock, cost); addProject(layout, { kind: 'extend', bid: pick.b.id, house: h.house, left: Math.max(1, Math.round(3 / labor)), state: 'active', since: day, cost }); logEv(layout, day, 'project', pick.b, { kind: 'extend', by: h.house }); started++; inProj.add(h.house); continue; } }
+    if (pick.k === 'reuse') { const b = pick.b, prev = b.house; b.hh = [h.house]; b.house = h.house; b.cluster = h.kin; b.state = 'ok'; b.vacantSince = null; b.members = h.members; layout.byHouse[h.house] = b.id; logEv(layout, day, 'reoccupy', b, { by: h.house, prev }); edit(b, { day, type: 'reoccupy', by: h.house }); started++; continue; }
+    if (pick.k === 'cohabit') { const b = pick.b; b.hh = (b.hh || [b.house]).concat([h.house]); layout.byHouse[h.house] = b.id; b.members = (b.members || 0) + h.members; logEv(layout, day, 'cohabit', b, { by: h.house }); edit(b, { day, type: 'cohabit', by: h.house }); started++; continue; }
+    // 新築・仮小屋：場所を決めて建て始める（建設中の建物として置く）
+    const shelter = pick.k === 'shelter', cost = shelter ? { plant: 4, animal: (layout.stock.animal || 0) >= 2 ? 2 : 0, wood: 3 } : need; if (shelter && !afford(layout.stock, cost)) { for (const f of Object.keys(cost)) if ((layout.stock[f] || 0) < cost[f]) delete cost[f]; }
+    const nb = addBuilding(layout, spec, 'dwelling', h.house, h.members, refB ? { x: refB.x, z: refB.z } : layout.center, refB ? { radius: 8, spread: 14, prefDist: 0 } : { grow: true }, 0); if (!nb) continue;
+    if (shelter) tentify(nb, spec); spend(layout.stock, cost); nb.state = 'building'; nb.cluster = h.kin; nb.hh = []; delete layout.byHouse[h.house]; mkRec(nb, day, shelter ? 'shelter' : 'demand', h.house, false);
+    const area = nb.plan.kind === 'round' ? Math.PI * nb.plan.w * nb.plan.w / 4 : nb.plan.w * nb.plan.d;
+    addProject(layout, { kind: shelter ? 'shelter' : 'new', bid: nb.id, house: h.house, left: shelter ? 1 : Math.max(3, Math.round((3 + area / 4) / labor)), state: 'active', since: day, cost }); logEv(layout, day, 'project', nb, { kind: shelter ? 'shelter' : 'new', by: h.house });
+    layout.pathsDirty = true; if (stalled) stalled.state = 'done'; started++; inProj.add(h.house);
   }
-  if (out.added || out.removed) buildPaths(layout, spec);
+  // 過密の解消：定員を大きく超えた家は、増築を考える
+  for (const b of live) { if (b.state !== 'ok' || started >= 3 || layout.proj.some(p => p.bid === b.id && p.state !== 'done')) continue; const m = membersOf(layout, b, byHouse) || b.members || 0; if (m / capOf(b) > 1.3 && rnd(spec.seed, b.id, 980 + tick) < 0.12) { const ext = Math.round(capOf(b) * 0.4 * 4.2), cost = Mat.costOf({ plan: { kind: 'rect', w: b.plan.w, d: Math.max(2, ext / Math.max(2, b.plan.w)) }, wallH: b.wallH, roof: b.roof }, b.pm); if (afford(layout.stock, cost)) { spend(layout.stock, cost); addProject(layout, { kind: 'extend', bid: b.id, house: b.house, left: Math.max(1, Math.round(3 / labor)), state: 'active', since: day, cost, why: 'crowd' }); logEv(layout, day, 'project', b, { kind: 'extend', by: b.house, why: 'crowd' }); started++; } } }
+}
+// 工事の進行：完成（新築・仮小屋・増築）。増築は隣の建物・水・急斜面を避けられなければ失敗（家は変わらない）
+function progress(layout, spec, households, day) {
+  const { terr } = spec;
+  for (const p of layout.proj) {
+    if (p.state === 'stalled') { const need = p.need; if (!need || !afford(layout.stock, need)) continue; p.state = 'done'; continue; }   // 材料が貯まったら、次の月の判断でもう一度（需要側が新築を始める）
+    if (p.state !== 'active') continue; if (--p.left > 0) continue; p.state = 'done'; const b = layout.items.find(i => i.id === p.bid); if (!b || b.state === 'removed') continue;
+    if (p.kind === 'extend') {
+      const add = Math.max(2, Math.round(capOf(b) * 0.4 * 4.2) / Math.max(2, b.plan.w)), old = { x: b.x, z: b.z, d: b.plan.d, w: b.plan.w }; let done = false;
+      if (b.plan.kind === 'rect') { for (const side of [1, -1]) { b.plan.d = old.d + add; b.x = old.x - Math.sin(b.rot) * add / 2 * side; b.z = old.z - Math.cos(b.rot) * add / 2 * side; const sh = shapeOf(b); if (!layout.items.some(o => o !== b && o.state !== 'removed' && overlaps(sh, shapeOf(o), 1.2)) && terr.water(b.x, b.z) < 0.25 && terr.slope(b.x, b.z) < (MAX_SLOPE.dwelling + 4)) { done = true; break; } b.plan.d = old.d; b.x = old.x; b.z = old.z; } }
+      else { b.plan.w = old.w * 1.18; const sh = shapeOf(b); if (!layout.items.some(o => o !== b && o.state !== 'removed' && overlaps(sh, shapeOf(o), 1.0))) done = true; else b.plan.w = old.w; }
+      if (done) { const half = (b.plan.kind === 'rect' ? b.plan.d : b.plan.w) / 2, sn = Math.sin(b.rot), cs = Math.cos(b.rot); b.entrance = { x: b.x + sn * (half + 0.35), z: b.z + cs * (half + 0.35), dx: sn, dz: cs }; b.ground = groundOf(terr, b); for (const i of [2, 3, 4]) if (b.cond) b.cond[i] = r3(Math.min(0.97, (b.cond[i] + 0.95) / 2)); b.extended = (b.extended || 0) + 1; layout.pathsDirty = true; edit(b, { day, type: 'extend', by: p.house }); logEv(layout, day, 'extend', b, { by: p.house, why: p.why }); b.members = Math.max(b.members || 0, 1); }
+      else logEv(layout, day, 'extend-failed', b, { by: p.house });
+    } else {   // 新築・仮小屋の完成：入居する
+      b.state = 'ok'; b.builtYear = Math.floor(day / YEAR); const hh = households.find(h => h.house === p.house);
+      if (hh) { b.hh = [hh.house]; b.house = hh.house; b.members = hh.members; layout.byHouse[hh.house] = b.id; }
+      else { b.state = 'vacant'; b.vacantSince = day; }
+      initLife(Object.assign(b, { state: 'ok' }), spec, envOf(spec), 0, day); if (!hh) b.state = 'vacant'; b.rec.builtDay = p.since; logEv(layout, day, 'build', b, { by: p.house, why: p.kind === 'shelter' ? 'shelter' : 'demand' });
+    }
+  }
+  layout.proj = layout.proj.filter(p => p.state !== 'done' || day - (p.since || 0) < 30);
+  if (layout.proj.length > 60) layout.proj.splice(0, layout.proj.length - 60);
+}
+// 月の進行（遅れて見に来たときも、経過した月だけまとめて進める。世帯は今の状態で近似する。上限20年）
+function advance(layout, spec, households, day) {
+  ensureLife(layout, spec, day); let months = Math.floor((day - layout.t) / 30); if (months <= 0) return 0; months = Math.min(240, months); let t = layout.t;
+  for (let m = 0; m < months; m++) { t += 30; const tick = Math.floor(t / 30); produce(layout, spec, households); decayAndMaintain(layout, spec, t, tick); demand(layout, spec, households, t, tick); progress(layout, spec, households, t); }
+  layout.t += months * 30; if (months === 240) layout.t = day; return months;
+}
+// 世帯の変化に合わせて更新する：いなくなった世帯の家は空き家になり（その後は傷み方しだいで廃屋→崩壊。固定年数では消さない）、新しい世帯は需要の仕組みで住まいを得る。day は暦の日数
+function syncLayout(layout, spec, households, day) {
+  const cur = new Set(households.map(h => h.house)), out = { added: 0, vacated: 0, ruined: 0, removed: 0, reoccupied: 0, started: 0 }; ensureLife(layout, spec, day);
+  for (const b of layout.items) {   // 住人がいなくなった家
+    if (b.role !== 'dwelling' || b.house < 0 || b.house >= 4e6 || b.state === 'removed' || b.state === 'building' || b.state === 'ruin') continue;
+    const hh = b.hh || [b.house], stay = hh.filter(x => cur.has(x)); if (stay.length === hh.length && b.state === 'ok') continue;
+    if (stay.length !== hh.length) { for (const x of hh) if (!cur.has(x) && layout.byHouse[x] === b.id) delete layout.byHouse[x]; b.hh = stay; }
+    if (stay.length === 0 && b.state === 'ok') { b.vacantSince = day; b.state = 'vacant'; out.vacated++; logEv(layout, day, 'vacate', b); } else if (stay.length && b.vacantSince !== null) { b.state = 'ok'; b.vacantSince = null; }
+  }
+  for (const h of households) {   // 戻ってきた世帯（空き家に残っていた住まい）
+    const id = layout.byHouse[h.house], b = id ? layout.items.find(i => i.id === id) : null;
+    if (b && b.state !== 'removed') { if (b.state === 'vacant') { b.state = 'ok'; b.vacantSince = null; out.reoccupied++; logEv(layout, day, 'reoccupy', b, { by: h.house }); } b.members = Math.max(h.members, b.hh && b.hh.length > 1 ? b.members : 0) || h.members; if (!b.hh) b.hh = [h.house]; else if (!b.hh.includes(h.house)) b.hh.push(h.house); }
+  }
+  const before = layout.items.length, st0 = layout.items.filter(i => i.state === 'ruin').length, rem0 = layout.items.filter(i => i.state === 'removed').length, pj0 = layout.proj.filter(p => p.state === 'active').length;
+  advance(layout, spec, households, day);
+  out.added = layout.items.length - before; out.ruined = Math.max(0, layout.items.filter(i => i.state === 'ruin').length - st0); out.removed = layout.items.filter(i => i.state === 'removed').length - rem0; out.started = layout.proj.filter(p => p.state === 'active').length - pj0;
+  if (out.added || out.removed || layout.pathsDirty) { buildPaths(layout, spec); layout.pathsDirty = false; }
   return out;
 }
-// ---- NPC による建設・改築・解体の要求（接続口）：{ type:'build'|'renovate'|'demolish', house, day }。NPC の意思決定が入るまでは、呼ぶ側が積む
+// ---- NPC による建設・改築・解体の要求（接続口）：{ type:'build'|'renovate'|'demolish', house, day }。build は需要の仕組み（材料・工事期間）に乗る
 function requestBuild(layout, type, house, day, by) { layout.queue.push({ type, house, day, by }); }
 function applyRequests(layout, spec, households, day) {
-  const res = { built: 0, renovated: 0, demolished: 0 };
+  const res = { built: 0, renovated: 0, demolished: 0, queued: 0 }; ensureLife(layout, spec, day);
   for (const q of layout.queue.splice(0)) {
-    const id = layout.byHouse[q.house], b = id ? layout.items.find(i => i.id === id) : null;
-    if (q.type === 'build' && !b) { const h = households.find(x => x.house === q.house); if (h) { const nb = addBuilding(layout, spec, 'dwelling', h.house, h.members, layout.center, { grow: true }, 0); if (nb) { nb.builtYear = Math.floor(day / YEAR); res.built++; mkRec(nb, day, 'request', q.by !== undefined ? q.by : q.house, false); logEv(layout, day, 'build', nb, { by: q.by !== undefined ? q.by : q.house, why: 'request' }); } } }
-    else if (q.type === 'renovate' && b) { const nd = Arch.designBuilding(spec.seed, spec.trad, b.role, b.id, b.members, 0); for (const k of ['plan', 'wallH', 'roof', 'wall', 'door', 'windows', 'ornament', 'tint', 'trim', 'trimHue']) b[k] = nd[k]; b.builtYear = Math.floor(day / YEAR); b.age = 0; res.renovated++; if (b.rec) b.rec.edits.push({ day, type: 'renovate', by: q.by !== undefined ? q.by : q.house }); logEv(layout, day, 'renovate', b, { by: q.by !== undefined ? q.by : q.house }); }
-    else if (q.type === 'demolish' && b) { b.state = 'removed'; delete layout.byHouse[q.house]; res.demolished++; logEv(layout, day, 'demolish', b, { by: q.by !== undefined ? q.by : q.house }); }
+    const id = layout.byHouse[q.house], b = id ? layout.items.find(i => i.id === id) : null, by = q.by !== undefined ? q.by : q.house;
+    if (q.type === 'build' && !b) { const h = households.find(x => x.house === q.house); if (h && !layout.proj.some(p => p.house === h.house && p.state !== 'done')) { addProject(layout, { kind: 'new', house: h.house, state: 'stalled', since: day, need: previewCost(layout, spec, 'dwelling', h.members), why: 'request' }); res.queued++; } }
+    else if (q.type === 'renovate' && b) { const keep = { cond: b.cond }; const nd = Arch.designBuilding(spec.seed, spec.trad, b.role, b.id, b.members, 0); for (const k of ['plan', 'wallH', 'roof', 'wall', 'door', 'windows', 'ornament', 'tint', 'trim', 'trimHue', 'form', 'porch']) b[k] = nd[k]; b.builtYear = Math.floor(day / YEAR); b.age = 0; initLife(b, spec, envOf(spec), 0, day); edit(b, { day, type: 'renovate', by }); logEv(layout, day, 'renovate', b, { by }); res.renovated++; }
+    else if (q.type === 'demolish' && b) { b.state = 'removed'; releaseResidents(layout, b); delete layout.byHouse[q.house]; logEv(layout, day, 'demolish', b, { by }); res.demolished++; }
   }
-  if (res.built || res.demolished) buildPaths(layout, spec);
+  if (res.demolished || res.renovated) layout.pathsDirty = true;
+  if (layout.pathsDirty) { buildPaths(layout, spec); layout.pathsDirty = false; }
   return res;
 }
 // ---- 地形のキャッシュ：描画側の地形（重い）を、集落の周りだけ一度に測って、配置が使う軽い関数にする。sample(x,z) → { h: 高さ(m), w: 水深(m) }。R：範囲（m）、step：間隔（m）
@@ -294,6 +422,6 @@ function footprintPoints(b) {
   const ring = b.plan.kind === 'rect' ? [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]] : [0, 1, 2, 3, 4, 5, 6, 7].map(k => [Math.cos(k * Math.PI / 4) * hw, Math.sin(k * Math.PI / 4) * hw]);
   return [[0, 0]].concat(ring).map(([lx, lz]) => [lx * cs + lz * sn, -lx * sn + lz * cs]);
 }
-const api = { upgradeLayout, refreshFields, PURPOSE, terrainFromSamples, footprintPoints, foundationFor: decideFoundation, settleHistory, layoutSettlement, syncLayout, requestBuild, applyRequests, shapeOf, overlaps };
+const api = { advance, ensureLife, initLife, grade, total, safety, GRADE_JP, yearRate, envOf, capOf, previewCost, upgradeLayout, refreshFields, PURPOSE, terrainFromSamples, footprintPoints, foundationFor: decideFoundation, settleHistory, layoutSettlement, syncLayout, requestBuild, applyRequests, shapeOf, overlaps };
 if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohSettle = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
