@@ -485,7 +485,7 @@
 #rpgPage-map>.rpg-meta{display:none}
 .rpg-map-layout{position:relative;display:block;flex:1;min-height:0}
 .rpg-map-box{position:absolute;inset:0;border-radius:3px}
-.rpg-map-side{position:absolute;z-index:1;right:8px;bottom:8px;width:176px;min-height:0;max-height:none;overflow:visible;display:block}
+.rpg-map-pbtn{position:absolute;z-index:3;left:8px;top:8px;min-height:34px;padding:2px 10px;background:#13252cee;color:#e4dec6;border:1px solid #6c796d;border-radius:6px;font-size:12px}.rpg-map-side.hide{display:none}.rpg-map-side select.wide{width:100%;min-height:36px;margin-top:6px;background:#21303a;color:#e4dec6;border:1px solid #3b4d57;border-radius:6px;font-size:12px}.rv-btns{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}.rv-btns .wide{flex:1 1 45%;min-height:36px}.rv-layers{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0;font-size:12px}.rv-layers input{margin-right:3px}.rv-bt{margin:8px 0 2px;font-size:13px;color:#f0ca68}.rpg-map-side.mv{top:8px;width:300px;max-height:calc(100% - 16px);overflow-y:auto;background:#13252cee;padding:6px;border-radius:8px;-webkit-overflow-scrolling:touch}.rpg-map-side{position:absolute;z-index:1;right:8px;bottom:8px;width:176px;min-height:0;max-height:none;overflow:visible;display:block}
 .rpg-map-side h2,.rpg-map-key,.rpg-map-help{display:none}
 .rpg-map-buttons{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .rpg-map-buttons .wide{grid-column:auto}
@@ -607,6 +607,7 @@ body.rpg-menu-open .hud, body.rpg-menu-open #joystick, body.rpg-menu-open #actio
 
 .rv-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding-bottom: 10px; border-bottom: 1px solid #81918a33; }
 .rv-head h2 { margin: 2px 0 0; font-size: 20px; font-weight: 600; }
+.rpg-mv { margin-top: 8px; font-size: 12px; } .rpg-mv-key { font-size: 11px; color: #b8c4b0; margin: 4px 0; line-height: 1.7; } .rpg-mv-key u { display: inline-block; width: 10px; height: 10px; margin: 0 2px 0 6px; vertical-align: -1px; } .rpg-mv-list { max-height: 150px; overflow-y: auto; margin-top: 6px; -webkit-overflow-scrolling: touch; } .rpg-mv-row { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 34px; background: #21303a; color: #e4dec6; border: 1px solid #3b4d57; border-radius: 6px; margin-bottom: 3px; padding: 2px 8px; font-size: 12px; text-align: left; } .rpg-mv-row.on { border-color: #f0ca68; } .rpg-mv-row i { width: 10px; height: 10px; border-radius: 2px; border: 2px solid #fff; flex: none; } .rpg-mv-row small { margin-left: auto; color: #9db0a0; }
 .rv-site { font-size: 12px; color: #a9c29c; border: 1px solid #5b7a52; border-radius: 14px; padding: 4px 10px; } .rv-hidden { display: none; }
 .rv-stage { padding: 4px 12px; border: 1px solid #b39860; border-radius: 14px; color: #e5cc97; font-size: 13px; }
 .rv-nums { display: flex; gap: 16px; flex-wrap: wrap; margin-left: auto; font-size: 13px; color: #b3bfbc; } .rv-nums b { color: #eee9de; font-size: 16px; } .rv-lead { color: #e4c58b; }
@@ -11601,7 +11602,7 @@ globalThis.__wohForage = { context: forageContext, fauna: () => fauna, FA: () =>
     [['inventory', 'bag', '持ち物'], ['map', 'map', 'マップ'], ['missions', 'scroll', 'ミッション'], ['village', 'people', '村'], ['tech', 'spark', '技術'], ['life', 'spark', '暮らし'], ['system', 'clock', '時間・記録']].map((t, i) => '<button class="rpg-tab" id="rpgTab-' + t[0] + '" role="tab" aria-controls="rpgPage-' + t[0] + '" aria-selected="' + (i === 0) + '"' + (i ? ' tabindex="-1"' : '') + '>' + icon(t[1]) + t[2] + '</button>').join('') +
     '</nav><div class="rpg-head-right"><button class="rpg-close" id="rpgClose" aria-label="ゲームに戻る">戻る<span>Esc</span></button></div></header>' +
     '<section class="rpg-panel" id="rpgPage-inventory" role="tabpanel" aria-labelledby="rpgTab-inventory"><div class="rpg-meta"><label class="rpg-sort"><select id="rpgSort" aria-label="所持品の並び順"><option value="category">種類順</option><option value="name">名前順</option><option value="bulk">かさ順</option></select></label><span class="rpg-money" id="rpgVitals"></span><span id="rpgWeight" title="持ち物の枠"></span></div><div class="rpg-inventory"><div class="rpg-bag"><div id="rpgEquipment" class="rpg-equipment" role="group" aria-label="身につけているもの"></div><div class="rpg-filters scrollable" id="rpgCategories">' + [['all', 'すべて'], ['food', '食料'], ['material', '素材'], ['tool', '道具']].map(k => '<button class="rpg-filter" data-category="' + k[0] + '" aria-pressed="' + (k[0] === 'all') + '">' + k[1] + '</button>').join('') + '</div><div id="rpgItemGrid" class="rpg-item-grid scrollable" aria-label="所持品"></div></div><aside class="rpg-detail scrollable" id="rpgItemDetail" aria-label="アイテムの詳細"></aside></div></section>' +
-    '<section class="rpg-panel" id="rpgPage-map" role="tabpanel" aria-labelledby="rpgTab-map" hidden><div class="rpg-meta"><span id="rpgMapCaption">世界の地図</span><span>北が上</span></div><div class="rpg-map-layout"><div class="rpg-map-box"><canvas id="rpgMapCanvas" aria-label="現在の世界とプレイヤーの現在地"></canvas><div class="rpg-map-loading" id="rpgMapLoading">地図を準備しています…</div></div><aside class="rpg-map-side scrollable"><h2>世界地図</h2><div class="rpg-map-buttons"><button id="rpgMapOut" aria-label="地図を縮小">−</button><button id="rpgMapIn" aria-label="地図を拡大">＋</button><button class="wide" id="rpgMapPlayer">現在地</button><button class="wide" id="rpgMapFit">全体を表示</button></div><div class="rpg-map-key"><i></i>現在地</div><div class="rpg-map-key"><i class="land"></i>陸地・植生</div><div class="rpg-map-key"><i class="water"></i>海・湖・川</div><p class="rpg-map-help">ドラッグで移動、＋／−で拡大縮小。<br>PCではホイールも使えます。</p></aside></div></section>' +
+    '<section class="rpg-panel" id="rpgPage-map" role="tabpanel" aria-labelledby="rpgTab-map" hidden><div class="rpg-meta"><span id="rpgMapCaption">世界の地図</span><span>北が上</span></div><div class="rpg-map-layout"><div class="rpg-map-box"><canvas id="rpgMapCanvas" aria-label="現在の世界とプレイヤーの現在地"></canvas><button class="rpg-map-pbtn" id="rpgMapPanelBtn" type="button">▶ 情報を閉じる</button><div class="rpg-map-loading" id="rpgMapLoading">地図を準備しています…</div></div><aside class="rpg-map-side scrollable"><h2>世界地図</h2><div class="rpg-map-buttons"><button id="rpgMapOut" aria-label="地図を縮小">−</button><button id="rpgMapIn" aria-label="地図を拡大">＋</button><button class="wide" id="rpgMapPlayer">現在地</button><button class="wide" id="rpgMapFit">全体を表示</button><button class="wide dev-only" id="rpgMapVillages" aria-pressed="false">村を表示（開発者）</button><select class="wide" id="rpgMapMode" aria-label="表示モード"></select></div><div class="rpg-mv" id="rpgMapVInfo" hidden></div><div class="rpg-map-key"><i></i>現在地</div><div class="rpg-map-key"><i class="land"></i>陸地・植生</div><div class="rpg-map-key"><i class="water"></i>海・湖・川</div><p class="rpg-map-help">ドラッグで移動、＋／−で拡大縮小。<br>PCではホイールも使えます。</p></aside></div></section>' +
     '<section class="rpg-panel" id="rpgPage-missions" role="tabpanel" aria-labelledby="rpgTab-missions" hidden><div class="rpg-missions"><div class="rpg-mission-list-wrap"><div class="rpg-filters" id="rpgMissionFilters"><button class="rpg-filter" data-status="active" aria-pressed="true">進行中 <span id="rpgActiveCount"></span></button><button class="rpg-filter" data-status="done" aria-pressed="false">完了 <span id="rpgDoneCount"></span></button></div><div class="rpg-mission-list scrollable" id="rpgMissionList"></div></div><article class="rpg-detail scrollable" id="rpgMissionDetail" aria-label="ミッションの詳細"></article></div></section>' +
     '<section class="rpg-panel" id="rpgPage-village" role="tabpanel" aria-labelledby="rpgTab-village" hidden><div class="scrollable" id="rpgVillage"></div></section>' +
     '<section class="rpg-panel" id="rpgPage-tech" role="tabpanel" aria-labelledby="rpgTab-tech" hidden><div class="rt-bar"><div class="rt-seg"><button data-tm="tech" aria-pressed="true">技術から</button><button data-tm="person" aria-pressed="false">人物から</button></div><input id="rtSearch" type="search" placeholder="技術名・人物名で検索" autocomplete="off"><select id="rtSort" aria-label="並べ替え"></select><button id="rtSolo" class="rt-solo" aria-pressed="false">熟練者が1人だけ</button></div><div class="rt-cats" id="rtCats"></div><div class="rt-body"><div class="rt-list scrollable" id="rtList"></div><div class="rt-detail scrollable" id="rtDetail"></div></div></section>' +
@@ -11669,16 +11670,178 @@ globalThis.__wohForage = { context: forageContext, fauna: () => fauna, FA: () =>
   function clampMap() { if (!paint) return; const mx = Math.min(.5, paint.w / (2 * paint.scaleW)), my = Math.min(.5, paint.h / (2 * paint.scaleH)); mapState.cx = Math.max(mx, Math.min(1 - mx, mapState.cx)); mapState.cy = Math.max(my, Math.min(1 - my, mapState.cy)); }
   function playerLocation() { const v = window.__chunkPreview, t = v && v.state && v.state.terrain, p = v && v.markerPoint; return t && p ? { x: p.xM / t.widthM, y: p.yM / t.heightM, angle: v.character && v.character.rotation ? Math.PI - v.character.rotation.y : 0 } : null; }
   function buildMapCache(world) { const pal = window.__wohNative.cartography, ctx = mapCache.getContext('2d'), im = ctx.createImageData(512, 512), W = world.stats.width, H = world.stats.height; for (let y = 0; y < 512; y++) for (let x = 0; x < 512; x++) { const i = Math.round(y / 511 * (H - 1)) * W + Math.round(x / 511 * (W - 1)), o = (y * 512 + x) * 4, k = pal.index(world.elev[i]) * 3; let c = world.type[i] ? pal.biomes[world.biome[i]] : null; if (world.water[i]) c = world.water[i] === 2 ? pal.lake : pal.river; for (let n = 0; n < 3; n++) im.data[o + n] = c ? c[n] : pal.lut[k + n]; im.data[o + 3] = 255; } ctx.putImageData(im, 0, 0); mapWorld = world; mapRev = window.__wohNative.revision; }
+  // ---- 世界マップの村の表示（4段階：世界全体 → 地域（拡大）→ 集落詳細 → 3D現地）
+  // 通常プレイ：自分の集団だけ。開発者モード：全ての集団（未探索を含む）。詳細は既存の配置（g.layout）の座標とIDをそのまま描く（別の生成はしない）
+  const mapVil = { on: false, sel: 0, hit: [], mode: 'stage', view: 'world', panel: true, d: null }, SETTLE_NAME = ['野営（移動）', '半定住', '定住（村）'], SETTLE_COL = ['#b9b9b9', '#ecc94b', '#62d26f'], SITE_COL = { river: '#4a9ae6', coast: '#3fd9d9', lake: '#a583e8', spring: '#f0963c' };
+  const ECON_COL = { gather: '#7fb26a', hunt: '#c9805a', fish: '#5a9ec9', farm: '#d3b24a', herd: '#b48ad0', tool: '#9aa0a8', trade: '#e8e0a0' }, ECON_NAME = { gather: '採集', hunt: '狩猟', fish: '漁', farm: '農耕', herd: '牧畜', tool: '道具づくり', trade: '交易' };
+  const MODES = [['stage', '通常地図（発展段階）'], ['pop', '人口・居住'], ['eth', '民族・文化'], ['econ', '生産・経済'], ['build', '建築物・道路（集落詳細）']];
+  const isDev = () => document.body.classList.contains('woh-dev'), effOn = () => (isDev() ? mapVil.on : true);
+  const ownGroup = () => { const pl = people && people.player, P = people && people.npc; return pl && pl.id >= 0 && !pl.over ? people.groups[P.group[pl.id] - 1] : null; };
+  function mapVilList() { if (!people) return []; if (isDev()) return people.groups.filter(g => g.alive); const o = ownGroup(); return o && o.alive ? [o] : []; }
+  const terrainOf = () => window.__chunkPreview && window.__chunkPreview.state && window.__chunkPreview.state.terrain;
+  let econCache = { day: -1e9, m: new Map() };
+  function econOf(g) { const day = people.npc.day; if (Math.abs(day - econCache.day) > 30) econCache = { day, m: new Map() }; if (!econCache.m.has(g.id)) { let best = 'gather', bv = -1; try { const e = window.WohPeople.peopleEconomy(people, g.id); for (const k of Object.keys(ECON_COL)) if ((e[k] || 0) > bv) { bv = e[k] || 0; best = k; } } catch (er) { } econCache.m.set(g.id, best); } return econCache.m.get(g.id); }
+  function heat(t) { t = Math.max(0, Math.min(1, t)); const a = [[60, 120, 200], [236, 201, 75], [220, 70, 60]], k = t * 2, i = Math.min(1, Math.floor(k)), f = k - i, c = a[i].map((v, j) => Math.round(v + (a[i + 1][j] - v) * f)); return 'rgb(' + c.join(',') + ')'; }
+  function markerColor(g, maxPop) { const m = mapVil.mode; if (m === 'pop') return heat(Math.sqrt((g.pop || 0) / Math.max(1, maxPop))); if (m === 'eth') { const e = people.ethnicities[g.ethId - 1], c = e && e.color ? e.color : [160, 160, 160]; return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')'; } if (m === 'econ') return ECON_COL[econOf(g)]; return SETTLE_COL[g.settle || 0]; }
+  // 世界の縮尺（1ピクセルが何メートルか）と、見やすい長さの目盛り
+  function niceLen(m) { const p = Math.pow(10, Math.floor(Math.log10(m))), f = m / p; return (f >= 5 ? 5 : f >= 2 ? 2 : 1) * p; }
+  function drawScale(ctx, w, h, mpp) { const m = niceLen(mpp * 90), px = m / mpp, x = 12, y = h - 14; ctx.save(); ctx.strokeStyle = '#102028'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + px, y); ctx.moveTo(x, y - 4); ctx.lineTo(x, y + 4); ctx.moveTo(x + px, y - 4); ctx.lineTo(x + px, y + 4); ctx.stroke(); ctx.strokeStyle = '#f3efe0'; ctx.lineWidth = 2; ctx.stroke(); ctx.fillStyle = '#f3efe0'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'left'; ctx.lineWidth = 3; const txt = m >= 1000 ? (m / 1000) + ' km' : m + ' m'; ctx.strokeStyle = '#102028'; ctx.strokeText(txt, x, y - 8); ctx.fillText(txt, x, y - 8); ctx.restore(); }
+  function drawMapVillages(ctx, x, y, w, h) {
+    mapVil.hit = []; if (!effOn()) return; const t = terrainOf(); if (!t) return; const gs = mapVilList(); let maxPop = 1; for (const g of gs) maxPop = Math.max(maxPop, g.pop || 0);
+    const sc = Math.min(1, 0.55 + mapState.zoom * 0.1), pts = [];
+    for (const g of gs) { const px = x + g.x / t.width * paint.scaleW, py = y + g.y / t.height * paint.scaleH; if (px < -20 || py < -20 || px > w + 20 || py > h + 20) continue; pts.push({ g, px, py }); }
+    pts.sort((a, b) => (b.g.pop || 0) - (a.g.pop || 0)); const marks = [];   // 密集：大きい集団を優先し、近すぎる小さな集団は「＋N」にまとめる
+    for (const q of pts) { const m = marks.find(k => Math.hypot(k.px - q.px, k.py - q.py) < 11 * sc + 4); if (m) { m.n++; m.pop += q.g.pop || 0; } else marks.push({ g: q.g, px: q.px, py: q.py, n: 0, pop: q.g.pop || 0 }); }
+    ctx.save(); ctx.textAlign = 'center'; ctx.font = 'bold 10px system-ui'; const rects = [];
+    for (const k of marks) { const g = k.g, px = k.px, py = k.py, r = Math.min(14, 3.5 + Math.sqrt(g.pop || 0) * 0.45) * sc, sel = mapVil.sel === g.id, lv = g.settle || 0;
+      ctx.fillStyle = markerColor(g, maxPop); ctx.strokeStyle = (g.site && SITE_COL[g.site.kind]) || '#ffffff'; ctx.lineWidth = sel ? 4 : 2.5;
+      ctx.beginPath(); if (lv === 2) ctx.rect(px - r, py - r, r * 2, r * 2); else if (lv === 1) { ctx.moveTo(px, py - r * 1.2); ctx.lineTo(px + r * 1.1, py + r * 0.8); ctx.lineTo(px - r * 1.1, py + r * 0.8); ctx.closePath(); } else ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      if (sel) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(px, py, r + 7, 0, Math.PI * 2); ctx.stroke(); }
+      // 数字：重なる場合は出さない（選んだ集団・自分の集団は必ず出す）
+      const txt = (k.n ? '+' + k.n : '') + (k.n ? ' ' : '') + Math.round(g.pop || 0), tw = ctx.measureText(txt).width + 4, rc = { x: px - tw / 2, y: py - r - 15, w: tw, h: 12 }, hitR = rects.some(o => rc.x < o.x + o.w && rc.x + rc.w > o.x && rc.y < o.y + o.h && rc.y + rc.h > o.y), mine = ownGroup() && ownGroup().id === g.id;
+      if ((mapState.zoom >= 2 && !hitR) || sel || mine) { rects.push(rc); ctx.lineWidth = 3; ctx.strokeStyle = '#102028'; ctx.strokeText(txt, px, py - r - 5); ctx.fillStyle = k.n ? '#ffd9a0' : '#f3efe0'; ctx.fillText(txt, px, py - r - 5); }
+      if (mine) { ctx.fillStyle = '#f0ca68'; ctx.fillText('★', px, py + 4); }
+      mapVil.hit.push({ id: g.id, x: px, y: py, r: r + 8, n: k.n }); }
+    ctx.restore();
+  }
+  function legendHtml() {
+    const m = mapVil.mode, u = (c, ex) => '<u style="background:' + c + ';' + (ex || '') + '"></u>';
+    let a = '';
+    if (m === 'pop') a = '色＝人口（青：少ない → 赤：多い）'; else if (m === 'eth') a = '色＝民族（その民族の色）'; else if (m === 'econ') a = Object.keys(ECON_COL).map(k => u(ECON_COL[k]) + ECON_NAME[k]).join(' ') + '（いちばん多い生業）';
+    else a = u('#b9b9b9', 'border-radius:50%') + '野営 ' + u('#ecc94b') + '半定住 ' + u('#62d26f') + '村';
+    return '<div class="rpg-mv-key">' + a + '<br>形：丸＝野営、三角＝半定住、四角＝村　輪：<b style="color:#4a9ae6">川</b> <b style="color:#3fd9d9">海岸</b> <b style="color:#a583e8">湖畔</b> <b style="color:#f0963c">湧水</b><br><b>数字＝その集団の人口（人）</b>。「＋N」＝近くて重なった集団の数（タップで拡大）。大きさ＝人口。★＝あなたの集団</div>';
+  }
+  function growthLabel(g) { try { return window.WohPeople.peopleGrowth(people, g.id).label; } catch (e) { return ''; } }
+  function mapVilInfo() {
+    const box = $('rpgMapVInfo'), side = box && box.parentNode; if (!box) return; const dev = isDev(), village = mapVil.view === 'village';
+    box.hidden = !effOn() && !village; $('rpgMapVillages').setAttribute('aria-pressed', String(mapVil.on)); $('rpgMapVillages').textContent = mapVil.on ? '村の表示：オン' : '村を表示（開発者）';
+    side.classList.toggle('mv', !box.hidden && mapVil.panel); side.classList.toggle('hide', !mapVil.panel); $('rpgMapPanelBtn').textContent = mapVil.panel ? '▶ 情報を閉じる' : '◀ 情報';
+    $('rpgMapMode').value = village ? 'build' : mapVil.mode; if (box.hidden) return;
+    if (village) { villageInfo(box); return; }
+    const gs = mapVilList(), W = window.WohPeople, lv = [0, 0, 0], kinds = {}; let pop = 0; for (const g of gs) { lv[g.settle || 0]++; pop += g.pop || 0; const k = g.site ? W.SITE_LABEL[g.site.kind] : '不明'; kinds[k] = (kinds[k] || 0) + 1; }
+    const g = gs.find(q => q.id === mapVil.sel); let det = '<p class="rpg-subtle">地図の印をタップすると選べます。選んだ印をもう一度タップするか、下の「集落の内部を見る」で内部へ。空き地のタップで選択解除。</p>';
+    if (g) { det = '<div class="rv-row"><span>名前</span><b>' + esc(peGrpName(g.id)) + '</b></div><div class="rv-row"><span>民族</span><b>' + esc(peEthName(g.ethId)) + '</b></div><div class="rv-row"><span>形態</span><b>' + SETTLE_NAME[g.settle || 0] + '・' + esc(growthLabel(g)) + '</b></div><div class="rv-row"><span>立地</span><b>' + (g.site ? W.SITE_LABEL[g.site.kind] : '不明') + '</b></div><div class="rv-row"><span>人口</span><b>' + Math.round(g.pop) + '人</b></div><div class="rv-row"><span>生業</span><b>' + ECON_NAME[econOf(g)] + '</b></div><div class="rv-row"><span>建物</span><b>' + (g.layout ? g.layout.items.filter(b => b.state !== 'removed').length + '棟' : '未生成') + '</b></div><div class="rv-btns"><button class="wide" id="rpgMapVIn">集落の内部を見る</button><button class="wide" id="rpgMapVGo">3Dで現地へ</button><button class="wide" id="rpgMapVClr">選択解除</button></div>'; }
+    const rows = dev ? gs.slice().sort((a, b) => b.pop - a.pop).slice(0, 60).map(q => '<button class="rpg-mv-row' + (q.id === mapVil.sel ? ' on' : '') + '" data-vid="' + q.id + '"><i style="background:' + SETTLE_COL[q.settle || 0] + ';border-color:' + ((q.site && SITE_COL[q.site.kind]) || '#fff') + '"></i><span>' + esc(peGrpName(q.id)) + '</span><small>' + SETTLE_NAME[q.settle || 0].slice(0, 2) + '・' + (q.site ? W.SITE_LABEL[q.site.kind] : '不明') + '・' + Math.round(q.pop) + '人</small></button>').join('') : '';
+    box.innerHTML = '<div class="rv-row"><span>集団</span><b>' + gs.length + '（野営 ' + lv[0] + '／半定住 ' + lv[1] + '／村 ' + lv[2] + '）</b></div><div class="rv-row"><span>総人口</span><b>' + Math.round(pop) + '人</b></div>' + (dev ? '<div class="rv-row"><span>立地</span><b>' + Object.keys(kinds).map(k => k + ' ' + kinds[k]).join('・') + '</b></div>' : '') + legendHtml() + det + (rows ? '<div class="rpg-mv-list">' + rows + '</div>' : '');
+    wireInfo(g);
+  }
+  function wireInfo(g) { const go = $('rpgMapVGo'); if (go && g) go.onclick = () => { setOpen(false); try { window.__wohAvatar.toBlock(g.x, g.y, 0, 0); } catch (e) { } }; const vi = $('rpgMapVIn'); if (vi && g) vi.onclick = () => openVillage(g.id); const cl = $('rpgMapVClr'); if (cl) cl.onclick = () => { mapVil.sel = 0; drawMap(); }; }
+  // ---- 集落詳細（既存の配置データを描く）
+  const ROLE_COL = { dwelling: '#d9a35f', hall: '#e0524f', storehouse: '#8fb0d8', workshop: '#b58ad8', rack: '#5fc9c0' }, ROLE_JP = { dwelling: '住居', hall: '集会所', storehouse: '倉庫', workshop: '作業場', rack: '干し棚' };
+  const STATE_JP = { ok: '使用中', vacant: '空き家', ruin: '廃屋', removed: '撤去' }, MAT_JP = { timber: '木材', reed: '葦', mud: '泥・土壁', stone: '石', thatch: '茅', shingle: '板葺き', slab: '石板', bark: '樹皮', hide: '皮', sod: '芝土', brick: '日干し煉瓦', wattle: '編み壁', bamboo: '竹', clay: '粘土' }, ROOF_JP = { gable: '切妻', hip: '寄棟', cone: '円錐', flat: '平屋根', dome: 'ドーム' }, FOUND_JP = { shallow: '浅い基礎', stilts: '高床', platform: '盛り土の土台', terrace: '段切りの土台', sunken: '半地下（竪穴）' };
+  const FACIL_SZ = { pit: [2, 2, '貯蔵穴'], rack: [3.2, 1.4, '干し棚'], granary: [3.2, 3.2, '高床倉庫'], well: [1.6, 1.6, '井戸'], pen: [8, 6, '家畜囲い'], hearth: [2.2, 2.2, '共同炉'], kiln: [3, 3, '窯'] };
+  function openVillage(gid) {
+    const g = people.groups[gid - 1]; if (!g) return; mapVil.sel = gid; let r = { ok: !!g.layout }; if (!g.layout) { if (isDev()) r = window.__wohMapData.ensureLayout(gid); }
+    mapVil.view = 'village'; mapVil.d = { gid, zoom: 3, cx: 0, cz: 0, sel: null, bg: null, why: r.ok ? '' : (r.why || (isDev() ? '' : 'まだ見ていない集落です（近づくと配置が決まります）')), fit: true, layers: { terrain: 1, roads: 1, bld: 1, fac: 1 } };
+    const L = g.layout; if (L) { let ext = 20; for (const b of L.items) if (b.state !== 'removed') ext = Math.max(ext, Math.hypot(b.x - L.center.x, b.z - L.center.z) + 8); mapVil.d.ext = ext; mapVil.d.cx = L.center.x; mapVil.d.cz = L.center.z; }
+    drawMap();
+  }
+  function closeVillage() { mapVil.view = 'world'; mapVil.d = null; drawMap(); }
+  function buildBg(d, g) {   // 地形の背景：配置の原点の周り 200m を、既存の地形から一度だけ測る（水・高さ・陰影）
+    const tg = window.__wohMapData.terrainGrid(g.id, 200, 5); if (!tg) return null; const n = tg.n, cv = document.createElement('canvas'); cv.width = cv.height = n; const c = cv.getContext('2d'), im = c.createImageData(n, n);
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) { const k = j * n + i, hh = tg.H[k], wd = tg.W[k], gx = (tg.H[j * n + Math.min(n - 1, i + 1)] - tg.H[j * n + Math.max(0, i - 1)]) / (2 * tg.step), gz = (tg.H[Math.min(n - 1, j + 1) * n + i] - tg.H[Math.max(0, j - 1) * n + i]) / (2 * tg.step), shade = Math.max(-0.35, Math.min(0.35, (-gx * 0.7 - gz * 0.7) * 1.4)); let r, gg, b;
+      if (wd > 0.12) { const t = Math.min(1, wd / 3); r = 70 - 35 * t; gg = 140 - 50 * t; b = 190 - 40 * t; } else { r = 104; gg = 132; b = 78; const sh = 1 + shade; r *= sh; gg *= sh; b *= sh; if (wd > 0.02) { r += 30; gg += 20; } }
+      const o = k * 4; im.data[o] = r; im.data[o + 1] = gg; im.data[o + 2] = b; im.data[o + 3] = 255; }
+    c.putImageData(im, 0, 0); return { cv, R: tg.R };
+  }
+  const vx = (d, w, X) => w / 2 + (X - d.cx) * d.zoom, vy = (d, h, Z) => h / 2 + (Z - d.cz) * d.zoom;
+  function polyOf(b) { const s = window.WohSettle.shapeOf(b); if (s.round) return { round: true, x: s.x, z: s.z, r: s.hw }; const cs = Math.cos(s.rot), sn = Math.sin(s.rot), P = [[-s.hw, -s.hd], [s.hw, -s.hd], [s.hw, s.hd], [-s.hw, s.hd]].map(([lx, lz]) => [s.x + lx * cs + lz * sn, s.z - lx * sn + lz * cs]); return { round: false, p: P }; }
+  function drawVillage(ctx, w, h) {
+    const d = mapVil.d, g = d && people.groups[d.gid - 1], L = g && g.layout;
+    if (!L) { ctx.fillStyle = '#e4dec6'; ctx.font = '14px system-ui'; ctx.textAlign = 'center'; ctx.fillText(d && d.why ? d.why : 'この集落の配置はまだありません', w / 2, h / 2); return; }
+    if (d.fit) { d.zoom = Math.max(0.8, Math.min(40, Math.min(w, h) / (2 * (d.ext || 40) + 20))); d.fit = false; }
+    if (!d.bg && !d.bgTried) { d.bgTried = true; try { d.bg = buildBg(d, g); } catch (e) { d.bg = null; } }
+    const z = d.zoom, X = (x) => vx(d, w, x), Y = (zz) => vy(d, h, zz), at = g.layout.at; ctx.save();
+    // 地形・水
+    if (d.layers.terrain && d.bg) { ctx.imageSmoothingEnabled = true; ctx.drawImage(d.bg.cv, X(-d.bg.R), Y(-d.bg.R), d.bg.R * 2 * z, d.bg.R * 2 * z); } else { ctx.fillStyle = '#566b45'; ctx.fillRect(0, 0, w, h); }
+    // 農地
+    for (const f of L.fields || []) { const cs = Math.cos(f.rot), sn = Math.sin(f.rot), P = [[-f.hw, -f.hd], [f.hw, -f.hd], [f.hw, f.hd], [-f.hw, f.hd]].map(([lx, lz]) => [X(f.x + lx * cs + lz * sn), Y(f.z - lx * sn + lz * cs)]); ctx.fillStyle = '#b8a64a'; ctx.strokeStyle = '#6e6a2a'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(P[0][0], P[0][1]); for (let i = 1; i < 4; i++) ctx.lineTo(P[i][0], P[i][1]); ctx.closePath(); ctx.globalAlpha = .85; ctx.fill(); ctx.globalAlpha = 1; ctx.stroke(); }
+    // 広場・焚き火
+    const pc = L.center, pr = L.plaza.r * z; ctx.fillStyle = L.plaza.kind === 'hearth' ? '#8a7350' : '#a08a5e'; ctx.globalAlpha = .9; ctx.beginPath(); ctx.arc(X(pc.x), Y(pc.z), Math.max(2, pr), 0, 7); ctx.fill(); ctx.globalAlpha = 1; ctx.fillStyle = '#f08a30'; ctx.beginPath(); ctx.arc(X(pc.x), Y(pc.z), Math.max(2, 0.6 * z), 0, 7); ctx.fill();
+    // 道（太さ＝通る家の数）
+    if (d.layers.roads) { ctx.lineCap = 'round'; ctx.strokeStyle = '#d9c398'; for (const p of L.paths) { ctx.lineWidth = Math.max(1.5, p.w * z); ctx.beginPath(); ctx.moveTo(X(p.x1), Y(p.z1)); ctx.lineTo(X(p.x2), Y(p.z2)); ctx.stroke(); } ctx.lineCap = 'butt'; }
+    if (L.waterAccess) { ctx.fillStyle = '#3a8fd0'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(X(L.waterAccess.x), Y(L.waterAccess.z), Math.max(3, 1.2 * z), 0, 7); ctx.fill(); ctx.stroke(); }
+    // 柵・境界（定義されているときだけ）
+    if (L.fence && L.fence.length) { ctx.fillStyle = '#5b3f22'; for (const p of L.fence) ctx.fillRect(X(p.x) - 1.2, Y(p.z) - 1.2, 2.4, 2.4); }
+    // 施設：集団が建てたもの（位置が決まっているものだけ）
+    if (d.layers.fac) { const fs = g.facilSpots || {}; for (const k of Object.keys(fs)) { const sz = FACIL_SZ[k]; if (!sz) continue; for (const sp of fs[k] || []) { if (!sp) continue; ctx.save(); ctx.translate(X(sp.x), Y(sp.z)); ctx.rotate(-(sp.rot || 0)); ctx.fillStyle = '#e8c35a'; ctx.strokeStyle = '#3a2e12'; ctx.lineWidth = 1.5; ctx.fillRect(-sz[0] / 2 * z, -sz[1] / 2 * z, sz[0] * z, sz[1] * z); ctx.strokeRect(-sz[0] / 2 * z, -sz[1] / 2 * z, sz[0] * z, sz[1] * z); ctx.restore(); if (z >= 5) { ctx.fillStyle = '#fff'; ctx.strokeStyle = '#102028'; ctx.lineWidth = 3; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center'; ctx.strokeText(sz[2], X(sp.x), Y(sp.z) - sz[1] / 2 * z - 3); ctx.fillText(sz[2], X(sp.x), Y(sp.z) - sz[1] / 2 * z - 3); } } } }
+    if (g.build && g.build.spot) { ctx.setLineDash([4, 3]); ctx.strokeStyle = '#ffe08a'; ctx.lineWidth = 2; ctx.strokeRect(X(g.build.spot.x) - 2 * z, Y(g.build.spot.z) - 2 * z, 4 * z, 4 * z); ctx.setLineDash([]); }
+    // 建物
+    const day = people.npc.day, year = Math.floor(day / 360); d.hit = [];
+    if (d.layers.bld) for (const b of L.items) { if (b.state === 'removed') continue; const P = polyOf(b); ctx.beginPath(); if (P.round) ctx.arc(X(P.x), Y(P.z), P.r * z, 0, 7); else { ctx.moveTo(X(P.p[0][0]), Y(P.p[0][1])); for (let i = 1; i < 4; i++) ctx.lineTo(X(P.p[i][0]), Y(P.p[i][1])); ctx.closePath(); }
+      const ruin = b.state === 'ruin', vac = b.state === 'vacant', sel = d.sel === b.id; ctx.globalAlpha = ruin ? .55 : 1; ctx.fillStyle = ruin ? '#7a766c' : vac ? '#c9b690' : (ROLE_COL[b.role] || '#ccc'); ctx.fill(); ctx.globalAlpha = 1; ctx.strokeStyle = sel ? '#ffffff' : '#2a2118'; ctx.lineWidth = sel ? 3 : 1.2; if (vac || ruin) ctx.setLineDash([3, 2]); ctx.stroke(); ctx.setLineDash([]);
+      if (b.entrance) { ctx.strokeStyle = '#2a2118'; ctx.lineWidth = Math.max(1.5, 0.35 * z); ctx.beginPath(); ctx.moveTo(X(b.entrance.x - b.entrance.dx * 0.35), Y(b.entrance.z - b.entrance.dz * 0.35)); ctx.lineTo(X(b.entrance.x + b.entrance.dx * 0.15), Y(b.entrance.z + b.entrance.dz * 0.15)); ctx.stroke(); }
+      if (z >= 7 && !ruin) { ctx.fillStyle = '#1c1812'; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center'; ctx.fillText((ROLE_JP[b.role] || '').slice(0, 2), X(b.x), Y(b.z) + 3); }
+      d.hit.push({ b, P }); }
+    ctx.restore(); drawScale(ctx, w, h, 1 / z);
+    ctx.fillStyle = '#13252ce8'; ctx.fillRect(w / 2 - 25, 0, 50, 24); ctx.fillStyle = '#e4dec6'; ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'center'; ctx.fillText('北 N', w / 2, 17);
+    $('rpgMapCaption').textContent = peGrpName(g.id) + ' · 集落詳細 · 1m=' + z.toFixed(1) + 'px';
+  }
+  function pointIn(P, x, z) { if (P.round) return Math.hypot(x - P.x, z - P.z) <= P.r; let neg = false, pos = false; for (let i = 0; i < 4; i++) { const a = P.p[i], b = P.p[(i + 1) % 4], c = (b[0] - a[0]) * (z - a[1]) - (b[1] - a[1]) * (x - a[0]); if (c < 0) neg = true; if (c > 0) pos = true; } return !(neg && pos); }
+  function villageInfo(box) {
+    const d = mapVil.d, g = d && people.groups[d.gid - 1], L = g && g.layout, W = window.WohPeople;
+    let html = '<div class="rv-btns"><button class="wide" id="rpgMapVBack">← 世界へ戻る</button><button class="wide" id="rpgMapVGo">3Dで現地へ</button></div>';
+    if (!g) { box.innerHTML = html; wireVillage(null); return; }
+    html += '<div class="rv-row"><span>名前</span><b>' + esc(peGrpName(g.id)) + '</b></div><div class="rv-row"><span>民族</span><b>' + esc(peEthName(g.ethId)) + '</b></div><div class="rv-row"><span>形態</span><b>' + SETTLE_NAME[g.settle || 0] + '・' + esc(growthLabel(g)) + '</b></div><div class="rv-row"><span>立地</span><b>' + (g.site ? W.SITE_LABEL[g.site.kind] : '不明') + '</b></div><div class="rv-row"><span>人口</span><b>' + Math.round(g.pop) + '人</b></div>';
+    if (!L) { html += '<p class="rpg-subtle">' + esc(d.why || 'この集落の配置はまだありません') + '</p>' + (isDev() ? '<button class="wide" id="rpgMapVMake">配置を作る（近づいたときと同じ方法）</button>' : ''); box.innerHTML = html; wireVillage(g); return; }
+    const cnt = {}, st = { ok: 0, vacant: 0, ruin: 0 }; for (const b of L.items) { if (b.state === 'removed') continue; cnt[b.role] = (cnt[b.role] || 0) + 1; st[b.state] = (st[b.state] || 0) + 1; }
+    const year = Math.floor(people.npc.day / 360), hist = g.hist;
+    html += '<div class="rv-row"><span>建物</span><b>' + Object.keys(cnt).map(r => (ROLE_JP[r] || r) + ' ' + cnt[r]).join('・') + '</b></div><div class="rv-row"><span>状態</span><b>使用中 ' + st.ok + '・空き家 ' + (st.vacant || 0) + '・廃屋 ' + (st.ruin || 0) + '</b></div><div class="rv-row"><span>広場</span><b>' + (L.plaza.kind === 'hearth' ? '焚き火のみ' : '広場あり') + '</b></div><div class="rv-row"><span>道・畑</span><b>道 ' + L.paths.length + '本・畑 ' + (L.fields || []).length + '</b></div><div class="rv-row"><span>境界</span><b>' + (L.fence && L.fence.length ? '柵あり（杭 ' + L.fence.length + '）' : '定義なし') + '</b></div>' + (hist ? '<div class="rv-row"><span>歴史</span><b>成立から' + hist.age + '年・' + ({ seasonal: '季節の野営', young: '若い', established: '安定', declining: '衰退' }[hist.status] || hist.status) + '</b></div>' : '');
+    const fk = Object.keys(g.facil || {}).filter(k => g.facil[k] > 0).map(k => (FACIL_SZ[k] ? FACIL_SZ[k][2] : k) + ' ' + g.facil[k]); html += '<div class="rv-row"><span>施設</span><b>' + (fk.length ? fk.join('・') : 'なし') + '</b></div>';
+    html += '<div class="rv-layers">' + [['terrain', '地形'], ['roads', '道'], ['bld', '建物'], ['fac', '施設']].map(([k, n]) => '<label><input type="checkbox" data-layer="' + k + '"' + (d.layers[k] ? ' checked' : '') + '>' + n + '</label>').join('') + '</div>';
+    html += '<div class="rpg-mv-key">色：' + Object.keys(ROLE_COL).map(r => '<u style="background:' + ROLE_COL[r] + '"></u>' + ROLE_JP[r]).join(' ') + ' <u style="background:#c9b690"></u>空き家 <u style="background:#7a766c"></u>廃屋 <u style="background:#e8c35a"></u>施設 <u style="background:#b8a64a"></u>畑<br>線＝道（太さ＝通る家の数）　建物の短い線＝入口　青い点＝水場</div>';
+    const b = d.sel && L.items.find(i => i.id === d.sel);
+    if (b) { const kin = b.cluster !== undefined ? '親族グループ ' + b.cluster : '—'; html += '<h4 class="rv-bt">選んだ建物</h4><div class="rv-row"><span>用途</span><b>' + (ROLE_JP[b.role] || b.role) + '</b></div><div class="rv-row"><span>状態</span><b>' + (STATE_JP[b.state] || b.state) + '</b></div>' + (b.role === 'dwelling' && b.house < 1e6 ? '<div class="rv-row"><span>利用者</span><b>世帯 ' + b.house + '（' + (b.members || 0) + '人）</b></div><div class="rv-row"><span>親族</span><b>' + kin + '</b></div>' : '') + '<div class="rv-row"><span>築年</span><b>' + (b.builtYear !== undefined ? '築' + Math.max(0, year - b.builtYear) + '年' : '不明') + '</b></div><div class="rv-row"><span>壁・屋根</span><b>' + (MAT_JP[b.wall && b.wall.mat] || (b.wall && b.wall.mat) || '?') + '・' + (ROOF_JP[b.roof && b.roof.kind] || '') + (MAT_JP[b.roof && b.roof.mat] || (b.roof && b.roof.mat) || '') + '</b></div><div class="rv-row"><span>基礎</span><b>' + (b.found ? FOUND_JP[b.found.kind] || b.found.kind : '—') + '</b></div><div class="rv-row"><span>大きさ</span><b>' + b.plan.w.toFixed(1) + (b.plan.kind === 'rect' ? '×' + b.plan.d.toFixed(1) : '（円形）') + ' m</b></div><div class="rv-row"><span>位置</span><b>中心から ' + Math.round(Math.hypot(b.x - L.center.x, b.z - L.center.z)) + ' m</b></div><div class="rv-row"><span>ID</span><b>' + b.id + '</b></div>'; }
+    else html += '<p class="rpg-subtle">建物をタップすると、用途・利用者・築年・材料などを表示します。空き地のタップで解除。</p>';
+    box.innerHTML = html; wireVillage(g);
+  }
+  function wireVillage(g) {
+    const bk = $('rpgMapVBack'); if (bk) bk.onclick = closeVillage; wireInfo(g); const mk = $('rpgMapVMake'); if (mk) mk.onclick = () => { openVillage(g.id); };
+    for (const c of document.querySelectorAll('#rpgMapVInfo [data-layer]')) c.onchange = () => { mapVil.d.layers[c.dataset.layer] = c.checked ? 1 : 0; drawMap(); };
+  }
+  // ---- 操作：ドラッグ・ピンチ・ホイール・タップ（世界／集落詳細で共通）
+  const ptrs = new Map(); let gest = null;
+  function worldZoomAt(k, ax, ay) { if (!paint) return; const w = paint.w, h = paint.h, nz = Math.max(1, Math.min(32, mapState.zoom * k)), kk = nz / mapState.zoom; if (kk === 1) return; const fx = mapState.cx + (ax - w / 2) / paint.scaleW, fy = mapState.cy + (ay - h / 2) / paint.scaleH; mapState.zoom = nz; mapState.cx = fx - (ax - w / 2) / (paint.scaleW * kk); mapState.cy = fy - (ay - h / 2) / (paint.scaleH * kk); drawMap(); }
+  function villageZoomAt(k, ax, ay) { const d = mapVil.d; if (!d || !paint0) return; const w = paint0.w, h = paint0.h, nz = Math.max(0.8, Math.min(40, d.zoom * k)), X = d.cx + (ax - w / 2) / d.zoom, Z = d.cz + (ay - h / 2) / d.zoom; d.zoom = nz; d.cx = X - (ax - w / 2) / nz; d.cz = Z - (ay - h / 2) / nz; drawMap(); }
+  let paint0 = null;
+  function mapTap(px, py) {
+    if (mapVil.view === 'village') { const d = mapVil.d, g = d && people.groups[d.gid - 1]; if (!g || !g.layout || !paint0) return; const X = d.cx + (px - paint0.w / 2) / d.zoom, Z = d.cz + (py - paint0.h / 2) / d.zoom; let hit = null; for (const q of (d.hit || []).slice().reverse()) if (pointIn(q.P, X, Z)) { hit = q.b; break; } d.sel = hit ? hit.id : null; drawMap(); return; }
+    let best = null, bd = 1e9; for (const m of mapVil.hit) { const dd = Math.hypot(m.x - px, m.y - py); if (dd < m.r && dd < bd) { bd = dd; best = m; } }
+    if (!best) { if (mapVil.sel) { mapVil.sel = 0; drawMap(); } return; }
+    if (best.n && mapState.zoom < 28) { worldZoomAt(2.5, best.x, best.y); return; }   // まとまった印：拡大してほどく
+    if (mapVil.sel === best.id) { openVillage(best.id); return; }   // 選んでいる印をもう一度：集落の内部へ
+    mapVil.sel = best.id; drawMap();
+  }
+  { const cvs = $('rpgMapCanvas');
+    cvs.addEventListener('wheel', e => { e.preventDefault(); const r = cvs.getBoundingClientRect(), k = e.deltaY > 0 ? 0.8 : 1.25; (mapVil.view === 'village' ? villageZoomAt : worldZoomAt)(k, e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+    cvs.addEventListener('pointerdown', e => { if (e.button > 0) return; cvs.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); gest = ptrs.size === 1 ? { moved: 0, x0: e.clientX, y0: e.clientY } : { pinch: true, moved: 99 }; });
+    cvs.addEventListener('pointermove', e => { const p = ptrs.get(e.pointerId); if (!p) return; const r = cvs.getBoundingClientRect(), village = mapVil.view === 'village';
+      if (ptrs.size >= 2) { const o = [...ptrs.entries()].find(([id]) => id !== e.pointerId)[1], d0 = Math.hypot(p.x - o.x, p.y - o.y); p.x = e.clientX; p.y = e.clientY; const d1 = Math.hypot(p.x - o.x, p.y - o.y); if (d0 > 8 && d1 > 8) (village ? villageZoomAt : worldZoomAt)(d1 / d0, (p.x + o.x) / 2 - r.left, (p.y + o.y) / 2 - r.top); return; }
+      const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY; if (gest) gest.moved = Math.max(gest.moved, Math.hypot(e.clientX - gest.x0, e.clientY - gest.y0));
+      if (village) { const d = mapVil.d; if (d) { d.cx -= dx / d.zoom; d.cz -= dy / d.zoom; drawMap(); } } else if (paint) { mapState.cx -= dx / paint.scaleW; mapState.cy -= dy / paint.scaleH; drawMap(); } });
+    const up = e => { const had = ptrs.delete(e.pointerId); if (!had) return; const r = cvs.getBoundingClientRect(); if (e.type === 'pointerup' && gest && !gest.pinch && gest.moved < 6 && ptrs.size === 0) mapTap(e.clientX - r.left, e.clientY - r.top); if (ptrs.size === 0) gest = null; };
+    for (const ev of ['pointerup', 'pointercancel']) cvs.addEventListener(ev, up);
+  }
+  $('rpgMapVillages').onclick = () => { mapVil.on = !mapVil.on; drawMap(); };
+  $('rpgMapPanelBtn').onclick = () => { mapVil.panel = !mapVil.panel; drawMap(); };
+  $('rpgMapMode').innerHTML = MODES.map(m => '<option value="' + m[0] + '">' + m[1] + '</option>').join('');
+  $('rpgMapMode').onchange = e => { const v = e.target.value; if (v === 'build') { const g = people && people.groups[mapVil.sel - 1]; if (g) openVillage(g.id); else { toast('先に村を選んでください'); $('rpgMapMode').value = mapVil.mode; } } else { mapVil.mode = v; if (mapVil.view === 'village') mapVil.view = 'world'; drawMap(); } };
+  $('rpgMapVInfo').addEventListener('click', e => { const b = e.target.closest('[data-vid]'); if (!b) return; mapVil.sel = +b.dataset.vid; focusOn(mapVil.sel, 6); });
+  function focusOn(gid, z) { const g = people.groups[gid - 1], t = terrainOf(); if (g && t) { mapState.zoom = Math.max(z || 4, mapState.zoom); mapState.cx = g.x / t.width; mapState.cy = g.y / t.height; } drawMap(); }
+  // 世界統計・ランキングなど、他の画面から村を選んで詳細へ移動するための入口
+  window.__wohMap = { focusVillage(gid, o) { if (!people || !people.groups[gid - 1]) return false; setOpen(true, 'map'); mapVil.view = 'world'; mapVil.sel = gid; if (isDev()) mapVil.on = true; focusOn(gid, 8); if (o && o.detail) openVillage(gid); return true; }, openVillage, get selected() { return mapVil.sel; } };
   function drawMap() {
-    if (!open || tab !== 'map') return; const nat = window.__wohNative, world = nat && nat.world, ready = !!world; $('rpgMapLoading').hidden = ready;
+    if (!open || tab !== 'map') return; mapVilInfo(); const nat = window.__wohNative, world = nat && nat.world, ready = !!world; $('rpgMapLoading').hidden = ready;
     for (const id of ['rpgMapIn', 'rpgMapOut', 'rpgMapPlayer', 'rpgMapFit']) $(id).disabled = !ready;
     if (!ready) return;
     try { if (mapWorld !== world || mapRev !== nat.revision) buildMapCache(world); } catch (e) { $('rpgMapLoading').hidden = false; $('rpgMapLoading').textContent = '地図を作れませんでした'; return; }
     const cv = $('rpgMapCanvas'), r = cv.getBoundingClientRect(), w = r.width, h = r.height; if (w < 1 || h < 1) return;
-    const dpr = Math.min(2, devicePixelRatio || 1); cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = '#142831'; ctx.fillRect(0, 0, w, h);
+    const dpr = Math.min(2, devicePixelRatio || 1); cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = '#142831'; ctx.fillRect(0, 0, w, h); paint0 = { w, h };
+    if (mapVil.view === 'village') { drawVillage(ctx, w, h); return; }
     const aspect = (world.stats.height - 1) / (world.stats.width - 1), base = Math.min(w, h / aspect) * .93; paint = { w, h, scaleW: base * mapState.zoom, scaleH: base * mapState.zoom * aspect }; clampMap();
     const x = w / 2 - mapState.cx * paint.scaleW, y = h / 2 - mapState.cy * paint.scaleH; ctx.imageSmoothingEnabled = false; ctx.drawImage(mapCache, x, y, paint.scaleW, paint.scaleH);
     const p = playerLocation(); if (p) { const px = x + p.x * paint.scaleW, py = y + p.y * paint.scaleH; ctx.save(); ctx.translate(px, py); ctx.rotate(p.angle); ctx.fillStyle = '#edd08a28'; ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#f0ca68'; ctx.strokeStyle = '#1c292f'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(6, 7); ctx.lineTo(0, 4); ctx.lineTo(-6, 7); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore(); }
+    drawMapVillages(ctx, x, y, w, h); { const t = terrainOf(); if (t) drawScale(ctx, w, h, t.widthM / paint.scaleW); }
     ctx.fillStyle = '#13252ce8'; ctx.fillRect(w / 2 - 25, 0, 50, 24); ctx.fillStyle = '#e4dec6'; ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'center'; ctx.fillText('北 N', w / 2, 17); ctx.fillText('南 S', w / 2, h - 9); ctx.fillText('西 W', 20, h / 2); ctx.fillText('東 E', w - 20, h / 2);
     $('rpgMapCaption').textContent = '世界地図 · Seed ' + nat.seed + ' · ×' + mapState.zoom;
   }
@@ -11816,13 +11979,9 @@ globalThis.__wohForage = { context: forageContext, fauna: () => fauna, FA: () =>
   $('rpgItemGrid').onclick = e => { const b = e.target.closest('[data-item]'); if (!b) return; selected = b.dataset.item; renderInventory(); };
   $('rpgMissionFilters').onclick = e => { const b = e.target.closest('[data-status]'); if (b) { mFilter = b.dataset.status; mSel = null; renderMissions(); } };
   $('rpgMissionList').onclick = e => { const b = e.target.closest('[data-mission]'); if (b) { mSel = b.dataset.mission; renderMissions(); } };
-  const zoom = k => { mapState.zoom = Math.max(1, Math.min(16, mapState.zoom * k)); drawMap(); };
-  $('rpgMapIn').onclick = () => zoom(2); $('rpgMapOut').onclick = () => zoom(.5); $('rpgMapFit').onclick = () => { Object.assign(mapState, { zoom: 1, cx: .5, cy: .5 }); drawMap(); };
-  $('rpgMapPlayer').onclick = () => { const p = playerLocation(); if (p) { mapState.zoom = Math.max(4, mapState.zoom); mapState.cx = p.x; mapState.cy = p.y; drawMap(); } };
-  const mc = $('rpgMapCanvas'); mc.addEventListener('wheel', e => { e.preventDefault(); zoom(e.deltaY > 0 ? .5 : 2); }, { passive: false });
-  mc.addEventListener('pointerdown', e => { if (!paint || e.button > 0) return; drag = { id: e.pointerId, x: e.clientX, y: e.clientY }; mc.setPointerCapture(e.pointerId); });
-  mc.addEventListener('pointermove', e => { if (!drag || drag.id !== e.pointerId || !paint) return; mapState.cx -= (e.clientX - drag.x) / paint.scaleW; mapState.cy -= (e.clientY - drag.y) / paint.scaleH; drag.x = e.clientX; drag.y = e.clientY; drawMap(); });
-  for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) mc.addEventListener(ev, e => { if (drag && drag.id === e.pointerId) drag = null; });
+  const zoom = k => { const w = paint0 ? paint0.w / 2 : 0, hh = paint0 ? paint0.h / 2 : 0; (mapVil.view === 'village' ? villageZoomAt : worldZoomAt)(k, w, hh); };
+  $('rpgMapIn').onclick = () => zoom(2); $('rpgMapOut').onclick = () => zoom(.5); $('rpgMapFit').onclick = () => { mapVil.view = 'world'; mapVil.d = null; Object.assign(mapState, { zoom: 1, cx: .5, cy: .5 }); drawMap(); };
+  $('rpgMapPlayer').onclick = () => { mapVil.view = 'world'; mapVil.d = null; const p = playerLocation(); if (p) { mapState.zoom = Math.max(4, mapState.zoom); mapState.cx = p.x; mapState.cy = p.y; } drawMap(); };
   // キー：I＝持ち物、M＝マップ、J＝ミッション、Esc＝閉じる
   document.addEventListener('keydown', e => {
     const typing = /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.target.isContentEditable;
@@ -15453,6 +15612,15 @@ function dwEnsure(pe,g,c){
   if(!dwIdx.has(g.id)){const m=new Map();for(const it of g.layout.items)m.set(it.id,it);dwIdx.set(g.id,m);} else if(dwIdx.get(g.id).size!==g.layout.items.length){const m=new Map();for(const it of g.layout.items)m.set(it.id,it);dwIdx.set(g.id,m);}
   return rec?{layout:g.layout,cE:rec.cE}:null;
 }
+// 世界マップの集落詳細用：既存の配置（g.layout）をそのまま使う。未生成の集落だけ、ゲームが近づいたときに作るのと同じ関数で作る（別の生成はしない）
+globalThis.__wohMapData={
+  ensureLayout(gid){const pe=window.__geo&&window.__geo.people,g=pe&&pe.groups[gid-1];if(!g||!g.alive)return {ok:false,why:'集団がありません'};if(g.layout)return {ok:true,made:false};
+    if(!g.hist)return {ok:false,why:'歴史がまだ決まっていません'};if(!dwM)dwInit();const cb=globalThis.WohPeople.peCampCenter(g),q=state.terrain.gridToMeters(cb.x,cb.y);dwLayoutBudget=1;let r=null;try{r=dwEnsure(pe,g,q);}catch(e){return {ok:false,why:String(e&&e.message||e)};}return r?{ok:true,made:true}:{ok:false,why:'作れませんでした'};},
+  // 配置の原点（メートル）と、その周りの地形（高さ・水深）。配置の座標は原点からの相対メートル
+  terrainGrid(gid,R,step){const pe=window.__geo&&window.__geo.people,g=pe&&pe.groups[gid-1];if(!g||!g.layout||!g.layout.at)return null;const q=state.terrain.gridToMeters(g.layout.at.x,g.layout.at.y),n=Math.floor(2*R/step)+1,H=new Float32Array(n*n),Wt=new Float32Array(n*n);
+    for(let j=0;j<n;j++)for(let i=0;i<n;i++){const xM=q.xM-R+i*step,yM=q.yM-R+j*step,p=state.terrain.sampleBase(xM,yM),w=state.water.sample(xM,yM,p.baseElevationM);H[j*n+i]=p.baseElevationM;Wt[j*n+i]=w?w.depthM:rvDepthAt(xM,yM);}
+    return {n,R,step,H,W:Wt,origin:q};}
+};
 function dwScan(pe,V){
   const t0=performance.now();
   if(!dwM)dwInit();const S=globalThis.WohSettle,A=globalThis.WohArch;if(!S||!A)return;
