@@ -13,7 +13,9 @@ const R = 0.3; // player radius (m)
 const inside = (r, x, y) => x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1;
 const inset = (r, m) => ({ x0: r.x0 + m, x1: r.x1 - m, y0: r.y0 + m, y1: r.y1 - m });
 
+import { createBellonaInterior } from './bellona-interior.mjs';
 export function createInterior(layout, { hull = null } = {}) {
+  if (layout?.kind === 'bellona') return createBellonaInterior(); // the Bellona study's own floors, stairs and obstacles
   if (!layout || !Array.isArray(layout.decks) || !Array.isArray(layout.rooms)) throw new TypeError('interior layout needs decks and rooms');
   const decks = new Map(), rooms = new Map(), doors = layout.doors ?? [], ladders = layout.ladders ?? [];
   for (const d of layout.decks) {

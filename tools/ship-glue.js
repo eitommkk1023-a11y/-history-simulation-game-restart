@@ -186,12 +186,13 @@
   const gameScene = () => cp.character?.parent ?? nat.scene; // the native view has its own scene (the one the player marker lives in)
   function disposeMesh(m) { m.group.parent?.remove(m.group); m.dispose(); }
   function makeMesh(rec) {
-    const dd = Ship.sampleDesigns[rec.designId], isPinta = !!dd.evidence;
-    const o = Ship.buildShipObject(THREE_, { hull: dd.hull, vessel: rec.vessel, visual: { ...dd.visual, customRig: isPinta } });
+    const dd = Ship.sampleDesigns[rec.designId], isBellona = dd.kind === 'bellona', isPinta = !!dd.evidence && !isBellona;
+    const o = Ship.buildShipObject(THREE_, { hull: dd.hull, vessel: rec.vessel, visual: { ...dd.visual, customRig: isPinta || isBellona } });
     if (isPinta) Ship.addPintaStructure(THREE_, o, dd, rec.vessel);
+    if (isBellona) Ship.addBellonaModel(THREE_, o, dd, globalThis.__BELLONA_ASSETS);
     if (rec.crew) Ship.addCrewFigures(THREE_, o, rec.crew);
     o.interior = rec.crew?.interior ?? Ship.createInterior(dd.interior ?? Ship.sampleInteriors[dd.interiorId], { hull: Ship.createHull(dd.hull) });
-    Ship.addInterior(THREE_, o, o.interior); Ship.setViewDeck(o, o.weatherDeck);
+    if (isBellona) { o.setView(o.interior.startPosition()); } else { Ship.addInterior(THREE_, o, o.interior); Ship.setViewDeck(o, o.weatherDeck); }
     if (isPinta) { o.furn = () => Ship.addFurnishings(THREE_, o, Ship.planFurnishings({ design: dd, interior: o.interior, massItems: rec.massItems ?? dd.massItems })); o.furn(); o.loadRef = rec.massItems ?? null; }
     o.pos = o.interior.startPosition();
     gameScene().add(o.group);
@@ -205,7 +206,7 @@
       const st = rec.vessel.state, xM = ref.xM + st.X, yM = ref.yM - st.Y;
       try { const q = T.toLocal(xM, yM, 0, S.origin); m.group.position.set(q.x, q.y, q.z); m.group.visible = true; } catch (_) { m.group.visible = false; continue; }
       m.group.rotation.order = 'YXZ'; // yaw, then pitch about the beam axis, then roll about the keel axis
-      const sea = seaState.info(st.X, st.Y, 0), wm = Ship.waveMotion(sea, { psi: st.psi, u: st.u, lengthM: m.L ?? 21, beamM: 6.4, rollPeriodS: 5 }, simT);
+      const sea = seaState.info(st.X, st.Y, 0), wm = Ship.waveMotion(sea, { psi: st.psi, u: st.u, lengthM: m.L ?? 21, beamM: 6.4, rollPeriodS: m.rollPeriodS ?? 5 }, simT);
       m.sea = { ...sea, ...wm }; // for the HUD
       // the game's sea surface is flat, so the visual motion is toned down: a full wave heave would sink the deck below the sea plane
       m.group.rotation.set(wm.pitchDeg * 0.6 * DEG, -st.psi, (-st.heelDeg + wm.rollDeg * 0.6) * DEG); m.group.position.y += Math.max(-0.12, Math.min(0.25, wm.heaveM * 0.2));
@@ -242,7 +243,7 @@
     if (!ref) { ref = { xM: spot.xM, yM: spot.yM }; makeEnv(); }
     const heading = openWaterHeading(spot.xM, spot.yM);
     const id = fleet.addShip({ designId, X: spot.xM - ref.xM, Y: ref.yM - spot.yM, headingDeg: heading, crew: Ship.sampleDesigns[designId].evidence ? 'empty' : false });
-    if (fleet.get(id).crew) crewVillagers(id, 5);
+    if (fleet.get(id).crew) crewVillagers(id, Ship.sampleDesigns[designId].crewSize ?? 5);
     fleet.get(id).vessel.state.u = 1.5; // already under way, so the rudder bites
     ctl[id] = { heading, held: 0, auto: true, oar: 0.8 };
     { const dx = spot.xM - mp.xM, dy = spot.yM - mp.yM, km = Math.hypot(dx, dy) / 1000, dir = ['東', '南東', '南', '南西', '西', '北西', '北', '北東'][Math.round(Math.atan2(dy, dx) / (Math.PI / 4) + 8) % 8]; toast(`${id}（${Ship.sampleDesigns[designId].label}）を海に出した：${dir}へ約${km.toFixed(1)}km`); } refreshList(); save();
@@ -334,7 +335,7 @@
   function deckPoint(m) {
     m.group.updateMatrixWorld(true);
     const { cgX, draft } = m.frame;
-    return m.group.localToWorld(new THREE_.Vector3(m.pos.y, m.interior.deckZ(m.pos.deck) - draft + 0.02 + (m.climbZ || 0), cgX - m.pos.x)); // climbZ: eased height offset while climbing a ladder
+    return m.group.localToWorld(new THREE_.Vector3(m.pos.y, (m.interior.heightAt ? m.interior.heightAt(m.pos) : m.interior.deckZ(m.pos.deck)) - draft + 0.02 + (m.climbZ || 0), cgX - m.pos.x)); // climbZ: eased height offset while climbing a ladder
   }
   /**
    * Walking on the deck. The game's own input (stick, keys, run, crouch) calls __wohDev.step; while aboard, our step applies that
@@ -370,7 +371,7 @@
     cp.placeMarker(w.x + S.origin.xM, w.z + S.origin.yM, false);
     lastPlaced = cp.markerPoint ? { xM: cp.markerPoint.xM, yM: cp.markerPoint.yM } : null;
     if (cp.markerPoint) cp.markerPoint.elevationM = w.y + S.origin.elevationM; // the game keeps the marker at this height while the player stands still
-    Ship.setViewDeck(m, m.pos.deck, m.interior.roomOf(m.pos.deck, m.pos.x, m.pos.y)?.id ?? null);
+    if (m.setView) m.setView(m.pos); else Ship.setViewDeck(m, m.pos.deck, m.interior.roomOf(m.pos.deck, m.pos.x, m.pos.y)?.id ?? null);
     if (m.furn) Ship.updateFurnishingsVisibility(m);
     setWater(!m.cutaway); // below deck the hold floor is under the sea surface: hide the sea (cutaway view) so the hold can be seen
     syncFigures(m, fleet.get(boarded)); if (m.crewFigs?.length) Ship.updateCrewFigures(m, m.pos.deck);
@@ -476,7 +477,7 @@ html.shipUiHidden #shipEye{opacity:.5}
       const dp = document.getElementById('developerPane') ?? document.getElementById('developerPanel'); if (dp) dp.append(ui.dev);
     };
     mount(); setInterval(() => { mount(); document.body.classList.toggle('woh-ship-on', devOn() && !!boarded && !!fleet?.has(boarded)); if (!devOn() && boarded) disembark(); }, 500);
-    ui.spawn.append($('div', { className: 'sub', textContent: '船を出す(近くの海へ)' }), ...Object.entries({ 'pinta-1492': 'ピンタ1492 横帆', 'pinta-1492-lateen': 'ピンタ1492 ラテン', galleon: 'ガレオン', galley: 'ガレー' }).map(([d, n]) => $('button', { className: 'shipbtn', textContent: n, onclick: () => { spawn(d); } })));
+    ui.spawn.append($('div', { className: 'sub', textContent: '船を出す(近くの海へ)' }), ...Object.entries({ 'pinta-1492': 'ピンタ1492 横帆', 'pinta-1492-lateen': 'ピンタ1492 ラテン', 'bellona-1760': 'ベローナ1760 74門艦', galleon: 'ガレオン', galley: 'ガレー' }).map(([d, n]) => $('button', { className: 'shipbtn', textContent: n, onclick: () => { spawn(d); } })));
     layoutShipUi(); setInterval(layoutShipUi, 400); addEventListener('resize', layoutShipUi);
     let down = null; const cv = nat.renderer.domElement;
     cv.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; }, true);

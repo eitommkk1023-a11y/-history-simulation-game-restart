@@ -149,7 +149,7 @@ export function addCrewFigures(T, obj, crew) {
 export function updateCrewFigures(obj, playerDeck = null) {
   const it = obj.crewInterior; if (!it) return; const { cgX, draft } = obj.frame;
   for (const { m, f } of obj.crewFigs) {
-    f.position.set(m.pos.y, it.deckZ(m.pos.deck) - draft + 0.02, cgX - m.pos.x);
+    f.position.set(m.pos.y, (it.heightAt ? it.heightAt(m.pos) : it.deckZ(m.pos.deck)) - draft + 0.02, cgX - m.pos.x);
     f.visible = !!it.decks.find((d) => d.id === m.pos.deck)?.exterior || playerDeck === m.pos.deck;
     const L = f.userData.limbs; if (L) { // walking swing while the hand is moving (same idea as the game's villagers)
       const last = f.userData.last, moving = last && (Math.abs(last.x - m.pos.x) + Math.abs(last.y - m.pos.y) > 1e-4 || last.deck !== m.pos.deck); f.userData.last = { x: m.pos.x, y: m.pos.y, deck: m.pos.deck };

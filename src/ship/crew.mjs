@@ -36,8 +36,16 @@ export function pintaStations(interior, design) {
   };
 }
 
+/** Stations on the Bellona (level D): wheel on the quarterdeck, lookout on the forecastle, hands at each mast foot on the upper (main) deck. */
+export function bellonaStations(interior, design) {
+  const q = (deck, x, y) => interior.snap(deck, x, y), masts = Object.fromEntries(design.sails.map((m) => [m.id, q('upper', m.x, 2.1)]));
+  const wheelX = interior.sternZ - 11 + 1.6; // the wheel stands at model Z ~ 11 on the quarterdeck; the helmsman stands just aft of it
+  return { helm: q('quarter', wheelX, 0), captain: q('quarter', wheelX - 2.2, 1.6), repair: q('quarter', wheelX - 1.2, -1.6), lookout: q('fore', design.hull.stations[design.hull.stations.length - 1].x - 6.5, 0), hatch: q('upper', 28, 0.8), mastFoot: masts, rest: q('upper', 28, -1.8), below: q('upper', 28, -1.8) };
+}
+
 export function createCrew({ interior, design, size = G.crew.scenarioSize.value, roster = pintaRoster(size) }) {
-  const st = pintaStations(interior, design), mastIds = Object.keys(st.mastFoot);
+  const snapMode = design.kind === 'bellona'; // Bellona: hands stand at their stations (no path-finding through the study's obstacles yet)
+  const st = snapMode ? bellonaStations(interior, design) : pintaStations(interior, design), mastIds = Object.keys(st.mastFoot);
   const members = roster.map((p, i) => ({ ...p, watch: i % 2, pos: { ...st.rest, y: st.rest.y + ((i % 5) - 2) * 0.35 }, task: 'rest', target: null, work: 0 }));
   let time = 0, watchOn = 0;
   const baseCount = roster.length, onShift = (m) => members.length <= 10 || m.watch === watchOn; // D: a very small crew keeps one common watch, all hands work
@@ -50,6 +58,7 @@ export function createCrew({ interior, design, size = G.crew.scenarioSize.value,
   };
   /** One walking step toward `target` ({x, y, deck}); climbs a ladder when standing at its foot. Returns true when arrived. */
   function walkTo(m, target, dt) {
+    if (snapMode) { const d = Math.hypot(target.x - m.pos.x, target.y - m.pos.y) + (m.pos.deck === target.deck ? 0 : 99); if (d < 0.05) return true; m.pos = { ...target }; return true; }
     let goal = target;
     if (m.pos.deck !== target.deck) {
       const hop = deckPath(m.pos.deck, target.deck); if (!hop) return false;

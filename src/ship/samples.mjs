@@ -1,4 +1,5 @@
 import { buildPintaDesign } from './pinta-design.mjs';
+import { buildBellonaDesign } from './bellona-design.mjs';
 /**
  * EXPERIMENTAL test ships. Dimensions and masses are rough placeholders for
  * testing the solver; they are NOT historical specifications of any real ship.
@@ -104,6 +105,7 @@ export const sampleInteriors = {
 
 sampleDesigns['pinta-1492'] = Object.freeze(buildPintaDesign({ rigPreset: 'atlantic_square_rig' }));
 sampleDesigns['pinta-1492-lateen'] = Object.freeze(buildPintaDesign({ rigPreset: 'departure_lateen_hypothesis' }));
+sampleDesigns['bellona-1760'] = Object.freeze(buildBellonaDesign());
 Object.freeze(sampleDesigns);
 
 Object.freeze(sampleInteriors);
