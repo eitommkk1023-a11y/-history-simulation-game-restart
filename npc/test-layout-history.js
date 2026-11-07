@@ -14,6 +14,10 @@ ok(L.version === 2 && L.log[0].type === 'found' && L.log[0].synthetic === true, 
 ok(L.items.every(b => b.rec && b.rec.synthetic && b.rec.purpose), `開始前の建物（${L.items.length}棟）は全て 目的つきの推定記録`);
 ok(L.items.filter(b => b.role === 'dwelling' && b.state === 'ok').every(b => b.rec.by === b.house), '住居の記録は、世帯（夫の人物ID）が建てた者になっている');
 ok(L.items.every(b => b.rec.builtDay === Math.round(b.builtYear * 360)), '建築日と築年が一致');
+// 途中の日に作った集落：築年は「作った日」から数える（開始前に建ったことにならない）
+{ const gen = A.genome(5, 5, 5), hist = S.settleHistory(5, 7, 2, 100, 0.7, {}), trad = A.tradition(5, gen, env, hist.tech, [180, 120, 90]), hh = Array.from({ length: 30 }, (_, i) => ({ house: 1000 + i * 7, members: 3, kin: 1 + (i >> 2) })), day0 = 360 * 50 + 120;
+  const L2 = S.layoutSettlement({ seed: 5, gid: 7, trad, hist, level: 2, households: hh, day: day0, economy: { fish: 0.3, gather: 0.4, hunt: 0.2, tool: 0.1 }, terr: terr('river', 5) });
+  ok(L2.items.every(b => b.rec.builtDay <= day0 && day0 - b.rec.builtDay < 360 * 130), '途中の日（50年目）に作った集落でも、建物の建設日は作った日から遡った日になる'); ok(L2.log[0].day === day0, '成立の記録の日が、作った日になる'); }
 // 世帯が増える・減る
 const hs = m.spec.households.slice(0, 36).concat([{ house: 9001, members: 4, kin: 2 }, { house: 9002, members: 3 }, { house: 9003, members: 5 }, { house: 9004, members: 2 }, { house: 9005, members: 2 }, { house: 9006, members: 2 }]);
 const day = 360 * 3 + 45, r = S.syncLayout(L, m.spec, hs, day);

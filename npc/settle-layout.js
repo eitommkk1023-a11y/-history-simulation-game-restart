@@ -134,8 +134,8 @@ function place(layout, spec, b, opts) {
 }
 function addBuilding(layout, spec, role, house, members, anchor, opts, builtAge) {
   const { seed, trad, gid } = spec, seq = layout.nextSeq++, key = gid * 100003 + seq;
-  const b = Arch.designBuilding(seed, trad, role, key, members, builtAge || 0);
-  b.id = key; b.house = house; b.seq = seq; b.state = 'ok'; b.builtYear = -(builtAge || 0); b.vacantSince = null;
+  const now = layout.day0 || 0, bday = now - (builtAge || 0) * YEAR, b = Arch.designBuilding(seed, Arch.tradAt(trad, bday, now), role, key, members, builtAge || 0);
+  b.id = key; b.house = house; b.seq = seq; b.state = 'ok'; b.builtYear = Math.floor(now / YEAR) - (builtAge || 0); b.builtDay = bday; b.vacantSince = null;
   if (spec.level === 0 && (role === 'dwelling' || role === 'storehouse')) {   // 野営地：持ち運べる軽い住まい（低い壁と急な屋根のテント・小屋掛け）
     b.shelter = 'tent'; b.plan.w *= 0.85; if (b.plan.d) b.plan.d *= 0.85; b.wallH = role === 'dwelling' ? 0.45 : 0.8; b.wall.mat = b.wall.mat === 'timber' && b.role === 'dwelling' && spec.trad.roofMat === 'shingle' ? 'timber' : 'reed';
     if (b.plan.kind === 'rect') { b.roof.kind = 'gable'; b.plan.d = Math.max(b.plan.d, b.plan.w * 1.3); } else b.roof.kind = 'cone';
@@ -149,7 +149,7 @@ function addBuilding(layout, spec, role, house, members, anchor, opts, builtAge)
 // ---- 集落全体の配置
 // spec：{ seed, gid, trad, hist, level, households:[{house, members, kin}], economy:{fish,gather,hunt,tool,farm,herd,trade}, terr:{height,slope,water,nearestWater,wet}, day }
 function layoutSettlement(spec) {
-  const { seed, gid, hist, level, households, economy, terr } = spec, layout = newLayout(gid); layout.history = hist; const day0 = spec.day || 0;
+  const { seed, gid, hist, level, households, economy, terr } = spec, layout = newLayout(gid); layout.history = hist; const day0 = spec.day || 0; layout.day0 = day0;
   const nH = households.length;
   // 中心：平らで乾いた場所（焚き火と広場）。最初の候補の近くで探す
   // 水辺の村は、水から20〜40mの乾いた平地を好む（水が近すぎる・遠すぎるのを避ける）
@@ -187,7 +187,7 @@ function layoutSettlement(spec) {
   if (hist.defense > 0) buildFence(layout, spec);
   // 履歴：成立の記録と、開始前から建っていた建物の記録（推定）
   logEv(layout, day0, 'found', null, { level, households: nH, synthetic: true, note: 'この記録の開始時点の集落（開始前の歴史は推定）' });
-  for (const b of layout.items) if (!b.rec) mkRec(b, Math.round(b.builtYear * YEAR), 'initial', b.state === 'ok' && b.house >= 0 && b.house < 1e6 ? b.house : null, true);
+  for (const b of layout.items) if (!b.rec) mkRec(b, b.builtDay !== undefined ? b.builtDay : Math.round(b.builtYear * YEAR), 'initial', b.state === 'ok' && b.house >= 0 && b.house < 1e6 ? b.house : null, true);
   layout.resolved = true; return layout;
 }
 function centroidOf(layout) { const d = layout.items.filter(i => i.role === 'dwelling' && i.state !== 'removed'); if (!d.length) return { x: layout.center.x, z: layout.center.z }; return { x: d.reduce((a, b) => a + b.x, 0) / d.length, z: d.reduce((a, b) => a + b.z, 0) / d.length }; }

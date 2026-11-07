@@ -682,9 +682,39 @@ function peopleEconomy(people, gid) {
 }
 // 建築伝統の元になる民族：分裂した民族は親の、融合した民族は主な親の系統を受け継ぐ
 function peRootEth(people, id) { let e = people.ethnicities[id - 1], n = 0; while (e && e.parents && e.parents.length && n++ < 50) e = people.ethnicities[e.parents[0] - 1]; return e ? e.id : id; }
+// ---- 建築知識：集団ごとに、知っている建築技法（g.arch.have：技法→身につけた日）と、他民族から受けた様式の影響（g.arch.infl）を持つ。
+// 民族の技術の層から身につくものと、近くの集団（とくに他民族）との交流で伝わるものがある。乱数は主の乱数列を使わない（決定的）
+const ARCH = { P: 0.035, REGION: 0.3, INFL_MAX: 0.4, D: 200 };   // ARCH_P ほか   // 仮の値：交流で伝わる確率（年・1対1）、地域差の強さ、他民族の様式の影響の上限、交流の届く距離（グリッド。集団の最近傍の距離は中央値およそ100）
+const peArchU = (sd, a, b) => Npc.mix(sd, a, b, 8800) / 4294967296;
+function peArchInit(people, g) {
+  if (!Arch || !Arch.BASE_TECHS) return null; if (g.arch) return g.arch;
+  const S = people.nation, sd = people.npc.seed, have = {}; for (const id of Arch.BASE_TECHS) have[id] = -1e9;
+  Arch.TECH_IDS.forEach((id, k) => { const T = Arch.TECHS[id]; if (!T.nodes || !S) return; if (T.nodes.some(n => Nation.hasNode(S, g.ethId, n))) have[id] = -Math.round((20 + peArchU(sd, g.id, k) * 220) * 360); });   // 開始前から持っていた技法：開始の20〜240年前（推定）
+  g.arch = { have, from: {}, infl: [] }; return g.arch;
+}
+function peArchYear(people) {
+  if (!Arch || !Arch.TECH_IDS || !people.npc) return; const S = people.nation, sd = people.npc.seed, day = people.npc.day, year = Math.floor(day / 360), live = people.groups.filter(g => g.alive), add = [], nb = {};
+  for (const g of live) nb[g.id] = [];   // 交流の届く範囲にある集団（peNeighbors の距離は、この世界の広さでは短すぎて近隣がほぼ無いため、別に持つ）
+  for (let i = 0; i < live.length; i++) for (let j = i + 1; j < live.length; j++) { const a = live[i], b = live[j], dx = a.x - b.x, dy = a.y - b.y; if (dx * dx + dy * dy <= ARCH.D * ARCH.D) { nb[a.id].push(b.id); nb[b.id].push(a.id); } }
+  for (const g of live) peArchInit(people, g);
+  for (const g of live) {
+    const A = g.arch, ex = (g.cult && g.cult[0] !== undefined ? g.cult[0] : 0.5);
+    Arch.TECH_IDS.forEach((id, k) => { const T = Arch.TECHS[id]; if (A.have[id] !== undefined || !T.nodes || !S) return; if (T.nodes.some(n => Nation.hasNode(S, g.ethId, n))) add.push({ g, id, from: null }); });   // 自分たちの技術の層から
+    for (const oid of nb[g.id] || []) {   // 近くの集団から学ぶ（同じ民族の集団どうしは学びやすく、他民族とは様式がしみこむ）
+      const o = people.groups[oid - 1]; if (!o || !o.alive || !o.arch) continue; const c = Math.max(0, 1 - Math.hypot(o.x - g.x, o.y - g.y) / ARCH.D); if (c <= 0) continue; const other = o.ethId !== g.ethId;
+      Arch.TECH_IDS.forEach((id, k) => { if (A.have[id] !== undefined || o.arch.have[id] === undefined || o.arch.have[id] > day) return; if (peArchU(sd, g.id * 7919 + oid, k + year * 31) < ARCH.P * c * (other ? 0.8 : 1.6) * (0.5 + ex)) add.push({ g, id, from: o }); });
+      if (other) { let f = A.infl.find(x => x.eth === o.ethId); if (!f) { f = { eth: o.ethId, w: 0, since: day }; A.infl.push(f); } f.w = Math.min(ARCH.INFL_MAX, f.w + 0.012 * c * (0.5 + ex)); }
+    }
+    if (A.infl.length > 4) { A.infl.sort((a, b) => b.w - a.w); A.infl.length = 4; }
+  }
+  for (const a of add) { if (a.g.arch.have[a.id] !== undefined) continue; a.g.arch.have[a.id] = day; a.g.arch.from[a.id] = a.from ? { eth: a.from.ethId, grp: a.from.id, day } : { own: 1, day }; }
+}
 function peopleTradition(people, world, gid) {
-  const g = people.groups[gid - 1], eth = people.ethnicities[g.ethId - 1], c = peCampCenter(g), sd = people.npc.seed, env = Arch.envAt(world, c.x, c.y);
-  return Arch.tradition(sd, Arch.genome(sd, peRootEth(people, eth.id), eth.id), env, g.hist ? g.hist.tech : 0.4, eth.color);
+  const g = people.groups[gid - 1], eth = people.ethnicities[g.ethId - 1], c = peCampCenter(g), sd = people.npc.seed, env = Arch.envAt(world, c.x, c.y), A = peArchInit(people, g);
+  let gen = Arch.genome(sd, peRootEth(people, eth.id), eth.id);
+  gen = Arch.regional(gen, sd, Math.floor(c.x / 25) * 1000 + Math.floor(c.y / 25), ARCH.REGION);   // 地域差：近い集団どうしは似た癖
+  if (A) for (const f of A.infl) { if (f.w < 0.03) continue; const oe = people.ethnicities[f.eth - 1]; if (oe) gen = Arch.blend(gen, Arch.genome(sd, peRootEth(people, oe.id), oe.id), f.w, sd, g.id); }   // 他民族からの影響
+  return Arch.tradition(sd, gen, env, g.hist ? g.hist.tech : 0.4, eth.color, A ? A.have : null);
 }
 // 集団の落ち着き方が変わったとき（村になった・拠点を移した）：集落の歴史と配置を作り直す
 // 集団（集落）の年表：成立・定住の段階の移行・放棄・移住先への到着。day は暦の絶対日。synthetic＝開始前の歴史から作った推定
@@ -807,6 +837,7 @@ function peopleGenerate(seed, W) {
   for (const g of people.groups) peSettleHistInit(people, g, sd);   // 集落の歴史（成立年代・衰退・防衛・建築技術）。開始前の歴史は一日ずつ計算せず、成立年代から決める
   peopleCreatePlayer(people, sd);
   peNationEnsure(people, W.world);
+  for (const g of people.groups) peArchInit(people, g);
   return people;
 }
 function peNewGroup(people, ethId, x, y) {
@@ -1157,6 +1188,7 @@ function peNationYear(people, ev, rel) {
   for (const e of people.ethnicities) { const o = sites.get(e.id); if (!e.alive || !o) continue; if (!S.idx.has(e.id)) Nation.spawn(S, { id: e.id, x: o.x, y: o.y, pop: o.pop, cult: o.cult }, e.parent); const i = S.idx.get(e.id); S.pop[i] = Math.max(10, o.pop); S.cult[i] = o.cult; }
   const speed = people.ethSpeed || 1, steps = Math.max(1, Math.round(speed)), before = S.log.length;
   for (let k = 0; k < steps; k++) Nation.step(S);
+  peArchYear(people);   // 建築技法の広がり（年に1回）
   for (let k = before; k < S.log.length; k++) {   // 新しい技術が生まれた：その民族が世界で初めて、の出来事
     const l = S.log[k], e = S.eths[l.eth], o = sites.get(e.id), mine = people.playerEth === e.id;
     if (!o) continue; ev.push({ type: 'techFirst', imp: mine ? 2 : 1, relevant: mine || rel(e.id), eth: e.id, node: l.node, x: Math.round(o.x), y: Math.round(o.y) });
@@ -1445,7 +1477,7 @@ function peSplit(people, g, S, world, rng, ev, rel) {
   const d = peFindSite(people, g, S, world, rng, PE.SPLIT_RANGE, 0);
   if (!d) return null;
   const P = people.npc, share = PE.SPLIT_SHARE[0] + (PE.SPLIT_SHARE[1] - PE.SPLIT_SHARE[0]) * rng();
-  const c = peNewGroup(people, g.ethId, g.x, g.y);
+  const c = peNewGroup(people, g.ethId, g.x, g.y); if (g.arch) c.arch = JSON.parse(JSON.stringify(g.arch));
   const fam = (i) => { let r = i; if (P.age(i) < 16 && P.mother[i] !== NONE) r = P.mother[i]; const s = P.spouse[r]; return s !== NONE && s < r ? s : r; };
   let moved = 0, all = 0;
   for (let i = 0; i < P.n; i++) {
@@ -1518,6 +1550,6 @@ function peopleEthCounts(people) {
   const P = people.npc, o = {}; for (let i = 0; i < P.n; i++) { if (P.death[i] !== ALIVE) continue; const e = P.eth[i] || P.groupEth[P.group[i]]; o[e] = (o[e] || 0) + 1; } return o;
 }
 
-if (typeof module !== 'undefined' && module.exports) module.exports = { PE, resetSiteCache() { peCache = null; }, peSites, peSiteScore, peNearestSite, peopleSiteInfo, SITE_KINDS, SITE_LABEL, peNationEnsure, peChron, FACIL_SERVES, peCover, TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, peCultureRules, PROPOSALS, peopleProposal, LEADERSHIP, peLeaders, ACTIVITIES, peopleSetActivity, peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
-else root.WohPeople = { peSites, peSiteScore, peNearestSite, peopleSiteInfo, SITE_KINDS, SITE_LABEL, peNationEnsure, peChron, FACIL_SERVES, peCover, TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peopleSuccession, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, PROPOSALS, peopleProposal, LEADERSHIP, ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+if (typeof module !== 'undefined' && module.exports) module.exports = { PE, resetSiteCache() { peCache = null; }, peSites, peSiteScore, peNearestSite, peopleSiteInfo, SITE_KINDS, SITE_LABEL, peNationEnsure, peChron, peArchInit, peArchYear, ARCH, FACIL_SERVES, peCover, TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, peCultureRules, PROPOSALS, peopleProposal, LEADERSHIP, peLeaders, ACTIVITIES, peopleSetActivity, peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+else root.WohPeople = { peSites, peSiteScore, peNearestSite, peopleSiteInfo, SITE_KINDS, SITE_LABEL, peNationEnsure, peChron, peArchInit, peArchYear, ARCH, FACIL_SERVES, peCover, TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peopleSuccession, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, PROPOSALS, peopleProposal, LEADERSHIP, ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
