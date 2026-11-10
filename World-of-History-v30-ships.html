@@ -22306,6 +22306,8 @@ const Ship = Object.assign({}, M_sea_state, M_hull_geometry, M_mass, M_hydrostat
   }
   function preRender(cam) {
     syncMeshes(); try { updateStreaks(); applyWeatherView(); } catch (_) { /* decoration only */ }
+    // Depth precision: the game's near plane (0.1 m) wastes depth resolution; on devices with a shallow depth buffer the hull's overlapping shells fight (z-fighting) and show the sea through.
+    { const want = boarded && fleet.has(boarded) ? 0.5 : nearOrig; if (nearOrig === undefined) nearOrig = cam.near; if (want !== undefined && Math.abs(cam.near - want) > 1e-6) { cam.near = want; cam.updateProjectionMatrix(); } }
     if (!boarded || !fleet.has(boarded) || !meshes.has(boarded)) return;
     const mk = cp.character, w = deckPoint(meshes.get(boarded)), v = cp.view;
     mk.position.copy(w);
