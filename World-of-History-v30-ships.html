@@ -22439,13 +22439,25 @@ const Ship = Object.assign({}, M_sea_state, M_hull_geometry, M_mass, M_hydrostat
     gameScene().add(o.group);
     return o;
   }
+  /** Height (scene units) of the water surface the game draws at a scene position; cached for a second per 20 m cell. */
+  const wlCache = new Map(); let wlStamp = 0;
+  function waterLevelAt(x, z) {
+    const now = performance.now(); if (now - wlStamp > 1000) { wlCache.clear(); wlStamp = now; }
+    const k = Math.round(x / 20) + ',' + Math.round(z / 20); if (wlCache.has(k)) return wlCache.get(k);
+    let r = null;
+    for (const w of [S?.waterMesh, S?.farWaterMesh]) {
+      const pos = w?.geometry?.attributes?.position; if (!pos || r !== null) continue; const a = pos.array, ox = w.position.x, oy = w.position.y, oz = w.position.z;
+      for (let i = 0; i + 17 < a.length; i += 18) { const x0 = a[i] + ox, z0 = a[i + 2] + oz, x1 = a[i + 6] + ox, z1 = a[i + 5] + oz; if (x >= Math.min(x0, x1) && x <= Math.max(x0, x1) && z >= Math.min(z0, z1) && z <= Math.max(z0, z1)) { r = a[i + 1] + oy - 0.005; break; } }
+    }
+    wlCache.set(k, r); return r;
+  }
   function syncMeshes() {
     const T = S.terrain;
     for (const rec of fleet.list()) {
       let m = meshes.get(rec.id);
       if (!m) { try { m = makeMesh(rec); } catch (e) { console.warn('ship display failed, removing', rec.id, e && e.message); fleet.removeShip(rec.id); continue; } meshes.set(rec.id, m); }
       const st = rec.vessel.state, xM = ref.xM + st.X, yM = ref.yM - st.Y;
-      try { const q = T.toLocal(xM, yM, 0, S.origin); m.group.position.set(q.x, q.y, q.z); m.group.visible = true; } catch (_) { m.group.visible = false; continue; }
+      try { const q = T.toLocal(xM, yM, 0, S.origin); const wl = waterLevelAt(q.x, q.z); m.waterDelta = wl === null ? null : wl - q.y; m.group.position.set(q.x, wl === null ? q.y : wl, q.z); m.group.visible = true; } catch (_) { m.group.visible = false; continue; } // ride the sea surface the game actually draws
       m.group.rotation.order = 'YXZ'; // yaw, then pitch about the beam axis, then roll about the keel axis
       const sea = seaState.info(st.X, st.Y, 0), wm = Ship.waveMotion(sea, { psi: st.psi, u: st.u, lengthM: m.L ?? 21, beamM: 6.4, rollPeriodS: m.rollPeriodS ?? 5 }, simT);
       m.sea = { ...sea, ...wm }; // for the HUD
@@ -22717,7 +22729,7 @@ html.shipUiHidden #shipEye{opacity:.5}
       }
       const dp = document.getElementById('developerPane') ?? document.getElementById('developerPanel'); if (dp) dp.append(ui.dev);
     };
-    mount(); setInterval(() => { mount(); { const bm = boarded && meshes.get(boarded); ui.diag.textContent = bm?.diag ? '表示診断: ' + bm.diag() + (() => { const wy = (w) => (w && w.geometry.attributes.position.count ? (w.geometry.attributes.position.getY(0) + w.position.y).toFixed(2) : '—'); return ` 海面y(近/遠)=${wy(S?.waterMesh)}/${wy(S?.farWaterMesh)} 船の喫水線y=${bm.group.position.y.toFixed(2)}`; })() : ''; } document.body.classList.toggle('woh-ship-on', devOn() && !!boarded && !!fleet?.has(boarded)); if (!devOn() && boarded) disembark(); }, 500);
+    mount(); setInterval(() => { mount(); { const bm = boarded && meshes.get(boarded); ui.diag.textContent = bm?.diag ? '表示診断: ' + bm.diag() + (() => { const wy = (w) => (w && w.geometry.attributes.position.count ? (w.geometry.attributes.position.getY(0) + w.position.y).toFixed(2) : '—'); return ` 海面y(近/遠)=${wy(S?.waterMesh)}/${wy(S?.farWaterMesh)} 船の喫水線y=${bm.group.position.y.toFixed(2)} 補正=${bm.waterDelta === null || bm.waterDelta === undefined ? '無' : bm.waterDelta.toFixed(2)}m`; })() : ''; } document.body.classList.toggle('woh-ship-on', devOn() && !!boarded && !!fleet?.has(boarded)); if (!devOn() && boarded) disembark(); }, 500);
     ui.spawn.append($('div', { className: 'sub', textContent: '船を出す(近くの海へ)' }), ...Object.entries({ 'pinta-1492': 'ピンタ1492 横帆', 'pinta-1492-lateen': 'ピンタ1492 ラテン', 'bellona-1760': 'ベローナ1760 74門艦', galleon: 'ガレオン', galley: 'ガレー' }).map(([d, n]) => $('button', { className: 'shipbtn', textContent: n, onclick: () => { spawn(d); } })));
     layoutShipUi(); setInterval(layoutShipUi, 400); addEventListener('resize', layoutShipUi);
     let down = null; const cv = nat.renderer.domElement;
