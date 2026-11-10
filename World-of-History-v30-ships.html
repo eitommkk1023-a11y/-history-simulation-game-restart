@@ -22462,7 +22462,10 @@ const Ship = Object.assign({}, M_sea_state, M_hull_geometry, M_mass, M_hydrostat
       const sea = seaState.info(st.X, st.Y, 0), wm = Ship.waveMotion(sea, { psi: st.psi, u: st.u, lengthM: m.L ?? 21, beamM: 6.4, rollPeriodS: m.rollPeriodS ?? 5 }, simT);
       m.sea = { ...sea, ...wm }; // for the HUD
       // the game's sea surface is flat, so the visual motion is toned down: a full wave heave would sink the deck below the sea plane
-      m.group.rotation.set(wm.pitchDeg * 0.6 * DEG, -st.psi, (-st.heelDeg + wm.rollDeg * 0.6) * DEG); m.group.position.y += Math.max(-0.12, Math.min(0.25, wm.heaveM * 0.2));
+      if (m.maxRoll === undefined) { const h = m.hull, mid = h.sectionAt((h.xMin + h.xMax) / 2), top = mid[mid.length - 1], fb = Math.max(0.3, 0.6 * (top.z - m.frame.draft)); m.maxRoll = Math.asin(Math.min(0.5, Math.max(0.02, (fb - 0.5) / top.b))); m.maxPitch = Math.asin(Math.min(0.3, Math.max(0.01, (fb - 0.5) / (0.5 * m.L)))); }
+      // the sea plane is flat: keep the lee rail and the bow/stern above it (the tilt is capped by the freeboard), whatever the waves and the heel do
+      const cl = (v, lim) => Math.max(-lim, Math.min(lim, v)), rollV = cl((-st.heelDeg + wm.rollDeg * 0.6) * DEG, m.maxRoll), pitchV = cl(wm.pitchDeg * 0.6 * DEG, m.maxPitch);
+      m.group.rotation.set(pitchV, -st.psi, rollV); m.group.position.y += Math.max(-0.12, Math.min(0.25, wm.heaveM * 0.2));
       if (m.furn && m.loadRef !== (rec.massItems ?? null)) { m.loadRef = rec.massItems ?? null; m.furn(); Ship.updateFurnishingsVisibility(m); } // stores follow the real load
       { const aw = rec.vessel.apparentWind(env), sl = rec.vessel.sails, dep = sl.map((x) => x.deployed).join(','); if (m.lastDep !== undefined && m.lastDep !== dep) m.reefUntil = performance.now() + 1500; m.lastDep = dep;
         m.sailsMoving = sl.some((x) => x.targetTrimDeg !== undefined && Math.abs(x.targetTrimDeg - x.trimDeg) > 0.4) || performance.now() < (m.reefUntil || 0); // hands are working the sails
