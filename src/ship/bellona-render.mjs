@@ -4,7 +4,7 @@
  * Display only. The model's own nodes are driven by the vessel: yards and sails (yard_*, sail_*) by the sail trim, rudder_pivot by the rudder.
  * Cutaway: below the weather decks the sea, rig and everything above the next deck up are hidden (a clipping plane), like the Pinta.
  */
-import { BELLONA_MEASURED as M, BELLONA_LAYOUT } from './bellona-data.mjs';
+import { BELLONA_MEASURED as M } from './bellona-data.mjs';
 
 const DEG = Math.PI / 180;
 const b64 = (s) => { const bin = atob(s), a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return a.buffer; };
@@ -12,18 +12,20 @@ const b64 = (s) => { const bin = atob(s), a = new Uint8Array(bin.length); for (l
 export function addBellonaModel(T, obj, design, assets) {
   const holder = new T.Group(); holder.position.set(0, M.draftM, -M.sternZ); obj.inner.add(holder); // model Y (waterline = 0) -> inner z-above-keel; model Z -> -x
   obj.rollPeriodS = 9; obj.bellona = true;
-  // Water mask: the game's sea is a flat plane that would show through hatches and fill the hold. Stamp the hull's waterline outline into the stencil
-  // buffer before the sea is drawn (the glue makes the sea skip stamped pixels), so inside the hull you see the decks, not water.
-  { const shape = new T.Shape(); BELLONA_LAYOUT.waterExclusion.forEach((p, i) => (i ? shape.lineTo(p[0], p[1]) : shape.moveTo(p[0], p[1]))); shape.closePath();
-    const g = new T.ShapeGeometry(shape); g.rotateX(Math.PI / 2);
-    const mat = new T.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false, side: 2, stencilWrite: true, stencilRef: 1, stencilFunc: 519, stencilZPass: 7681, stencilFail: 7681, stencilZFail: 7681 });
-    const mask = new T.Mesh(g, mat); mask.renderOrder = -200; mask.frustumCulled = false; mask.position.y = -0.02; holder.add(mask); obj.waterMask = mask; }
   const scenes = [null, null, null], loading = [false, false, false], keys = design.sails.map((s) => s.glbKey);
   let interior = null, interiorLoading = false, want = 0, shown = -1;
   const loader = () => new T.GLTFLoader();
+  // Lambert instead of the model's PBR materials: the game's own meshes all use Lambert (it works on every device we tried and is cheaper); the model has no textures or
+  // strong speculars on the hull, so the look is the same apart from the metal on guns and glazing.
+  const converted = new Map();
+  const lambert = (m) => {
+    if (converted.has(m)) return converted.get(m);
+    const n = new T.MeshLambertMaterial({ color: m.color, side: 2, transparent: m.transparent, opacity: m.opacity, depthWrite: m.depthWrite, name: m.name, map: m.map ?? null });
+    n.clippingPlanes = clipOn ? [obj.cutPlane] : null; converted.set(m, n); m.dispose?.(); return n;
+  };
   const prep = (scene) => scene.traverse((o) => {
     if (o.name === 'collision_proxies') o.visible = false;
-    if (o.isMesh) { o.frustumCulled = false; for (const m of [].concat(o.material)) { m.side = 2; m.userData.bellonaClip = true; m.clippingPlanes = clipOn ? [obj.cutPlane] : null; } }
+    if (o.isMesh) { o.frustumCulled = false; const list = [].concat(o.material).map(lambert); o.material = Array.isArray(o.material) ? list : list[0]; }
   });
   // Shader clipping is switched on only while a cutaway is shown: outside it the materials render exactly as in the study's viewer.
   let clipOn = false;
@@ -56,7 +58,7 @@ export function addBellonaModel(T, obj, design, assets) {
       let low = here; for (const dx of [-12, -6, 6, 12]) for (const dy of [-3, 0, 3]) low = Math.min(low, it.deckAbove({ x: pos.x + dx, y: pos.y + dy, h: pos.h }));
       cut = Math.max(low - 0.28, pos.h + 1.9);
     }
-    obj.cutaway = below; obj.cutY = cut; setClip(below); if (obj.waterMask) obj.waterMask.visible = !below;
+    obj.cutaway = below; obj.cutY = cut; setClip(below);
     if (below) { obj.ensureInterior(); want = 0; ensure(0); }
     apply();
   };

@@ -67,10 +67,6 @@
   }
   function preRender(cam) {
     syncMeshes(); try { updateStreaks(); applyWeatherView(); } catch (_) { /* decoration only */ }
-    // The game's sea skips the pixels stamped by a ship's water mask (Bellona hull outline), so it cannot show through hatches or flood the hold.
-    for (const w of [S?.waterMesh, S?.farWaterMesh]) if (w && !w.material.userData.stencilSkip) { Object.assign(w.material, { stencilWrite: true, stencilRef: 1, stencilFunc: 517, stencilFuncMask: 255, stencilFail: 7680, stencilZFail: 7680, stencilZPass: 7680 }); w.material.userData.stencilSkip = true; w.material.needsUpdate = true; }
-    // Depth precision: aboard a big ship the game's near plane (0.1 m) wastes depth resolution; on devices with a shallow depth buffer the decks and hull fight with what lies behind them.
-    { const want = boarded && fleet.has(boarded) ? 0.35 : (nearOrig ??= cam.near); if (nearOrig === undefined) nearOrig = cam.near; if (Math.abs(cam.near - want) > 1e-6) { cam.near = want; cam.updateProjectionMatrix(); } }
     if (!boarded || !fleet.has(boarded) || !meshes.has(boarded)) return;
     const mk = cp.character, w = deckPoint(meshes.get(boarded)), v = cp.view;
     mk.position.copy(w);
