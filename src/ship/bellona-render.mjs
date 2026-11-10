@@ -4,7 +4,7 @@
  * Display only. The model's own nodes are driven by the vessel: yards and sails (yard_*, sail_*) by the sail trim, rudder_pivot by the rudder.
  * Cutaway: below the weather decks the sea, rig and everything above the next deck up are hidden (a clipping plane), like the Pinta.
  */
-import { BELLONA_MEASURED as M } from './bellona-data.mjs';
+import { BELLONA_MEASURED as M, BELLONA_LAYOUT } from './bellona-data.mjs';
 
 const DEG = Math.PI / 180;
 const b64 = (s) => { const bin = atob(s), a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return a.buffer; };
@@ -12,6 +12,10 @@ const b64 = (s) => { const bin = atob(s), a = new Uint8Array(bin.length); for (l
 export function addBellonaModel(T, obj, design, assets) {
   const holder = new T.Group(); holder.position.set(0, M.draftM, -M.sternZ); obj.inner.add(holder); // model Y (waterline = 0) -> inner z-above-keel; model Z -> -x
   obj.rollPeriodS = 9; obj.bellona = true;
+  // Bilge plug: the game's sea is a flat plane that shows through hatch gratings and gaps as bright blue lines. A dark floor just above the sea, inside the hull's waterline outline, shows a dark hold instead.
+  // (Hidden in the cutaway, where the real hold floor below the waterline must be visible.)
+  { const shape = new T.Shape(); BELLONA_LAYOUT.waterExclusion.forEach((p, i) => (i ? shape.lineTo(p[0], p[1]) : shape.moveTo(p[0], p[1]))); shape.closePath();
+    const g = new T.ShapeGeometry(shape); g.rotateX(Math.PI / 2); const plug = new T.Mesh(g, new T.MeshBasicMaterial({ color: 0x1b140d, side: 2 })); plug.position.y = -0.09; plug.frustumCulled = false; holder.add(plug); obj.bilgePlug = plug; }
   const scenes = [null, null, null], loading = [false, false, false], keys = design.sails.map((s) => s.glbKey);
   let interior = null, interiorLoading = false, want = 0, shown = -1;
   const loader = () => new T.GLTFLoader();
@@ -35,11 +39,11 @@ export function addBellonaModel(T, obj, design, assets) {
   function apply() {
     let l = want; while (l < 3 && !scenes[l]) l++; if (l >= 3) { l = want; while (l >= 0 && !scenes[l]) l--; }
     if (l >= 0 && scenes[l]) { for (let i = 0; i < 3; i++) if (scenes[i]) scenes[i].visible = i === l; shown = l; obj.hullMesh.visible = false; }
-    rigVisible(!obj.cutaway); if (interior) interior.visible = !!obj.cutaway;
+    rigVisible(!obj.cutaway); if (interior) interior.visible = want === 0 || !!obj.cutaway; // the exterior model alone has gaps in decks and hull: the interior model fills them, so show it whenever the ship is near
   }
   function rigVisible(on) { for (const sc of scenes) if (sc) for (const n of ['rig', 'rigging', 'sails']) { const o = sc.getObjectByName(n); if (o) o.visible = on; } }
-  obj.ensureInterior = () => { if (interior || interiorLoading || !assets) return; interiorLoading = true; parse('interior', (scene) => { prep(scene); scene.visible = !!obj.cutaway; holder.add(scene); interior = scene; interiorLoading = false; }); };
-  obj.setDetail = (level) => { want = obj.cutaway ? 0 : Math.min(2, Math.max(0, level)); ensure(want); if (want < 2) ensure(2); apply(); };
+  obj.ensureInterior = () => { if (interior || interiorLoading || !assets) return; interiorLoading = true; parse('interior', (scene) => { prep(scene); scene.visible = want === 0 || !!obj.cutaway; holder.add(scene); interior = scene; interiorLoading = false; }); };
+  obj.setDetail = (level) => { want = obj.cutaway ? 0 : Math.min(2, Math.max(0, level)); ensure(want); if (want === 0) obj.ensureInterior(); if (want < 2) ensure(2); apply(); };
   ensure(2); ensure(1); // far/mid first: quick to parse, so something shows early
   // Sail and rudder animation (the sail list of the object only carries the vessel's sails, so updateShipObject stays generic).
   const node = new Map(); const get = (sc, name) => { const k = sc.id + name; if (!node.has(k)) node.set(k, sc.getObjectByName(name) ?? null); return node.get(k); };
@@ -58,7 +62,7 @@ export function addBellonaModel(T, obj, design, assets) {
       let low = here; for (const dx of [-12, -6, 6, 12]) for (const dy of [-3, 0, 3]) low = Math.min(low, it.deckAbove({ x: pos.x + dx, y: pos.y + dy, h: pos.h }));
       cut = Math.max(low - 0.28, pos.h + 1.9);
     }
-    obj.cutaway = below; obj.cutY = cut; setClip(below);
+    obj.cutaway = below; obj.cutY = cut; setClip(below); if (obj.bilgePlug) obj.bilgePlug.visible = !below;
     if (below) { obj.ensureInterior(); want = 0; ensure(0); }
     apply();
   };
