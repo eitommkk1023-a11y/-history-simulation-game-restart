@@ -5,7 +5,7 @@
   'use strict';
   const DEG = Math.PI / 180, KEY_PREFIX = 'woh-ships-';
   const EVT = { captain_route_planned: '航路を決めた', captain_no_route: '', captain_tack: '帆の向きを替えた', captain_reef: '帆を絞った', captain_arriving: '目的地に近づいた', captain_arrived: '到着した', captain_replan: '浅瀬を避けて航路を引き直した', captain_cancelled: '航海をやめた', grounded: '座礁した', refloated: '離礁した', anchor_dropped: '錨を下ろした', anchor_raised: '錨を上げた', anchor_dragging: '錨が走っている', anchor_parted: '錨索が切れた' };
-  const dbg = {}; let dbgHideSea = false, simT = 0, visField = null, windField = null, seaState = null, savedShips = null, pendingBoard = null, pendingSince = 0, lastPlaced = null, uiHidden = false, dwell = 0, renderError = null, ladderSig = '', pickMode = false, destMarker = null, routeLine = null, cp, nat, THREE_, S = null, fleet = null, env = null, ref = null, ctl = {}, meshes = new Map(), boarded = null, speedX = 1, lastT = null, saveAcc = 0, trimAcc = 0, lastSeed = null;
+  const dbg = {}; let nearOrig, dbgHideSea = false, simT = 0, visField = null, windField = null, seaState = null, savedShips = null, pendingBoard = null, pendingSince = 0, lastPlaced = null, uiHidden = false, dwell = 0, renderError = null, ladderSig = '', pickMode = false, destMarker = null, routeLine = null, cp, nat, THREE_, S = null, fleet = null, env = null, ref = null, ctl = {}, meshes = new Map(), boarded = null, speedX = 1, lastT = null, saveAcc = 0, trimAcc = 0, lastSeed = null;
   const REASON = { destination_too_shallow: 'そこは浅くて行けない', blocked: '回り込む道がない', search_limit: '遠すぎて航路を決められない' };
   const ui = {};
   const $ = (tag, props = {}, kids = []) => { const e = Object.assign(document.createElement(tag), props); for (const k of kids) e.append(k); return e; };
@@ -67,6 +67,10 @@
   }
   function preRender(cam) {
     syncMeshes(); try { updateStreaks(); applyWeatherView(); } catch (_) { /* decoration only */ }
+    // The game's sea skips the pixels stamped by a ship's water mask (Bellona hull outline), so it cannot show through hatches or flood the hold.
+    for (const w of [S?.waterMesh, S?.farWaterMesh]) if (w && !w.material.userData.stencilSkip) { Object.assign(w.material, { stencilWrite: true, stencilRef: 1, stencilFunc: 517, stencilFuncMask: 255, stencilFail: 7680, stencilZFail: 7680, stencilZPass: 7680 }); w.material.userData.stencilSkip = true; w.material.needsUpdate = true; }
+    // Depth precision: aboard a big ship the game's near plane (0.1 m) wastes depth resolution; on devices with a shallow depth buffer the decks and hull fight with what lies behind them.
+    { const want = boarded && fleet.has(boarded) ? 0.35 : (nearOrig ??= cam.near); if (nearOrig === undefined) nearOrig = cam.near; if (Math.abs(cam.near - want) > 1e-6) { cam.near = want; cam.updateProjectionMatrix(); } }
     if (!boarded || !fleet.has(boarded) || !meshes.has(boarded)) return;
     const mk = cp.character, w = deckPoint(meshes.get(boarded)), v = cp.view;
     mk.position.copy(w);
