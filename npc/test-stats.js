@@ -13,6 +13,7 @@ const w = P.peopleStatSeries(people, 'world'), g0 = people.groups.find(g => g.al
 ok(w.pop.length === L.days.length && gs.pop.length === L.days.length, '世界・集落の系列が取り出せる');
 const reg = (g) => 1 + (g.id % 3); const rs = [1, 2, 3].map(r => P.peopleStatSeries(people, 'region', r, reg)); ok(rs[0].pop.map((x, i) => x + rs[1].pop[i] + rs[2].pop[i]).every((x, i) => Math.abs(x - w.pop[i]) <= 3), '地域の合計が、世界の人口と一致する');
 const ch = P.peopleStatChange(people, 360 * 10); ok(ch.length > 50 && ch.some(c => c.diff > 0) && ch.some(c => c.diff < 0), `集落ごとの増減が出る（増 ${ch.filter(c => c.diff > 0).length}／減 ${ch.filter(c => c.diff < 0).length}）`);
+{ const gf = P.peopleStatSeries(people, 'group', g0.id); ok(w.fed.length === L.days.length && w.fed.every(x => x >= 0 && x <= 100) && w.fed[w.fed.length - 1] > 50, `食料の充足の系列（世界）：最新 ${w.fed[w.fed.length - 1]}%`); ok(gf.fed.some(x => x > 0) && gf.food.length === L.days.length, '集団ごとの食料の充足・蓄えの系列がある'); }
 // 保存・復元
 const sv = P.peopleSave(people), back = P.peopleLoad(JSON.parse(JSON.stringify(sv, (k, v) => ArrayBuffer.isView(v) ? { __ta: v.constructor.name, d: Array.from(v) } : v), (k, v) => v && v.__ta ? new (global[v.__ta])(v.d) : v));
 ok(JSON.stringify(P.peopleStatSeries(back, 'world')) === JSON.stringify(w) && JSON.stringify(P.peopleStatSeries(back, 'group', g0.id)) === JSON.stringify(gs), '保存→復元で、系列が一致する');

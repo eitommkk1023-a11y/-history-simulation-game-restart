@@ -965,33 +965,36 @@ function peopleSetMove(people, g, x, y, world) {
 // ---------------------------------------------------------------- 統計の記録（人口・出生・死亡・集落の段階の時系列）
 // 90日ごとに記録する。多くなったら古いほうを間引く（新しいものほど細かく）。世界・地域・集落の人口の推移と、増減・発展・衰退を過去にさかのぼって見るために保存する。乱数は使わない
 const STAT_EVERY = 90, STAT_CAP = 520;
-function peStatLog(people) { return people.statLog || (people.statLog = { days: [], pop: [], grp: [], vil: [], born: [], died: [], dis: [], starv: [], gp: [], gl: [] }); }
+function peStatLog(people) { const L = people.statLog || (people.statLog = { days: [], pop: [], grp: [], vil: [], born: [], died: [], dis: [], starv: [], gp: [], gl: [] }); if (!L.gf) { L.gf = []; L.gs = []; L.fed = []; L.food = []; for (let i = 0; i < L.days.length; i++) { L.gf.push(null); L.gs.push(null); L.fed.push(0); L.food.push(0); } } return L; }   // gf＝集団ごとの食料の充足（%）、gs＝蓄え（20単位）、fed＝全体の平均充足（%）、food＝全体の蓄え。古い記録（食料の欄なし）は空として読む
 function peStatRecord(people, force) {
   const P = people.npc, day = P.day, L = peStatLog(people); if (!force && L.days.length && day - L.days[L.days.length - 1] < STAT_EVERY) return;
-  let pop = 0, grp = 0, vil = 0, born = 0, died = 0, dis = 0, starv = 0; const gp = new Uint16Array(people.groups.length + 1), gl = new Uint8Array(people.groups.length + 1);
-  for (const g of people.groups) { born += g.born || 0; died += g.died.natural + g.died.starvation + g.died.cold + g.died.disease; dis += g.died.disease; starv += g.died.starvation; if (!g.alive) continue; pop += g.pop; grp++; if (g.settle === 2) vil++; gp[g.id] = Math.min(65535, Math.round(g.pop)); gl[g.id] = (g.settle || 0) + 1; }
+  let pop = 0, grp = 0, vil = 0, born = 0, died = 0, dis = 0, starv = 0, fedSum = 0, foodSum = 0; const gp = new Uint16Array(people.groups.length + 1), gl = new Uint8Array(people.groups.length + 1), gf = new Uint8Array(people.groups.length + 1), gs = new Uint16Array(people.groups.length + 1);
+  for (const g of people.groups) { born += g.born || 0; died += g.died.natural + g.died.starvation + g.died.cold + g.died.disease; dis += g.died.disease; starv += g.died.starvation; if (!g.alive) continue; pop += g.pop; grp++; if (g.settle === 2) vil++; gp[g.id] = Math.min(65535, Math.round(g.pop)); gl[g.id] = (g.settle || 0) + 1; gf[g.id] = Math.max(0, Math.min(255, Math.round((g.fed === undefined ? 1 : g.fed) * 100))); gs[g.id] = Math.min(65535, Math.round((g.food || 0) / 20)); fedSum += (g.fed === undefined ? 1 : g.fed) * g.pop; foodSum += g.food || 0; }
   if (L.days.length && L.days[L.days.length - 1] === day) return;
-  L.days.push(day); L.pop.push(Math.round(pop)); L.grp.push(grp); L.vil.push(vil); L.born.push(born); L.died.push(died); L.dis.push(dis); L.starv.push(starv); L.gp.push(gp); L.gl.push(gl);
-  if (L.days.length > STAT_CAP) { const half = L.days.length >> 1, keep = []; for (let i = 0; i < L.days.length; i++) if (i >= half || i % 2 === 0) keep.push(i); for (const k of ['days', 'pop', 'grp', 'vil', 'born', 'died', 'dis', 'starv', 'gp', 'gl']) L[k] = keep.map(i => L[k][i]); }
+  L.days.push(day); L.pop.push(Math.round(pop)); L.grp.push(grp); L.vil.push(vil); L.born.push(born); L.died.push(died); L.dis.push(dis); L.starv.push(starv); L.gp.push(gp); L.gl.push(gl); L.gf.push(gf); L.gs.push(gs); L.fed.push(pop > 0 ? Math.round(fedSum / pop * 100) : 0); L.food.push(Math.round(foodSum));
+  if (L.days.length > STAT_CAP) { const half = L.days.length >> 1, keep = []; for (let i = 0; i < L.days.length; i++) if (i >= half || i % 2 === 0) keep.push(i); for (const k of ['days', 'pop', 'grp', 'vil', 'born', 'died', 'dis', 'starv', 'gp', 'gl', 'gf', 'gs', 'fed', 'food']) L[k] = keep.map(i => L[k][i]); }
 }
 // 系列を取り出す：scope＝'world'｜'region'（id＝地域のID、regionOf(g) を渡す）｜'group'（id＝集団のID）。from＝この日以降
 function peopleStatSeries(people, scope, id, regionOf, from) {
   const L = people.statLog; if (!L || !L.days.length) return { days: [], pop: [], born: [], died: [] };
-  const out = { days: [], pop: [], born: [], died: [], lvl: [], groups: [] }; let prev = null;
+  const out = { days: [], pop: [], born: [], died: [], lvl: [], groups: [], fed: [], food: [] }; let prev = null;
   for (let i = 0; i < L.days.length; i++) { if (from !== undefined && L.days[i] < from) continue; let pop = 0, n = 0, lv = 0;
     if (scope === 'world') { pop = L.pop[i]; n = L.grp[i]; } else { const gp = L.gp[i], gl = L.gl[i]; for (let g = 1; g < gp.length; g++) { if (!gl[g]) continue; if (scope === 'group' ? g === id : regionOf(people.groups[g - 1]) === id) { pop += gp[g]; n++; lv = Math.max(lv, gl[g] - 1); } } }
+    let fed = 0, food = 0; if (scope === 'world') { fed = L.fed[i] || 0; food = L.food[i] || 0; } else if (L.gf[i]) { const gp = L.gp[i], gf = L.gf[i], gs = L.gs[i]; let w = 0; for (let g = 1; g < gp.length; g++) { if (!gl_(L, i, g)) continue; if (scope === 'group' ? g === id : regionOf(people.groups[g - 1]) === id) { fed += gf[g] * gp[g]; w += gp[g]; food += gs[g] * 20; } } fed = w ? Math.round(fed / w) : 0; }
+    out.fed.push(fed); out.food.push(food);
     out.days.push(L.days[i]); out.pop.push(pop); out.groups.push(n); out.lvl.push(scope === 'group' ? (n ? lv : -1) : null); out.born.push(L.born[i]); out.died.push(L.died[i]); }
   return out;
 }
+function gl_(L, i, g) { return L.gl[i][g]; }
 // 各集団の、from 日以降の人口の増減（ランキング用）。変化率つき
 function peopleStatChange(people, from) {
   const L = people.statLog, out = []; if (!L || L.days.length < 2) return out; let i0 = L.days.findIndex(d => d >= from); if (i0 < 0) i0 = 0; const i1 = L.days.length - 1; if (i0 >= i1) return out;
   for (const g of people.groups) { const a = L.gp[i0][g.id] || 0, b = L.gp[i1][g.id] || 0; if (!a && !b) continue; out.push({ id: g.id, from: a, to: b, diff: b - a, rate: a > 0 ? (b - a) / a : (b > 0 ? 1 : 0), alive: !!g.alive, lvl0: (L.gl[i0][g.id] || 0) - 1, lvl1: (L.gl[i1][g.id] || 0) - 1 }); }
   return out;
 }
-function peStatSave(people) { const L = people.statLog; if (!L || !L.days.length) return null; const n = L.days.length, ng = people.groups.length + 1, gp = new Uint16Array(n * ng), gl = new Uint8Array(n * ng); for (let i = 0; i < n; i++) { gp.set(L.gp[i].subarray(0, ng), i * ng); gl.set(L.gl[i].subarray(0, ng), i * ng); }
-  return { meta: { ng, days: L.days, pop: L.pop, grp: L.grp, vil: L.vil, born: L.born, died: L.died, dis: L.dis, starv: L.starv }, gp, gl }; }
-function peStatLoad(people, st) { if (!st || !st.meta) return; const m = st.meta, n = m.days.length, ng = m.ng, L = peStatLog(people); Object.assign(L, { days: m.days.slice(), pop: m.pop.slice(), grp: m.grp.slice(), vil: m.vil.slice(), born: m.born.slice(), died: m.died.slice(), dis: m.dis.slice(), starv: m.starv.slice(), gp: [], gl: [] }); for (let i = 0; i < n; i++) { L.gp.push(new Uint16Array(st.gp.subarray(i * ng, (i + 1) * ng))); L.gl.push(new Uint8Array(st.gl.subarray(i * ng, (i + 1) * ng))); } }
+function peStatSave(people) { const L = peStatLog(people); if (!L.days.length) return null; const n = L.days.length, ng = people.groups.length + 1, gp = new Uint16Array(n * ng), gl = new Uint8Array(n * ng), gf = new Uint8Array(n * ng), gs = new Uint16Array(n * ng); for (let i = 0; i < n; i++) { gp.set(L.gp[i].subarray(0, ng), i * ng); gl.set(L.gl[i].subarray(0, ng), i * ng); if (L.gf[i]) { gf.set(L.gf[i].subarray(0, ng), i * ng); gs.set(L.gs[i].subarray(0, ng), i * ng); } }
+  return { meta: { ng, days: L.days, pop: L.pop, grp: L.grp, vil: L.vil, born: L.born, died: L.died, dis: L.dis, starv: L.starv, fed: L.fed, food: L.food }, gp, gl, gf, gs }; }
+function peStatLoad(people, st) { if (!st || !st.meta) return; const m = st.meta, n = m.days.length, ng = m.ng, L = peStatLog(people); Object.assign(L, { days: m.days.slice(), pop: m.pop.slice(), grp: m.grp.slice(), vil: m.vil.slice(), born: m.born.slice(), died: m.died.slice(), dis: m.dis.slice(), starv: m.starv.slice(), gp: [], gl: [], gf: [], gs: [], fed: (m.fed || new Array(n).fill(0)).slice(), food: (m.food || new Array(n).fill(0)).slice() }); for (let i = 0; i < n; i++) { L.gp.push(new Uint16Array(st.gp.subarray(i * ng, (i + 1) * ng))); L.gl.push(new Uint8Array(st.gl.subarray(i * ng, (i + 1) * ng))); L.gf.push(st.gf ? new Uint8Array(st.gf.subarray(i * ng, (i + 1) * ng)) : null); L.gs.push(st.gs ? new Uint16Array(st.gs.subarray(i * ng, (i + 1) * ng)) : null); } }
 function peopleMonthly(people, ctx) {
   const world = ctx.world, S = peWorld(world, ctx.plantFood), P = people.npc;
   const rng = ctx.rng || peRng(people.rngState);
