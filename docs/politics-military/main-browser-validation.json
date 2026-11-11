@@ -1,0 +1,157 @@
+{
+  "checks": [
+    {
+      "name": "main boot and shared population clock",
+      "passed": true,
+      "detail": {
+        "day": 0,
+        "popDay": 0,
+        "n": 10786,
+        "seed": "12345"
+      }
+    },
+    {
+      "name": "existing main save has world-bound military extension",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "daily and monthly paths share one day",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "JSON retains military collection data",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "invalid extension rejected before regeneration",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "native in-place restoration preserves shared clock and accumulator",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "developer mission uses existing generated people and actual group stock",
+      "passed": true,
+      "detail": {
+        "ids": [
+          0,
+          1,
+          7
+        ],
+        "result": {
+          "ok": true,
+          "replayed": false
+        }
+      }
+    },
+    {
+      "name": "actual main courier is in transit with consumed real rations",
+      "passed": true,
+      "detail": {
+        "consumed": 1.4055555555555552,
+        "status": "in-transit"
+      }
+    },
+    {
+      "name": "resume from an actual main mid-delivery save reproduces population and military results",
+      "passed": true,
+      "detail": {
+        "same": true,
+        "a": "completed",
+        "b": "completed",
+        "checksumA": 151582814,
+        "checksumB": 151582814,
+        "rngA": 2820214312,
+        "rngB": 2820214312
+      }
+    },
+    {
+      "name": "received command updates the actual main unit and result record",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "existing IndexedDB stores the same native military extension",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "IndexedDB and file round-trip retain delivery/consumption state",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "actual accelerated frame path advances the same shared clocks",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "actual main 100,000-person load fixture advances and reloads without clock divergence",
+      "passed": true,
+      "detail": {
+        "kind": "actual-main-browser-with-explicit-load-fixture",
+        "initial": 10825,
+        "target": 100000,
+        "totalIds": 100043,
+        "living": 97914,
+        "days": 30,
+        "aligned": true,
+        "buildMs": 58,
+        "runMs": 1290.6000000014901,
+        "saveMs": 71,
+        "loadMs": 345.70000000298023
+      }
+    },
+    {
+      "name": "native load pauses the existing shared clock while terrain is regenerated",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "name": "actual worker reload and a further month reproduce population, food and military outcomes",
+      "passed": true,
+      "detail": {
+        "same": true,
+        "expectedChecksum": 1101065397,
+        "actualChecksum": 1101065397,
+        "expectedRng": 1030558278,
+        "actualRng": 1030558278,
+        "foodEqual": true,
+        "militaryEqual": true
+      }
+    },
+    {
+      "name": "main history does not duplicate military events after reload",
+      "passed": true,
+      "detail": null
+    }
+  ],
+  "pageErrors": [],
+  "htmlSha256": "1f3cb29c1862aaed72099a639343448c86997f61587add15b0c38fc436004962",
+  "populationLoad": {
+    "kind": "actual-main-browser-with-explicit-load-fixture",
+    "initial": 10825,
+    "target": 100000,
+    "totalIds": 100043,
+    "living": 97914,
+    "days": 30,
+    "aligned": true,
+    "buildMs": 58,
+    "runMs": 1290.6000000014901,
+    "saveMs": 71,
+    "loadMs": 345.70000000298023
+  },
+  "elapsedSeconds": 138.36284494400024,
+  "boot": {
+    "day": 0,
+    "popDay": 0,
+    "n": 10786,
+    "seed": "12345"
+  }
+}

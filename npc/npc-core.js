@@ -326,6 +326,7 @@
       if (this.random() < qm) { if (this.onDeath) this.onDeath(i); this._die(i); return; }
       if (!this.eth[i] && a >= 12) this._assignEth(i);   // 12歳：育った集団の民族になる（親の民族は副次的な帰属として残る）
       const adult = this.adultAge(i);
+      if (this.unavailableForHomeWork && this.unavailableForHomeWork.has(i)) return;   // world-owned physical absence; health/age still advance
       if (a >= 10) this._interact(i);   // 交流（人間関係）
       // 仕事：14歳で見習いとして職業を選ぶ／まれに転職／60歳以降に引退
       if (a >= adult - 4 && !(this.flags[i] & 8)) {

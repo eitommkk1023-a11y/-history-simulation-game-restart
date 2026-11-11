@@ -1,0 +1,97 @@
+{
+  "stage": "P3a referenced-person order lifecycle and route estimate bridge",
+  "base": "f3d1ee6",
+  "tests": 72,
+  "results": [
+    {
+      "command": [
+        "node",
+        "tests/geography-adapter.test.mjs"
+      ],
+      "exitCode": 0,
+      "counts": {
+        "tests": "11",
+        "pass": "11",
+        "fail": "0"
+      }
+    },
+    {
+      "command": [
+        "node",
+        "tests/politics-military/assignment-ledger.test.mjs"
+      ],
+      "exitCode": 0,
+      "counts": {
+        "tests": "15",
+        "pass": "15",
+        "fail": "0"
+      }
+    },
+    {
+      "command": [
+        "node",
+        "tests/politics-military/order-ledger.test.mjs"
+      ],
+      "exitCode": 0,
+      "counts": {
+        "tests": "22",
+        "pass": "22",
+        "fail": "0"
+      }
+    },
+    {
+      "command": [
+        "node",
+        "tests/politics-military/order-route.test.mjs"
+      ],
+      "exitCode": 0,
+      "counts": {
+        "tests": "5",
+        "pass": "5",
+        "fail": "0"
+      }
+    },
+    {
+      "command": [
+        "node",
+        "tests/politics-military/people-military-session.test.mjs"
+      ],
+      "exitCode": 0,
+      "counts": {
+        "tests": "13",
+        "pass": "13",
+        "fail": "0"
+      }
+    },
+    {
+      "command": [
+        "node",
+        "tests/politics-military/person-reference.test.mjs"
+      ],
+      "exitCode": 0,
+      "counts": {
+        "tests": "6",
+        "pass": "6",
+        "fail": "0"
+      }
+    }
+  ],
+  "review": "Single-agent author self-review. No independent review (supervisor prohibits subagents).",
+  "redGreenFindings": [
+    "Refusal transition after execution-requested rejected on restore",
+    "Different world or canonical population in assignment source rejected",
+    "P0c session binding exposed and stale order adapters invalidated"
+  ],
+  "notIntegrated": [
+    "Main HTML and UI",
+    "Autonomous political proposals and real courier movement",
+    "Canonical external action transaction runner",
+    "Atomic full-world save including order, transport and effect receipts",
+    "History/ideology publishing"
+  ],
+  "notRun": [
+    "Browser UI trial: no UI changed",
+    "60/100-year full-world simulation: no generator.js/world.bin fixture available",
+    "Independent field battle and building durability rerun: files unchanged, last verified P0c"
+  ]
+}
