@@ -1,0 +1,7 @@
+// 同じSeedの再現性（ブラウザ）：?small=Seed を2回、別々のブラウザで開いて比べる。さらに30日進めた後も比べる
+const { chromium } = require('playwright');
+const sig = async (seed) => { const b = await chromium.launch({ args: ['--use-gl=swiftshader','--enable-webgl','--ignore-gpu-blocklist'] }); const ctx = await b.newContext({ viewport: { width: 874, height: 380 }, hasTouch: true, isMobile: true }); await ctx.addInitScript(() => { try { localStorage.setItem('woh-dev', '1'); } catch (e) { } });
+  const p = await ctx.newPage(); await p.goto('file:///tmp/claude-0/-home-user--/d03687c2-a545-5a23-9b43-0b8d77dc6c9c/scratchpad/v30/index3.html?small=' + seed); await p.waitForFunction(() => document.body.classList.contains('god-on'), null, { timeout: 500000 }); await p.waitForTimeout(2500);
+  const f = () => p.evaluate(() => { const pe = window.__geo.people, P = pe.npc; return JSON.stringify({ seed: window.__geo.seed, win: pe.win, g: pe.groups.map(g => [g.id, g.ethId, Math.round(g.x), Math.round(g.y), Math.round(g.pop), g.site && g.site.kind]), chk: P.checksum(), n: P.livingCount() }); });
+  const s0 = await f(); await p.evaluate(() => window.__geo.skipDays(360)); const s1 = await f(); await b.close(); return [s0, s1]; };
+(async () => { const a = await sig('SAME-1'), c = await sig('SAME-1'), d = await sig('OTHER-2'); console.log('開始時 同じSeed一致:', a[0] === c[0], '／1年後 一致:', a[1] === c[1], '／別Seedは違う:', a[0] !== d[0]); console.log(a[0].slice(0, 160)); process.exit(a[0] === c[0] && a[1] === c[1] && a[0] !== d[0] ? 0 : 1); })();

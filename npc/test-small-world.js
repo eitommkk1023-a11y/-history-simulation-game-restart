@@ -28,4 +28,19 @@ for (const seed of SEEDS) {
   ok(Object.keys(ev).includes('migrate') === false || ev.migrate <= 6, `移住は強制していない（自然に起きた ${ev.migrate || 0}件）`);
   ok(ms / YEARS / 12 < 30, '1か月の計算が軽い（30ms未満）');
 }
+
+// ---- 整合性（人口・食料・死亡・血縁・世界履歴）と、同じSeedでの結果の再現
+{ const NONE = 0xffffffff, ALIVE = 0x7fffffff, runOnce = (seed, years) => { const A = make(seed); const n0 = A.people.npc.livingCount(); for (let i = 0; i < years * 12; i++) { const month = i % 12; G.faunaMonthly(A.fauna, { month, env, cc }); P.peopleMonthly(A.people, { month, day: i * 30, world, fauna: A.fauna, FA, plantFood, env, cc, res: world.resources }); } return { A, n0 }; };
+  const { A, n0 } = runOnce(5, 40), pe = A.people, N = pe.npc, st = N.stats, live = N.livingCount();
+  console.log(`\n== 整合性（40年）：開始 ${n0}人 → ${live}人、出生 ${st.births}、死亡 ${st.deaths}`);
+  ok(live === n0 + st.births - st.deaths, `人口＝開始＋出生−死亡（${n0}＋${st.births}−${st.deaths}＝${n0 + st.births - st.deaths}／実際 ${live}）`);
+  const gp = pe.groups.reduce((a, g) => a + (g.alive ? g.pop : 0), 0); ok(Math.abs(gp - live) <= pe.groups.length, `集団の人口の合計（${Math.round(gp)}）が住民の数（${live}）と一致`);
+  let badRef = 0, badSpouse = 0, deadInGroup = 0, badGroup = 0; for (let i = 0; i < N.n; i++) { if (N.mother[i] !== NONE && N.mother[i] >= N.n) badRef++; if (N.father[i] !== NONE && N.father[i] >= N.n) badRef++; const sp = N.spouse[i]; if (sp !== NONE && N.death[i] === ALIVE && N.death[sp] === ALIVE && N.spouse[sp] !== i) badSpouse++; if (N.death[i] === ALIVE && (N.group[i] < 1 || N.group[i] > pe.groups.length || !pe.groups[N.group[i] - 1].alive)) badGroup++; }
+  ok(badRef === 0 && badSpouse === 0 && badGroup === 0, `血縁・配偶者・所属の参照が壊れていない（親の不正 ${badRef}・配偶者の不一致 ${badSpouse}・所属の不正 ${badGroup}）`);
+  ok(pe.groups.every(g => g.food >= 0 && g.fed >= 0 && g.fed <= 1.0001), '食料の蓄え・充足が範囲内（蓄え≥0、充足0〜1）');
+  const L = pe.statLog; ok(L && Math.abs(L.pop[L.pop.length - 1] - gp) <= pe.groups.length * 1.5 + 5 && L.days[L.days.length - 1] > 360 * 39, `統計の記録の最新（${L.pop[L.pop.length - 1]}）が実際（${Math.round(gp)}）と一致、記録 ${L.days.length}件`);
+  const deadByCause = N.stats.deaths; ok(pe.groups.reduce((a, g) => a + g.died.natural + g.died.starvation + g.died.cold + g.died.disease, 0) <= deadByCause + 5, '死因の集計が死亡数と矛盾しない');
+  // 同じSeedで、同じ結果（40年後の全住民の検査値・全集団の状態）
+  const B = runOnce(5, 40).A.people, dig = (q) => JSON.stringify([q.npc.checksum(), q.groups.map(g => [g.id, g.alive, Math.round(g.pop * 1000), Math.round(g.food), Math.round(g.fed * 1e6), g.settle, g.x, g.y])]);
+  ok(dig(pe) === dig(B), '同じSeedで同じ条件なら、40年後の全住民・全集団の状態が完全に一致（再現性）'); }
 console.log(fail ? `失敗 ${fail}` : '全て合格'); process.exit(fail ? 1 : 0);

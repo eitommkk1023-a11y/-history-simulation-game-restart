@@ -15,9 +15,10 @@ function pickWindow(world, seed, cellM, opt) {
     for (let j = 0; j < N; j += 30) for (let i = 0; i < N; i += 30) { const k = (y0 + j) * W + x0 + i; n++; if (world.type[k]) { land++; const e = world.elev[k]; if (e < hMin) hMin = e; if (e > hMax) hMax = e; if (fe && fe.forest) forest += fe.forest[Math.min(fe.forest.length - 1, ((y0 + j) >> 3) * Math.ceil(W / 8) + ((x0 + i) >> 3))] / 255; } else sea++; }
     const lf = land / n; if (lf < 0.82) continue;
     let rivers = 0; for (let q = 0; q < riverCells.length; q += 2) { const rx = riverCells[q], ry = riverCells[q + 1]; if (rx >= x0 && rx < x0 + N && ry >= y0 && ry < y0 + N) rivers++; }
-    const relief = Math.max(0, Math.min(1, (hMax - hMin) / 1500)), s = lf * 2 + Math.min(1, rivers / 400) * 3 + Math.min(1, relief) * 1.5 + Math.min(1, forest / Math.max(1, land) * 3) * 1.2 + (hash(seed >>> 0, x0, y0) / 4294967296) * 0.4;
+    const relief = Math.max(0, Math.min(1, (hMax - hMin) / 1500)), fm = forest / Math.max(1, land), s = lf * 2 + Math.min(1, rivers / 400) * 3 + Math.min(1, relief) * 1.5 + Math.min(1, fm * 2.2) * 3 - (fm < 0.2 ? 2 : 0) + (hash(seed >>> 0, x0, y0) / 4294967296) * 0.4;   // 森（樹木）の多い所を強く好み、森が薄い窓は大きく減点
     if (s > bs) { bs = s; best = { x0, y0, x1: x0 + N, y1: y0 + N, score: +s.toFixed(3), land: +lf.toFixed(2), rivers }; }
   }
+  if (best) { let f = 0, n = 0; if (fe && fe.forest) for (let j = 0; j < N; j += 30) for (let i = 0; i < N; i += 30) { f += fe.forest[Math.min(fe.forest.length - 1, ((best.y0 + j) >> 3) * Math.ceil(W / 8) + ((best.x0 + i) >> 3))] / 255; n++; } best.forest = +(f / Math.max(1, n)).toFixed(2); }
   return best;
 }
 const inWindow = (win, x, y) => !win || (x >= win.x0 && x < win.x1 && y >= win.y0 && y < win.y1);
