@@ -737,10 +737,10 @@ function peopleGenerate(seed, W) {
   const rng = peRng(sd ^ peHash('people'));
   const P = world.riverPts;
   // 候補：川・海岸・湖畔・湧水の点ごとの、複数条件の採点（食料・水・地形・資源・交通・洪水）。点数の2乗に比例して選ぶ
-  const T = peSites(S, world), cand = [], score = [], info = [];
+  const T = peSites(S, world), cand = [], score = [], info = [], SM = W.small || null, inWin = (x, y) => !SM || (x >= SM.win.x0 + 40 && x < SM.win.x1 - 40 && y >= SM.win.y0 + 40 && y < SM.win.y1 - 40);   // 窓の縁から40セル（約1.3km）内側   // SM：小規模ワールドの設定（窓・村の数・人口・村どうしの距離〈セル〉）
   let smax = 0;
   for (let q = 0; q < T.count; q++) {
-    const x = T.x[q], y = T.y[q], r = peSiteScore(S, world, x, y, SITE_KINDS[T.kind[q]], null);
+    const x = T.x[q], y = T.y[q]; if (!inWin(x, y)) continue; const r = peSiteScore(S, world, x, y, SITE_KINDS[T.kind[q]], null);
     if (!r || r.score <= 0) continue;
     cand.push(q); score.push(r.score); info.push(r);
     if (r.score > smax) smax = r.score;
@@ -756,16 +756,20 @@ function peopleGenerate(seed, W) {
     return pickIn(byKind[kk]);
   };
   const sites = [];
-  let spacing = PE.MIN_SPACING, fails = 0;
-  while (sites.length < PE.ETHNICITIES && cand.length) {
-    const pi = pick(), q = cand[pi], x = T.x[q], y = T.y[q];
+  let spacing = SM ? SM.minD : PE.MIN_SPACING, maxD = SM ? SM.maxD : 1e9, fails = 0;
+  // 小規模ワールド：食料の点数が高い（約50人の村を養える）場所から順に選ぶ（点数にわずかな乱数を足した順。置けなければ次の候補へ）。大規模世界は従来どおり、点数の2乗に比例して選ぶ
+  const order = SM ? cand.map((q, i) => i).sort((a, b) => score[b] * (0.92 + 0.16 * rng()) - score[a] * (0.92 + 0.16 * rng())) : null; let oi = 0;
+  while (sites.length < (SM ? SM.n : PE.ETHNICITIES) && cand.length) {
+    if (SM && oi >= order.length) { oi = 0; spacing = Math.max(SM.minD * 0.6, spacing * 0.92); maxD *= 1.1; }
+    const pi = SM ? order[oi++] : pick(), q = cand[pi], x = T.x[q], y = T.y[q];
     let ok = true;
     for (const s of sites) { const dx = s.rx - x, dy = s.ry - y; if (dx * dx + dy * dy < spacing * spacing) { ok = false; break; } }
-    if (!ok) { if (++fails > 400) { spacing *= 0.85; fails = 0; } continue; }
+    if (ok && SM && sites.length && !sites.some(s => (s.rx - x) * (s.rx - x) + (s.ry - y) * (s.ry - y) <= maxD * maxD)) ok = false;   // 小規模ワールド：少なくとも1つの村から、最大の距離以内
+    if (!ok) { if (!SM && ++fails > 400) { spacing *= 0.85; fails = 0; } continue; }
     const d = peDryNear(S, world, x, y);
     sites.push({ rx: x, ry: y, x: d.x, y: d.y, site: { kind: info[pi].kind, score: info[pi].score, parts: info[pi].parts } });
   }
-  const people = { version: 2, ties: {}, ethSpeed: 1, nbr: {}, nextGroupId: 1, nextEthId: 1, rngState: 0, playerEth: 0, ethnicities: [], groups: [], contacts: {}, languages: [], npc: null, haz: null, stat: null };
+  const people = { win: SM ? SM.win : null, version: 2, ties: {}, ethSpeed: 1, nbr: {}, nextGroupId: 1, nextEthId: 1, rngState: 0, playerEth: 0, ethnicities: [], groups: [], contacts: {}, languages: [], npc: null, haz: null, stat: null };
   // 安定人口に近い年齢構成（基本の死亡率での生存率）の累積
   const surv = new Float64Array(PE_AGES);
   let l = 1;
@@ -781,7 +785,7 @@ function peopleGenerate(seed, W) {
     people.ethnicities.push(eth);
     let r = rng(), cls = PE.SIZE_CLASS[0];
     for (const c of PE.SIZE_CLASS) { cls = c; if (r < c[0]) break; r -= c[0]; }
-    pops.push(Math.round(cls[1] + (cls[2] - cls[1]) * rng()));
+    pops.push(SM ? Math.round(SM.popTotal / SM.n * (0.8 + 0.4 * rng())) : Math.round(cls[1] + (cls[2] - cls[1]) * rng()));
     const g = peNewGroup(people, eth.id, s.x, s.y);
     g.site = s.site;
     g.radius = peRadius(pops[i]);
@@ -836,7 +840,7 @@ function peopleGenerate(seed, W) {
   { // 初期の定住：豊かな場所の集団は、すでに村（縄文のように、はじめから暮らしのある社会）
     const vals = people.groups.map(g => ({ g, v: peSiteValue(S, world, peCellOf(S, g.x, g.y)) })).sort((a, b) => b.v - a.v);
     const hi = vals[Math.floor(vals.length * (1 - PE.SETTLE_SITE_PCT))] ? vals[Math.floor(vals.length * (1 - PE.SETTLE_SITE_PCT))].v : 0; people.siteHi = hi; const mid = vals[Math.floor(vals.length * 0.6)] ? vals[Math.floor(vals.length * 0.6)].v : 0; people.siteMid = mid;   // 暮らしやすさが上位60%に入らない場所は、移動して暮らす（野営地のまま）
-    vals.forEach(({ g, v }, k) => { const r = k / vals.length; g.siteQ = 1 - r; if (r < 0.35 && g.pop >= 40) { g.settle = 2; g.stay = PE.SETTLE2_MONTHS; } else if (r < 0.6) { g.settle = 1; g.stay = PE.SETTLE1_MONTHS; } peChron(people, g, 'start', { level: g.settle || 0, synthetic: true, site: g.site ? g.site.kind : null }); });
+    vals.forEach(({ g, v }, k) => { const r = k / vals.length; g.siteQ = 1 - r; if (SM ? true : (r < 0.35 && g.pop >= 40)) { g.settle = 2; g.stay = PE.SETTLE2_MONTHS; } else if (r < 0.6) { g.settle = 1; g.stay = PE.SETTLE1_MONTHS; } peChron(people, g, 'start', { level: g.settle || 0, synthetic: true, site: g.site ? g.site.kind : null }); });
   }
   peNeighbors(people);
   for (const g of people.groups) peSettleHistInit(people, g, sd);   // 集落の歴史（成立年代・衰退・防衛・建築技術）。開始前の歴史は一日ずつ計算せず、成立年代から決める
@@ -1170,6 +1174,7 @@ function peFindSite(people, g, S, world, rng, range, minValue) {
     const c = yy * S.cw + xx, s0 = T.start[c], s1 = T.start[c + 1];
     if (s0 === s1) continue;
     const q = s0 + Math.floor(rng() * (s1 - s0)), x = T.x[q], y = T.y[q];
+    if (people.win && !(x >= people.win.x0 && x < people.win.x1 && y >= people.win.y0 && y < people.win.y1)) continue;   // 小規模ワールド：窓の外へは移らない
     const dx = x - g.homeX, dy = y - g.homeY, dd = dx * dx + dy * dy;
     if (dd < range[0] * range[0] || dd > range[1] * range[1]) continue;
     const r = peSiteScore(S, world, x, y, SITE_KINDS[T.kind[q]], hint); if (!r) continue;
@@ -1556,7 +1561,7 @@ function peopleSave(people) {
   const P = people.npc, n = P.n, cut = (a, per = 1) => a.slice(0, n * per);
   const pool = [], poolStart = [0]; for (let g = 0; g < P.groups; g++) { for (const v of P.pool[g]) pool.push(v); poolStart.push(pool.length); }
   const members = [], memberStart = [0]; for (let g = 0; g < P.groups; g++) { for (const id of P.members[g]) members.push(id); memberStart.push(members.length); }
-  const meta = { version: people.version, nextGroupId: people.nextGroupId, nextEthId: people.nextEthId, rngState: people.rngState, playerEth: people.playerEth,
+  const meta = { win: people.win || null, version: people.version, nextGroupId: people.nextGroupId, nextEthId: people.nextEthId, rngState: people.rngState, playerEth: people.playerEth,
     ethnicities: people.ethnicities, groups: people.groups.map(g => Object.assign({}, g, { c6: undefined })), contacts: people.contacts, ties: people.ties || {}, nation: people.nation ? Nation.save(people.nation) : (people.nationSave || null), ethSpeed: people.ethSpeed || 1, languages: people.languages, autoNames: people.autoNames || {}, placeLangs: people.placeLangs || {}, nextLangId: people.nextLangId || 0, player: people.player,
     npc: { seed: P.seed, n, day: P.day, rng: P.rng, stats: P.stats, delta: Array.from(P.delta), focus: Array.from(P.focus), ethSecondary: Array.from(P.ethSecondary), groups: P.groups } };
   return { meta, birth: cut(P.birth), death: cut(P.death), sex: cut(P.sex), group: cut(P.group), mother: cut(P.mother), father: cut(P.father), spouse: cut(P.spouse), job: cut(P.job), flags: cut(P.flags),
@@ -1566,7 +1571,7 @@ function peopleSave(people) {
     haz: { starv: people.haz.starv.slice(), cold: people.haz.cold.slice(), dis: people.haz.dis.slice(), hungerDis: people.haz.hungerDis.slice(), fert: people.haz.fert.slice() } };
 }
 function peopleLoad(sv) {
-  const m = sv.meta, people = { version: m.version, nextGroupId: m.nextGroupId, nextEthId: m.nextEthId, rngState: m.rngState, playerEth: m.playerEth, ethnicities: m.ethnicities,
+  const m = sv.meta, people = { win: m.win || null, version: m.version, nextGroupId: m.nextGroupId, nextEthId: m.nextEthId, rngState: m.rngState, playerEth: m.playerEth, ethnicities: m.ethnicities,
     groups: m.groups.map(g => { if (g.layout && Settle && Settle.upgradeLayout) Settle.upgradeLayout(g.layout); return Object.assign(g, { c6: [0, 0, 0, 0, 0, 0] }); }), contacts: m.contacts, ties: m.ties || {}, nationSave: m.nation || null, ethSpeed: m.ethSpeed || 1, nbr: {}, languages: m.languages, autoNames: m.autoNames || {}, placeLangs: m.placeLangs || {}, nextLangId: m.nextLangId || 0, player: m.player || null, npc: null, haz: null, stat: null };
   if (sv.stat) peStatLoad(people, sv.stat);
   const n = m.npc.n, P = people.npc = new Population(m.npc.seed, m.npc.groups, Math.max(1024, n * 2));
