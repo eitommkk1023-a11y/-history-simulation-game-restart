@@ -12769,11 +12769,12 @@ document.getElementById('deathOk')?.addEventListener('click', () => document.get
     el.innerHTML = '描画 ' + fps + ' FPS・更新ループ ' + loop + '回/秒' + (globalThis.__wohFastSim ? '（高速進行中：3D省略）' : '') + '<br>1か月の計算：直近 ' + PM.ema.toFixed(1) + 'ms・平均 ' + (PM.ms / n).toFixed(1) + 'ms（動物 ' + (PM.fauna / n).toFixed(1) + '・人 ' + (PM.people / n).toFixed(1) + '）<br>1年あたり ' + (PM.ema * 12 / 1000).toFixed(2) + '秒・メモリ ' + mem;
   }
   function measureSave() {
-    const out = bar.querySelector('#godSaveOut'); out.textContent = '測っています…'; setTimeout(() => {
+    const out = bar.querySelector('#godSaveOut'); out.textContent = '測っています…'; setTimeout(async () => {
       try { const t0 = performance.now(), st = serializeState(), tSer = performance.now() - t0; const parts = {}; const size = (o) => { let n = 0; const walk = (v) => { if (v === null || v === undefined) return; if (ArrayBuffer.isView(v)) { n += v.byteLength; return; } if (typeof v === 'object') { for (const k of Object.keys(v)) walk(v[k]); return; } n += String(v).length + 1; }; walk(o); return n; };
         const pk = st.people ? { '人口と住民': size({ ...st.people, stat: null }), '統計の記録': size(st.people.stat), '集落の配置': (() => { try { return JSON.stringify(st.people.meta.groups.map(g => g.layout || null)).length; } catch (e) { return 0; } })() } : {}; const rest = { '動物': size(st.fauna), '持ち物など': size(st.forage), '履歴': size(st.history), '地形の変化': size(st.sim) };
-        Object.assign(parts, pk, rest); const total = size(st); const fmt = n => n > 1048576 ? (n / 1048576).toFixed(2) + 'MB' : Math.round(n / 1024) + 'KB';
-        out.innerHTML = '保存データ 約 ' + fmt(total) + '（組み立て ' + tSer.toFixed(0) + 'ms）<br>' + Object.keys(parts).map(k => k + ' ' + fmt(parts[k])).join('・'); } catch (e) { out.textContent = '測れませんでした：' + e.message; } }, 30);
+        Object.assign(parts, pk, rest); const total = size(st), fmt = n => n > 1048576 ? (n / 1048576).toFixed(2) + 'MB' : Math.round(n / 1024) + 'KB';
+        const z0 = performance.now(); let zt = null, zms = 0; try { const z = await zPack(st); zt = size(z) - 0; zms = performance.now() - z0; if (!z.zpack) zt = null; } catch (e) { }
+        out.innerHTML = '保存データ 約 ' + fmt(total) + (zt !== null ? ' → <b>圧縮後 ' + fmt(zt) + '</b>（圧縮 ' + zms.toFixed(0) + 'ms）' : '（この環境では圧縮できません）') + '（組み立て ' + tSer.toFixed(0) + 'ms）<br>圧縮前の内訳：' + Object.keys(parts).map(k => k + ' ' + fmt(parts[k])).join('・'); } catch (e) { out.textContent = '測れませんでした：' + e.message; } }, 30);
   }
   let sel = 0;
   const world = () => window.__geo && window.__geo.world, regionOf = g => { const w = world(); if (!w || !w.regionId) return 0; const W = w.stats.width; return w.regionId[Math.round(g.y) * W + Math.round(g.x)] || 0; };
@@ -14813,11 +14814,41 @@ function applyState(st) {
   volcMarkersBuild(); featMarksBuild();
   labUpdateButtons(); timebarUpdate(); labelsUpdate(); requestRender();
 }
+// ---- 保存データの圧縮：大きな型付き配列（天気の状態など）と動物の状態を、deflate で縮めて保存する（保存・書き出し）。読み込み時に元へ戻す。
+// 圧縮できない環境（古いブラウザ）では、そのまま保存する。圧縮した記録は st.zpack=1。元の形はメモリ上で変わらない（Codexの保存の整合の検査も、元の形に対して働く）
+const Z_CTOR = { Float32Array, Float64Array, Int32Array, Uint8Array, Uint16Array, Int16Array, Int8Array, Uint32Array };
+const zOk = () => typeof CompressionStream !== 'undefined' && typeof DecompressionStream !== 'undefined';
+async function zRun(bytes, Stream, mode) { const s = new Blob([bytes]).stream().pipeThrough(new Stream(mode)); return new Uint8Array(await new Response(s).arrayBuffer()); }
+async function zPack(st) {
+  if (!zOk()) return st; const out = {}; let n = 0;
+  const walk = async (v, depth) => {
+    if (ArrayBuffer.isView(v)) { if (v.byteLength < 4096 || !Z_CTOR[v.constructor.name]) return v; const d = await zRun(new Uint8Array(v.buffer, v.byteOffset, v.byteLength), CompressionStream, 'deflate-raw'); if (d.byteLength >= v.byteLength * 0.9) return v; n++; return { __z: 1, t: v.constructor.name, d }; }
+    if (v && typeof v === 'object' && !Array.isArray(v) && depth < 4 && !(v instanceof Date)) { const o = {}; for (const k of Object.keys(v)) o[k] = await walk(v[k], depth + 1); return o; }
+    if (Array.isArray(v) && depth < 4 && v.length && ArrayBuffer.isView(v[0])) { const o = []; for (const x of v) o.push(await walk(x, depth + 1)); return o; }
+    return v;
+  };
+  for (const k of Object.keys(st)) {
+    if (k === 'fauna' && st.fauna) { const d = await zRun(new TextEncoder().encode(JSON.stringify(st.fauna, (k, v) => ArrayBuffer.isView(v) ? { __ta: v.constructor.name, a: Array.from(v) } : v)), CompressionStream, 'deflate-raw'); out.fauna = { __zj: 1, d }; n++; }   // 動物の状態は、小さな型付き配列が多いので、型の印をつけて文字にしてから圧縮
+    else out[k] = await walk(st[k], 0);
+  }
+  if (!n) return st; out.zpack = 1; return out;
+}
+async function zUnpack(st) {
+  const walk = async (v, depth) => {
+    if (v && v.__z === 1 && v.d) { const u8 = await zRun(v.d, DecompressionStream, 'deflate-raw'); const C = Z_CTOR[v.t] || Uint8Array; return new C(u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength)); }
+    if (v && v.__zj === 1 && v.d) return JSON.parse(new TextDecoder().decode(await zRun(v.d, DecompressionStream, 'deflate-raw')), (k, x) => x && x.__ta && Array.isArray(x.a) ? new (Z_CTOR[x.__ta] || Array)(x.a) : x);
+    if (v && typeof v === 'object' && !ArrayBuffer.isView(v) && !Array.isArray(v) && depth < 4) { const o = {}; for (const k of Object.keys(v)) o[k] = await walk(v[k], depth + 1); return o; }
+    if (Array.isArray(v) && depth < 4) { const o = []; for (const x of v) o.push(await walk(x, depth + 1)); return o; }
+    return v;
+  };
+  const out = {}; for (const k of Object.keys(st)) if (k !== 'zpack') out[k] = await walk(st[k], 0); return out;
+}
+globalThis.__wohZ = { pack: zPack, unpack: zUnpack };
 function saveTo(slot) {
   if (!world) return Promise.resolve();
-  const st = serializeState();
-  st.slot = slot;
-  return dbDo('readwrite', s => s.put(st, slot)).then(() => {
+  const st0 = serializeState();
+  st0.slot = slot;
+  return zPack(st0).catch(() => st0).then(st => dbDo('readwrite', s => s.put(st, slot))).then(() => {
     if (slot !== 'auto') postEvent({ cat: 'people', imp: 0, text: `${SAVE_SLOT_LABEL[slot]}に保存した` });
     menuMsg(`${SAVE_SLOT_LABEL[slot]}に保存しました（${fmtDate(clock.day)}）`);
     menuRender();
@@ -14834,6 +14865,7 @@ function autoSaveMaybe(force) {
 let pendingLoad = null, pendingLoadClock = null;
 function recoverLoadClock(){if(pendingLoadClock){Object.assign(clock,pendingLoadClock);pendingLoadClock=null;}pendingLoad=null;}
 function loadState(st) {
+  if (st && st.zpack) { zUnpack(st).then(loadState).catch(e => menuMsg('読み込めませんでした（圧縮した記録）：' + e)); return; }   // 圧縮した記録は、元に戻してから読み込む
   if (!st || st.format !== SAVE_FORMAT) { menuMsg('この記録は読み込めません（形式が違います）'); return; }
   try { st=stageMainSave(st).snapshot; } catch(e) { menuMsg('読み込めませんでした：'+e.message); return false; }
   const go = () => { pendingLoadClock={playing:clock.playing,pending:clock.pending,acc:clock.acc};clock.playing=false;clock.pending=0;pendingLoad = st; menuShow(false); generate(st.seed, false); };
@@ -14875,9 +14907,9 @@ function unpackTyped(text) {
     return v;
   });
 }
-function exportSave() {
-  if (!world) return;
-  const blob = new Blob([packTyped(serializeState())], { type: 'application/json' });
+async function exportSave() {
+  if (!world) return; let st = serializeState(); try { st = await zPack(st); } catch (e) { }
+  const blob = new Blob([packTyped(st)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `world-${currentSeed}-${clock.day}.json`;
@@ -15646,13 +15678,14 @@ function detailNoise(x,y,spacing,seed){
  const qx=x/spacing,qy=y/spacing,ix=Math.floor(qx),iy=Math.floor(qy),u=qx-ix,v=qy-iy,a=detailHash(seed,ix,iy),b=detailHash(seed,ix+1,iy),c=detailHash(seed,ix,iy+1),d=detailHash(seed,ix+1,iy+1),sx=detailSmooth(u),sy=detailSmooth(v);
  return {h:a+(b-a)*sx+(c-a)*sy+(d-c-b+a)*sx*sy,dx:((b-a)+(d-c-b+a)*sy)*detailSmoothDerivative(u)/spacing,dy:((c-a)+(d-c-b+a)*sx)*detailSmoothDerivative(v)/spacing};
 }
+const NODE_D=(()=>{const a=new Float64Array(81);for(let dy=-4;dy<=4;dy++)for(let dx=-4;dx<=4;dx++)a[(dy+4)*9+dx+4]=Math.hypot(dx,dy);return a;})();
 function createDetailedTerrain(base,world,seed){
  const cache=new Map(),seedHash=detailSeedHash(seed),s=base.metersPerCell,W=base.width,H=base.height;
  function nodeWeight(x,y){
   const key=y*W+x,cached=cache.get(key);if(cached!==undefined)return cached;
   let distance=4;
   for(let dy=-4;dy<=4;dy++)for(let dx=-4;dx<=4;dx++){
-   const d=Math.hypot(dx,dy);if(d>=distance)continue;const xx=x+dx,yy=y+dy;
+   const d=NODE_D[(dy+4)*9+dx+4];if(d>=distance)continue;const xx=x+dx,yy=y+dy;   // 距離は表引き（hypot と同じ値。毎回の平方根を避ける）
    if(xx<0||yy<0||xx>=W||yy>=H||!world.type[yy*W+xx]||world.water[yy*W+xx])distance=d;
   }
   let weight=detailSmooth((distance-2)/2);
