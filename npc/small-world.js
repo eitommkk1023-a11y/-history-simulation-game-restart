@@ -5,6 +5,9 @@
 (function (root) {
 const SMALL = { sizeM: 20000, villages: 4, popTotal: 200, minDm: 3000, maxDm: 10000 };   // 世界の広さ・初期の村の数・初期人口・村どうしの距離（m）
 const hash = (a, b, c) => { let h = (a ^ Math.imul(b, 374761393) ^ Math.imul(c, 668265263)) >>> 0; h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0; return (h ^ (h >>> 16)) >>> 0; };
+// 段階：S1（20km・4村）→ S2（40km・10村）→ S3（80km・24村）。広げるほど村の間隔と人数も増やす
+const STAGES = { 1: SMALL, 2: { sizeM: 40000, villages: 10, popTotal: 600, minDm: 3500, maxDm: 14000 }, 3: { sizeM: 80000, villages: 24, popTotal: 2000, minDm: 4000, maxDm: 20000, minLand: 0.55 } };
+const stageOf = (n) => STAGES[n] || SMALL;
 // 窓：{ x0, y0, x1, y1 }（セル）。cellM＝1セルのメートル。陸地が多く、川・起伏・森がある所を選ぶ
 function pickWindow(world, seed, cellM, opt) {
   const o = Object.assign({}, SMALL, opt || {}), W = world.stats.width, H = world.stats.height, N = Math.round(o.sizeM / cellM), step = 60, fe = world.fauna && world.fauna.env;
@@ -13,7 +16,7 @@ function pickWindow(world, seed, cellM, opt) {
   for (let y0 = 0; y0 + N <= H; y0 += step) for (let x0 = 0; x0 + N <= W; x0 += step) {
     let land = 0, n = 0, forest = 0, hMin = 1e9, hMax = -1e9, sea = 0;
     for (let j = 0; j < N; j += 30) for (let i = 0; i < N; i += 30) { const k = (y0 + j) * W + x0 + i; n++; if (world.type[k]) { land++; const e = world.elev[k]; if (e < hMin) hMin = e; if (e > hMax) hMax = e; if (fe && fe.forest) forest += fe.forest[Math.min(fe.forest.length - 1, ((y0 + j) >> 3) * Math.ceil(W / 8) + ((x0 + i) >> 3))] / 255; } else sea++; }
-    const lf = land / n; if (lf < 0.82) continue;
+    const lf = land / n; if (lf < (o.minLand || 0.82)) continue;
     let rivers = 0; for (let q = 0; q < riverCells.length; q += 2) { const rx = riverCells[q], ry = riverCells[q + 1]; if (rx >= x0 && rx < x0 + N && ry >= y0 && ry < y0 + N) rivers++; }
     const relief = Math.max(0, Math.min(1, (hMax - hMin) / 1500)), fm = forest / Math.max(1, land), s = lf * 2 + Math.min(1, rivers / 400) * 3 + Math.min(1, relief) * 1.5 + Math.min(1, fm * 2.2) * 3 - (fm < 0.2 ? 2 : 0) + (hash(seed >>> 0, x0, y0) / 4294967296) * 0.4;   // 森（樹木）の多い所を強く好み、森が薄い窓は大きく減点
     if (s > bs) { bs = s; best = { x0, y0, x1: x0 + N, y1: y0 + N, score: +s.toFixed(3), land: +lf.toFixed(2), rivers }; }
@@ -29,6 +32,6 @@ function pruneFauna(F, world, win, cellM, marginM) {
   for (const sid in F.species) for (const p of F.species[sid].pops) { if (!p.alive) continue; let inside = false; for (let i = 0; i < p.cells.length && !inside; i += 3) { const c = p.cells[i], x = (c % cw) * step, y = Math.floor(c / cw) * step; if (x >= x0 && x < x1 && y >= y0 && y < y1) inside = true; } if (inside) kept++; else { p.alive = false; dropped++; } }
   return { kept, dropped };
 }
-const api = { SMALL, pickWindow, inWindow, pruneFauna };
+const api = { SMALL, STAGES, stageOf, pickWindow, inWindow, pruneFauna };
 if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohSmall = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
