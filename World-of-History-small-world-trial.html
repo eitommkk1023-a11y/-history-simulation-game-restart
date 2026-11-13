@@ -15851,7 +15851,7 @@ function createWaterSurface(terrain,world){
   }
   return [Math.min(1,Math.max(0,(steep-.05)/.3)),n?Math.min(1,wet/n*1.5):0];
  }
- function lakeGrid(x,y,R,stride,skipR,anchor,sea){
+ function lakeGrid(x,y,R,stride,skipR,anchor,sea,mouths){
   const s=terrain.metersPerCell,gx0=Math.max(0,Math.floor((x-R)/s/stride)*stride),gx1=Math.min(terrain.width-1,Math.ceil((x+R)/s/stride)*stride),gy0=Math.max(0,Math.floor((y-R)/s/stride)*stride),gy1=Math.min(terrain.height-1,Math.ceil((y+R)/s/stride)*stride);
   const nx=Math.floor((gx1-gx0)/stride)+1,ny=Math.floor((gy1-gy0)/stride)+1;if(nx<2||ny<2)return null;
   const mk=new Float32Array(nx*ny),lv=new Float32Array(nx*ny).fill(NaN),sh=new Float32Array(nx*ny*2),K=[1,2,1];let any=false;
@@ -15861,7 +15861,15 @@ function createWaterSurface(terrain,world){
    mk[j*nx+i]=sum/16;if(sum>0){lv[j*nx+i]=lev;any=true;if(sum<16){const c=shoreChar(cx,cy,lev,sea);sh[(j*nx+i)*2]=c[0];sh[(j*nx+i)*2+1]=c[1];}}
   }
   if(!any)return null;const pos=[],msk=[],shr=[];
-  const V=(i,j,L)=>{pos.push(gx0*s+i*stride*s-anchor.xM,L+(sea?.02:0),gy0*s+j*stride*s-anchor.yM);msk.push(mk[j*nx+i]);shr.push(sh[(j*nx+i)*2],sh[(j*nx+i)*2+1]);};
+  // 大陸棚・浅瀬：岸（水の縁）からの距離（マス）を2回の走査で求め、岸の傾き（急なら棚が狭い）も、いちばん近い岸から受け継ぐ。河口からの距離で、土砂のにごりも
+  const INF=1e9,dd=new Float32Array(nx*ny).fill(INF),sv=new Float32Array(nx*ny);
+  for(let i=0;i<nx*ny;i++)if(mk[i]>0&&mk[i]<1&&(sh[i*2]>=0)&&lv[i]===lv[i]&&mk[i]<.999){dd[i]=0;sv[i]=sh[i*2];}
+  const relax=(i,j,di,dj,w)=>{const a=j*nx+i,b=(j+dj)*nx+(i+di);if(dd[b]+w<dd[a]){dd[a]=dd[b]+w;sv[a]=sv[b];}};
+  for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){if(mk[j*nx+i]<=0)continue;if(i>0)relax(i,j,-1,0,1);if(j>0)relax(i,j,0,-1,1);if(i>0&&j>0)relax(i,j,-1,-1,1.414);if(i<nx-1&&j>0)relax(i,j,1,-1,1.414);}
+  for(let j=ny-1;j>=0;j--)for(let i=nx-1;i>=0;i--){if(mk[j*nx+i]<=0)continue;if(i<nx-1)relax(i,j,1,0,1);if(j<ny-1)relax(i,j,0,1,1);if(i<nx-1&&j<ny-1)relax(i,j,1,1,1.414);if(i>0&&j<ny-1)relax(i,j,-1,1,1.414);}
+  const V=(i,j,L)=>{const wx=gx0*s+i*stride*s,wy=gy0*s+j*stride*s;pos.push(wx-anchor.xM,L+(sea?.02:0),wy-anchor.yM);msk.push(mk[j*nx+i]);
+   let silt=0;if(sea&&mouths)for(const q of mouths){const d=Math.hypot(wx-q.x,wy-q.y),Rr=q.delta?1100:450;if(d<Rr*3)silt=Math.max(silt,Math.exp(-d/Rr));}
+   const dv=dd[j*nx+i]>=INF?99:dd[j*nx+i]*stride;shr.push(sh[(j*nx+i)*2],sh[(j*nx+i)*2+1],dv,silt);};
   for(let j=0;j<ny-1;j++)for(let i=0;i<nx-1;i++){
    const a=j*nx+i,b=a+1,c=a+nx,d=c+1;if(!(mk[a]>0||mk[b]>0||mk[c]>0||mk[d]>0))continue;
    const L=[lv[a],lv[b],lv[c],lv[d]].find(v=>v===v);if(L===undefined)continue;
@@ -16594,42 +16602,78 @@ const rvU={rvMask:{value:null},rvBox:{value:new THREE.Vector4(1e9,1e9,1,1)}};
 // 源流の種類：湖から流れ出す／湧水（湧水地の特徴が近い）／氷河・雪解け水（氷雪・高山・雪の多い月が多い）／湿地／斜面から湧き出す水（谷頭の湧き水）。川は理由なしには始まらない
 const RV_SRC_LABEL={lake:'湖から流れ出す川',spring:'湧水を源とする川',glacier:'氷河の融け水を源とする川',snow:'雪解け水を源とする川',marsh:'湿地から流れ出す川',seep:'斜面からしみ出す水を源とする川'};
 const RV_KIND_CODE={spring:60,seep:60,glacier:120,snow:120,marsh:180};
+// 小さな支流：生成の川は流量の大きいものだけ（支流が少ない）。ここでは、最終的な標高から粗い格子（8マス）で流れを計算し直し、一定以上の水が集まる所を支流にする。既存の川・湖・海に合流する
+function rvSmallStreams(world){
+  const W=world.stats.width,HR=8,CW=Math.ceil(W/HR),CN=CW*CW,cc=world.climate&&world.climate.cell;if(!cc||!cc.pAnnual)return [];
+  const type=world.type,elev=world.elev,water=world.water,lake=world.lakeId;
+  const el=new Float32Array(CN),land=new Uint8Array(CN),isRv=new Uint8Array(CN);
+  for(let cy=0;cy<CW;cy++)for(let cx=0;cx<CW;cx++){let s=0,n=0,l=0,r=0;for(let y=0;y<HR;y+=2)for(let x=0;x<HR;x+=2){const gx=cx*HR+x,gy=cy*HR+y;if(gx<W&&gy<W){const i=gy*W+gx;s+=elev[i];n++;if(type[i])l++;if(water[i]===1||water[i]===2||lake[i]>0)r++;}}const c=cy*CW+cx;land[c]=l*2>n?1:0;el[c]=land[c]?s/Math.max(1,n):-1000;isRv[c]=r>0?1:0;}
+  const fill=new Float32Array(CN).fill(Infinity),rec=new Int32Array(CN).fill(-1),done=new Uint8Array(CN),hp=[];
+  const push=(k,v)=>{hp.push([k,v]);let i=hp.length-1;while(i>0){const p=(i-1)>>1;if(hp[p][0]<=hp[i][0])break;[hp[p],hp[i]]=[hp[i],hp[p]];i=p;}};
+  const pop=()=>{const t=hp[0],l=hp.pop();if(hp.length){hp[0]=l;let i=0;for(;;){let m=i;const L=2*i+1,R=L+1;if(L<hp.length&&hp[L][0]<hp[m][0])m=L;if(R<hp.length&&hp[R][0]<hp[m][0])m=R;if(m===i)break;[hp[m],hp[i]]=[hp[i],hp[m]];i=m;}}return t;};
+  for(let c=0;c<CN;c++)if(!land[c]){fill[c]=el[c];done[c]=1;push(el[c],c);}
+  const NB=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]];
+  while(hp.length){const [f,c]=pop(),cx=c%CW,cy=(c-cx)/CW;for(const [dx,dy] of NB){const x=cx+dx,y=cy+dy;if(x<0||y<0||x>=CW||y>=CW)continue;const q=y*CW+x;if(done[q])continue;done[q]=1;fill[q]=Math.max(el[q],f+.01*(dx&&dy?1.414:1));rec[q]=c;push(fill[q],q);}}
+  const ord=[];for(let c=0;c<CN;c++)if(land[c])ord.push(c);ord.sort((a,b)=>fill[b]-fill[a]);
+  const acc=new Float32Array(CN);for(const c of ord){const p=(cc.pAnnual[Math.min(cc.pAnnual.length-1,c)]||0)/1000;acc[c]+=Math.max(.05,Math.min(2,p));if(rec[c]>=0&&land[rec[c]])acc[rec[c]]+=acc[c];}
+  const T=14,stream=new Uint8Array(CN);for(let c=0;c<CN;c++)stream[c]=land[c]&&acc[c]>=T&&!isRv[c]?1:0;
+  const hasUp=new Uint8Array(CN);for(let c=0;c<CN;c++)if(stream[c]&&rec[c]>=0&&stream[rec[c]])hasUp[rec[c]]=1;
+  const heads=[];for(let c=0;c<CN;c++)if(stream[c]&&!hasUp[c])heads.push(c);heads.sort((a,b)=>acc[b]-acc[a]);
+  const seen=new Uint8Array(CN),pt=(c)=>({x:(c%CW)*HR+HR/2-.5,y:Math.floor(c/CW)*HR+HR/2-.5}),out=[];
+  for(const h0 of heads){
+    let c=h0;const pts=[];let guard=0;
+    for(;;){
+      const q=pt(c);pts.push({x:q.x,y:q.y,w:Math.max(.2,Math.min(.9,.15+.08*Math.sqrt(acc[c])))});
+      if(seen[c]&&c!==h0)break;seen[c]=1;
+      const n=rec[c];if(n<0||++guard>400)break;
+      if(!land[n]||isRv[n]||!stream[n]){const q2=pt(n);pts.push({x:q2.x,y:q2.y,w:pts[pts.length-1].w});break;}
+      c=n;
+    }
+    if(pts.length>=3)out.push(pts.reverse());   // 川の線は、下流の端が先頭
+  }
+  return out;
+}
 function rvPrepare(world){
   const P=world.riverPts,S=world.riverStarts,np=P.length/3,W=world.stats.width,H=world.stats.height,type=world.type,lakeId=world.lakeId,biome=world.biome,RL=world.riverLine,info=world.riverInfo,cc=world.climate&&world.climate.cell;
-  const bk=6,hash=new Map(),key=(x,y)=>Math.floor(x/bk)+','+Math.floor(y/bk);
+  const bk=6,hash=new Map(),key=(x,y)=>Math.floor(x/bk)+','+Math.floor(y/bk),GX=[],GY=[];for(let k=0;k<np;k++){GX.push(P[k*3]);GY.push(P[k*3+1]);}
   for(let s=0;s<S.length;s++){const a=S[s],b=s+1<S.length?S[s+1]:np;for(let k=a;k<b;k++){const kk=key(P[k*3],P[k*3+1]);let l=hash.get(kk);if(!l)hash.set(kk,l=[]);l.push(s,k);}}
-  const otherNear=(s,x,y,r)=>{for(let by=-1;by<=1;by++)for(let bx=-1;bx<=1;bx++){const l=hash.get(key(x+bx*bk,y+by*bk));if(l)for(let q=0;q<l.length;q+=2)if(l[q]!==s&&Math.hypot(P[l[q+1]*3]-x,P[l[q+1]*3+1]-y)<r)return true;}return false;};
+  const otherNear=(s,x,y,r)=>{for(let by=-1;by<=1;by++)for(let bx=-1;bx<=1;bx++){const l=hash.get(key(x+bx*bk,y+by*bk));if(l)for(let q=0;q<l.length;q+=2)if(l[q]!==s&&Math.hypot(GX[l[q+1]]-x,GY[l[q+1]]-y)<r)return true;}return false;};
   // 近くの海・湖の格子（距離最小）
   const findWater=(x,y,R,wantSea)=>{let best=null,bd=1e9;const cx=Math.round(x),cy=Math.round(y);for(let dy=-R;dy<=R;dy++)for(let dx=-R;dx<=R;dx++){const gx=cx+dx,gy=cy+dy;if(gx<0||gy<0||gx>=W||gy>=H)continue;const i=gy*W+gx;if(type[i]===0||lakeId[i]>0){const d=Math.hypot(gx-x,gy-y);if(d<bd){bd=d;best={x:gx,y:gy,d,sea:type[i]===0,lake:lakeId[i]};}}}return best;};
   const feats=world.features?world.features.filter(f=>f.kind==='spring'):[];
+  const allLines=[];for(let s=0;s<S.length;s++){const a=S[s],b=s+1<S.length?S[s+1]:np;if(b-a<2)continue;const ln=[];for(let k=a;k<b;k++)ln.push({x:P[k*3],y:P[k*3+1],w:P[k*3+2]});allLines.push({s,minor:false,line:ln});}
+  let nMinor=0;try{const sm=rvSmallStreams(world);for(let j=0;j<sm.length;j++){allLines.push({s:S.length+j,minor:true,line:sm[j]});for(let q=0;q<sm[j].length;q++){const kk=key(sm[j][q].x,sm[j][q].y);let l=hash.get(kk);if(!l)hash.set(kk,l=[]);l.push(S.length+j,GX.length);GX.push(sm[j][q].x);GY.push(sm[j][q].y);}}nMinor=sm.length;}catch(e){console.error('支流：',e);}
   const outP=[],outS=[],hwq=[],kind=[],srcs=[],hwp=[],tint=[];let nExtDown=0,nExtLake=0;const mouths=[];let nEst=0,nDry=0;
   const hwOf=(s)=>{let flow=info&&RL?info.flow[RL[s]]:100;if(!(flow>0))flow=100;return Math.max(2.5,Math.min(16,2.2+1.7*Math.log(Math.max(flow,30)/30)));};
   const ext=(from,to,w,bend)=>{const dx=to.x-from.x,dy=to.y-from.y,d=Math.hypot(dx,dy),n=Math.max(2,Math.ceil(d/1.5)),pts=[];for(let q=1;q<=n;q++){const t=q/n,off=Math.sin(t*Math.PI)*Math.min(1.2,d*.12)*bend;pts.push({x:from.x+dx*t-dy/d*off,y:from.y+dy*t+dx/d*off,w});}return pts;};
-  for(let s=0;s<S.length;s++){
-    const a=S[s],b=s+1<S.length?S[s+1]:np;if(b-a<2)continue;const line=[];for(let k=a;k<b;k++)line.push({x:P[k*3],y:P[k*3+1],w:P[k*3+2]});
-    const hw=hwOf(s);
+  for(const AL of allLines){const s=AL.s,minor=AL.minor,line=AL.line;
+    const hw=minor?2:hwOf(s);
     // ① 下流の端：他の川の合流でなく、近くに海・湖があれば、その岸まで伸ばす
     const f0=line[0],f1=line[1];let mouthSea=false,dangling=false;
     if(!otherNear(s,f0.x,f0.y,3)){
       const w=findWater(f0.x,f0.y,16),dir={x:f0.x-f1.x,y:f0.y-f1.y},dl=Math.hypot(dir.x,dir.y)||1;
       if(w&&w.d>1.2){const dot=((w.x-f0.x)*dir.x+(w.y-f0.y)*dir.y)/(w.d*dl);if(dot>-.3){const tt={x:f0.x+(w.x-f0.x)*(1+.6/w.d),y:f0.y+(w.y-f0.y)*(1+.6/w.d)},e=ext(f0,tt,f0.w,(s%2?1:-1));line.unshift(...e.reverse());nExtDown++;}}
-      if(w&&w.sea&&w.d<=16){mouthSea=true;mouths.push({gx:line[0].x,gy:line[0].y,sea:true,line:line.slice(0,24),hw,s});}
+      if(w&&w.sea&&w.d<=16){mouthSea=!minor;if(!minor)mouths.push({gx:line[0].x,gy:line[0].y,sea:true,line:line.slice(0,24),hw,s});}
       else if(!(w&&w.d<=16)){
         // 海にも湖にも届かない下流の端：近く（9マス以内）の別の川へつなぐ。なければ、乾いた土地でしみ込んで消える川
-        let bo=null,bdd=9;for(let by=-2;by<=2;by++)for(let bx=-2;bx<=2;bx++){const l=hash.get(key(f0.x+bx*bk,f0.y+by*bk));if(l)for(let q=0;q<l.length;q+=2){if(l[q]===s)continue;const px=P[l[q+1]*3],py=P[l[q+1]*3+1],d=Math.hypot(px-f0.x,py-f0.y);if(d<bdd){bdd=d;bo={x:px,y:py};}}}
+        let bo=null,bdd=14;for(let by=-3;by<=3;by++)for(let bx=-3;bx<=3;bx++){const l=hash.get(key(f0.x+bx*bk,f0.y+by*bk));if(l)for(let q=0;q<l.length;q+=2){if(l[q]===s)continue;const px=GX[l[q+1]],py=GY[l[q+1]],d=Math.hypot(px-f0.x,py-f0.y);if(d<bdd){bdd=d;bo={x:px,y:py};}}}
         if(bo&&bdd>1.5){const e=ext(f0,bo,f0.w,(s%2?1:-1));line.unshift(...e.reverse());nExtDown++;}else if(!bo)dangling=true;
       }
     }
     // ② 上流の端＝源流
     const L=line[line.length-1],gx=Math.round(L.x),gy=Math.round(L.y);let kindS=null;
-    const lk=findWater(L.x,L.y,14);
+    const lk=minor?null:findWater(L.x,L.y,14);
     if(lk&&lk.lake>0&&!lk.sea){kindS='lake';if(lk.d>1.2){const e=ext(L,{x:L.x+(lk.x-L.x)*(1+.6/lk.d),y:L.y+(lk.y-L.y)*(1+.6/lk.d)},L.w,(s%2?-1:1));line.push(...e);nExtLake++;}}
-    if(!kindS&&!otherNear(s,L.x,L.y,3)){
+    if(!kindS&&!minor&&!otherNear(s,L.x,L.y,3)){
       let sp=false;for(const f of feats)if(Math.hypot(f.x-L.x,f.y-L.y)<20){sp=true;break;}
       const bi=gy>=0&&gy<H&&gx>=0&&gx<W?biome[gy*W+gx]:0;let wet=false;for(let dy=-5;dy<=5&&!wet;dy+=2)for(let dx=-5;dx<=5;dx+=2){const x=gx+dx,y=gy+dy;if(x>=0&&y>=0&&x<W&&y<H&&biome[y*W+x]===13){wet=true;break;}}
       let sm=0;if(cc&&cc.snowMonths){const c=Math.min((cc.h||cc.gridH)-1,Math.floor(gy/(cc.gridStep||8)))*(cc.w||cc.gridW)+Math.min((cc.w||cc.gridW)-1,Math.floor(gx/(cc.gridStep||8)));sm=cc.snowMonths[c]||0;}
       kindS=bi===2?'glacier':sp?'spring':(bi===12||sm>=4)?'snow':wet?'marsh':'seep';
     }
+    // なめらかにする：両端を固定してチャイキン分割を2回かけ、約0.8マス（約27m）間隔にそろえる（折れ線のカクカクをなくす）
+    {let pts=line.map(p=>({x:p.x,y:p.y,w:p.w}));for(let it=0;it<2&&pts.length>2;it++){const nxt=[pts[0]];for(let k=0;k<pts.length-1;k++){const A=pts[k],B=pts[k+1];if(k>0)nxt.push({x:.75*A.x+.25*B.x,y:.75*A.y+.25*B.y,w:.75*A.w+.25*B.w});if(k<pts.length-2)nxt.push({x:.25*A.x+.75*B.x,y:.25*A.y+.75*B.y,w:.25*A.w+.75*B.w});}nxt.push(pts[pts.length-1]);pts=nxt;}
+     const cum=[0];for(let k=1;k<pts.length;k++)cum.push(cum[k-1]+Math.hypot(pts[k].x-pts[k-1].x,pts[k].y-pts[k-1].y));const tot=cum[cum.length-1],res=[pts[0]];let j=1;for(let d=.8;d<tot-.4;d+=.8){while(j<pts.length-1&&cum[j]<d)j++;const A=pts[j-1],B=pts[j],t=(d-cum[j-1])/Math.max(1e-6,cum[j]-cum[j-1]);res.push({x:A.x+(B.x-A.x)*t,y:A.y+(B.y-A.y)*t,w:A.w+(B.w-A.w)*t});}
+     res.push(pts[pts.length-1]);line.length=0;for(const q of res)line.push(q);}
     // 川ごとの個性：流量に応じた幅（細い川から大きな川まで）、深み・瀬での幅の揺れ、蛇行の大きさ・周期、水の色（氷河・雪解けの乳白色、湿地の茶色、乾燥地のにごり）
     const nL=line.length,dS=new Float32Array(nL);for(let k=1;k<nL;k++)dS[k]=dS[k-1]+Math.hypot(line[k].x-line[k-1].x,line[k].y-line[k-1].y);
     const ph=(s*2.399)%6.283,va=.1+.12*(((s*37)%10)/10),wl=13+(s%7)*2.2;
@@ -16640,7 +16684,7 @@ function rvPrepare(world){
     for(let k=0;k<nL;k++){
       const hb=Math.max(1.6,Math.min(16,1.2+1.9*line[k].w)),vv=1+va*Math.sin(dS[k]*.31+ph)+.5*va*Math.sin(dS[k]*.83+2*ph);
       const t=Math.min(1,(dS[nL-1]-dS[k])/14),sm=t*t*(3-2*t),tp=kindS==='lake'?1:.28+.72*sm;   // 源流は細く始まる
-      let f=1;if(mouthSea){const u=Math.min(1,dS[k]/FUN);f=1+.9*(1-u*u*(3-2*u));}   // 河口は広がる（ラッパ状）
+      let f=1;if(mouthSea&&!minor){const u=Math.min(1,dS[k]/FUN);f=1+.9*(1-u*u*(3-2*u));}   // 河口は広がる（ラッパ状）
       if(dangling){const u=Math.min(1,dS[k]/DRY);f=.15+.85*(u*u*(3-2*u));}   // 乾いた土地では細くなって消える
       hws[k]=hb*vv*tp*f;
     }
@@ -16649,35 +16693,34 @@ function rvPrepare(world){
     if(kindS){const sl=line[line.length-1];srcs.push({gx:sl.x,gy:sl.y,kind:kindS,label:RV_SRC_LABEL[kindS]});
       if(kindS!=='lake'){const r=kindS==='marsh'?9:kindS==='glacier'?8:5.5;outS.push(outP.length/3);outP.push(sl.x,sl.y,1,sl.x+.01,sl.y,1);hwp.push(r,r);hwq.push(r);kind.push(RV_KIND_CODE[kindS]);tint.push(0);}}
   }
-  // 三角州：世界の生成で作られた三角州（河口の海側に積もった土砂の扇）の位置にある河口では、川が数本の分流に分かれて海へ出る
-  let nDelta=0;
+  // 三角州：世界の生成で作られた三角州（河口の海側に積もった土砂の扇）の位置にある河口では、川が何度か分岐して海へ出る（上流側で2本、中ほどで2本、河口の近くで1本、さらに先端で枝分かれ）。扇の内側は、土砂が積もった湿った平地（湿地・干潟・小さな池）にする
+  let nDelta=0;const fans=[];
   for(const f of (world.features||[]))if(f.kind==='delta'){
     let m=null,bd=16;for(const q of mouths){if(!q.sea)continue;const d=Math.hypot(q.gx-f.x,q.gy-f.y);if(d<bd){bd=d;m=q;}}
-    if(!m)continue;const ln=m.line;if(ln.length<3)continue;
-    const E=ln[0],B=ln[Math.min(ln.length-1,Math.max(2,Math.round(5/1.5)))];
-    // 扇の向き：河口から見た、海のある向き（近くの海の格子の平均方向）
+    if(!m)continue;const ln=m.line;if(ln.length<4)continue;
+    const E=ln[0];
     let sx=0,sy=0,sn=0;for(let dy=-12;dy<=12;dy++)for(let dx=-12;dx<=12;dx++){const gx=Math.round(E.x)+dx,gy=Math.round(E.y)+dy;if(gx<0||gy<0||gx>=W||gy>=H)continue;if(type[gy*W+gx]===0){sx+=dx;sy+=dy;sn++;}}
-    if(!sn)continue;const base=Math.atan2(sy,sx),nch=4+((f.x+f.y)%2),sp=[];
-    for(let i=0;i<nch;i++)sp.push((i/(nch-1)-.5)*2*(.62+.08*Math.sin(f.x*.7+i)));   // 約±36°に広がる
-    for(let i=0;i<nch;i++){
-      const ang=base+sp[i],pts=[{x:B.x,y:B.y,w:1}];let x=B.x,y=B.y,dirx=Math.cos(ang),diry=Math.sin(ang),reached=false;
-      for(let st=0;st<26;st++){
-        // 少し蛇行しながら、おおむね同じ向きに進む
-        const wob=Math.sin(st*.55+i*2.1+f.x)*.16;dirx=Math.cos(ang+wob);diry=Math.sin(ang+wob);x+=dirx*1.5;y+=diry*1.5;pts.push({x,y,w:1});
-        const gx=Math.round(x),gy=Math.round(y);if(gx<0||gy<0||gx>=W||gy>=H)break;if(type[gy*W+gx]===0){reached=true;x+=dirx*1.2;y+=diry*1.2;pts.push({x,y,w:1});break;}
-      }
-      if(!reached&&pts.length<8)continue;
-      const hwc=Math.max(2,m.hw*(i===(nch>>1)?.7:.5));
-      outS.push(outP.length/3);for(let k=0;k<pts.length;k++){outP.push(pts[k].x,pts[k].y,1);hwp.push(hwc*(.75+.25*(k/pts.length)));}hwq.push(hwc);kind.push(200);tint.push(0);
-    }
-    nDelta++;
+    if(!sn)continue;const base=Math.atan2(sy,sx),ph0=f.x*.7+f.y*.3;
+    const march=(B,ang,maxSt,hwc,lvl)=>{
+      const pts=[{x:B.x,y:B.y}];let x=B.x,y=B.y,reached=false,dirA=ang;
+      for(let st=0;st<maxSt;st++){const wob=Math.sin(st*.45+lvl*2.3+ph0+ang*3)*.2;dirA=ang+wob;x+=Math.cos(dirA)*1.2;y+=Math.sin(dirA)*1.2;pts.push({x,y});const gx=Math.round(x),gy=Math.round(y);if(gx<0||gy<0||gx>=W||gy>=H)break;if(type[gy*W+gx]===0){reached=true;x+=Math.cos(dirA)*1.4;y+=Math.sin(dirA)*1.4;pts.push({x,y});break;}}
+      if(!reached&&pts.length<7)return null;return {pts,reached,dir:dirA};
+    };
+    const chans=[];const at=(cells)=>ln[Math.min(ln.length-1,Math.max(1,Math.round(cells/1.5)))];
+    const spec=[[8,-.62,.55,1],[8,.62,.55,1],[5,-.3,.5,2],[5,.3,.5,2],[2.5,(((f.x+f.y)%2)?.12:-.12),.45,3]];
+    for(const [up,off,wf,lv] of spec){const B=at(up),r=march(B,base+off+.05*Math.sin(ph0+up),30,m.hw*wf,lv);if(r)chans.push({r,hw:Math.max(1.8,m.hw*wf),lv});}
+    // 先端の枝分かれ：到達した分流の約6割で、中ほどからさらに1本が分かれる
+    const kids=[];for(let i=0;i<chans.length;i++){const c=chans[i];if(!c.r.reached||((i*7+f.x)%10)>5)continue;const pts=c.r.pts,k=Math.floor(pts.length*.55),P0=pts[k],dx=pts[k+1].x-pts[k-1].x,dy=pts[k+1].y-pts[k-1].y,a0=Math.atan2(dy,dx),sgn=(i%2?1:-1),r=march(P0,a0+sgn*.42,16,c.hw*.6,4+i);if(r)kids.push({r,hw:Math.max(1.5,c.hw*.6),lv:4});}
+    for(const c of chans.concat(kids)){const pts=c.r.pts,hwc=c.hw;outS.push(outP.length/3);for(let k=0;k<pts.length;k++){outP.push(pts[k].x,pts[k].y,1);hwp.push(hwc*(.7+.3*(k/pts.length)));}hwq.push(hwc);kind.push(200);tint.push(0);}
+    m.delta=true;fans.push({gx:at(8).x,gy:at(8).y,base,spread:.95,R:14+m.hw*.9});nDelta++;
   }
   const n=outP.length/3,M=new Float32Array(n*2);
   const toM=(gx,gy)=>state.terrain.gridToMeters(gx,gy);
   for(let k=0;k<n;k++){const q=toM(outP[k*3],outP[k*3+1]);M[k*2]=q.xM;M[k*2+1]=q.yM;}
   for(const sc of srcs){const q=toM(sc.gx,sc.gy);sc.x=q.xM;sc.y=q.yM;}
   for(const m of mouths){const q=toM(m.gx,m.gy);m.x=q.xM;m.y=q.yM;}
-  return {world,M,S:Int32Array.from(outS),np:n,hw:hwq,hwp:Float32Array.from(hwp),kind,tint,srcs,mouths,stat:{estuaries:nEst,dryEnds:nDry,deltas:nDelta,lines:S.length,extDown:nExtDown,extLake:nExtLake,sources:srcs.length}};
+  for(const fn of fans){const q=toM(fn.gx,fn.gy);fn.x=q.xM;fn.y=q.yM;fn.Rm=fn.R*state.terrain.metersPerCell;}
+  return {world,M,S:Int32Array.from(outS),np:n,hw:hwq,hwp:Float32Array.from(hwp),kind,tint,srcs,mouths,fans,stat:{minor:nMinor,estuaries:nEst,dryEnds:nDry,deltas:nDelta,lines:S.length,extDown:nExtDown,extLake:nExtLake,sources:srcs.length}};
 }
 function rvPoints(){
   const W=state.world;if(!W.riverPts)return null;if(rvPts&&rvPts.world===W)return rvPts;
@@ -16698,6 +16741,11 @@ function rvBuild(cx,cy){
       const dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy||1;
       for(let j=j0;j<=j1;j++){const py=y0+(j+.5)*RV_PX;for(let i=i0;i<=i1;i++){const px=x0+(i+.5)*RV_PX;let u=((px-ax)*dx+(py-ay)*dy)/l2;u=u<0?0:u>1?1:u;const ex=px-(ax+dx*u),ey=py-(ay+dy*u),d=Math.sqrt(ex*ex+ey*ey),o=j*RV_N+i;if(kc?(d<hw+6&&(d<hw||d<dist[o])):d<dist[o]){dist[o]=d;hwA[o]=hwq;kA[o]=kc;tA[o]=tc;}}}
     }
+  }
+  // 三角州の平地（扇の内側で、川から離れた所）：土砂が積もった湿った平地
+  for(const fn of pts.fans){if(fn.x+fn.Rm<x0||fn.x-fn.Rm>x1||fn.y+fn.Rm<y0||fn.y-fn.Rm>y1)continue;
+    const i0=Math.max(0,Math.floor((fn.x-fn.Rm-x0)/RV_PX)),i1=Math.min(RV_N-1,Math.ceil((fn.x+fn.Rm-x0)/RV_PX)),j0=Math.max(0,Math.floor((fn.y-fn.Rm-y0)/RV_PX)),j1=Math.min(RV_N-1,Math.ceil((fn.y+fn.Rm-y0)/RV_PX));
+    for(let j=j0;j<=j1;j++){const py=y0+(j+.5)*RV_PX;for(let i=i0;i<=i1;i++){const px=x0+(i+.5)*RV_PX,dx=px-fn.x,dy=py-fn.y,r=Math.hypot(dx,dy);if(r>fn.Rm)continue;let da=Math.atan2(dy,dx)-fn.base;da=Math.atan2(Math.sin(da),Math.cos(da));if(Math.abs(da)>fn.spread*(1-.35*r/fn.Rm))continue;const o=j*RV_N+i;if(dist[o]>=40&&kA[o]===0){kA[o]=240;hwA[o]=0;}}}
   }
   const data=new Uint8Array(RV_N*RV_N*4);
   for(let o=0;o<RV_N*RV_N;o++){const d=Math.min(dist[o],RV_REACH);data[o*4]=Math.round(d/RV_REACH*255);data[o*4+1]=hwA[o];data[o*4+2]=kA[o];data[o*4+3]=tA[o];}
@@ -16736,7 +16784,7 @@ const RV_GLSL_BODY=`
    if(anyL>0.02){vec3 land=wsum>0.05?acc/wsum:vec3(0.42,0.5,0.28);rvC=mix(rvC,land,clamp(anyL*1.6+0.0,0.0,1.0));}}
   if(rvHW>0.1){
    float n1=rvN(rvPos.xz*0.045),n2=rvN(rvPos.xz*0.4),n3=rvN(rvPos.xz*0.9);
-   float edge=rvHW*(0.8+0.4*n1)+0.9*(n2-0.5);
+   float edge=rvHW*(0.85+0.3*n1)+0.3*(n2-0.5);
    float s=rvD-edge;
    if(s<0.0){
     float depth=smoothstep(0.0,max(1.5,edge*0.8),-s);
@@ -16764,7 +16812,9 @@ const RV_GLSL_BODY=`
    }
   }
   // 源流のまわり：湧水・斜面の湧き水は湿った苔の緑、氷河・雪解けは雪と氷、湿地は泥と葦
-  {float rvK=rvM.b*255.0;if(rvK>225.0&&rvHW>0.1){float sk=rvD-rvHW;if(sk<0.0)rvC=mix(rvC,vec3(0.62,0.56,0.40),0.5);else rvC=mix(rvC,vec3(0.78,0.70,0.52),(1.0-smoothstep(0.0,14.0,sk))*0.75);}   // 乾いた土地でしみ込んで消える川：乾いた砂の河床
+  {float rvK=rvM.b*255.0;
+   if(rvK>235.0&&rvHW<0.1){float pn=rvN(rvPos.xz*0.06),pn2=rvN(rvPos.xz*0.35);rvC=mix(rvC,vec3(0.38,0.43,0.28),0.5);rvC=mix(rvC,vec3(0.50,0.46,0.34),smoothstep(0.55,0.75,pn)*0.5);if(pn2>0.74&&pn<0.5)rvC=mix(rvC,vec3(0.28,0.46,0.46),0.8);}   // 三角州の平地：湿地・干潟・小さな池
+   if(rvK>225.0&&rvK<235.0&&rvHW>0.1){float sk=rvD-rvHW;if(sk<0.0)rvC=mix(rvC,vec3(0.62,0.56,0.40),0.5);else rvC=mix(rvC,vec3(0.78,0.70,0.52),(1.0-smoothstep(0.0,14.0,sk))*0.75);}   // 乾いた土地でしみ込んで消える川：乾いた砂の河床
    else if(rvK>205.0&&rvHW>0.1){float sk=rvD-rvHW;if(sk<0.0)rvC=mix(rvC,vec3(0.34,0.48,0.44),0.45);else rvC=mix(rvC,vec3(0.56,0.50,0.36),(1.0-smoothstep(0.0,16.0,sk))*0.55);}   // 河口：土砂の干潟
    else if(rvK>190.0&&rvHW>0.1){float sk=rvD-rvHW;if(sk<0.0)rvC=mix(rvC,vec3(0.30,0.46,0.42),0.55);else rvC=mix(rvC,vec3(0.50,0.46,0.33),(1.0-smoothstep(0.0,22.0,sk))*0.6);}
    else if(rvK>30.0&&rvHW>0.1){float sk=rvD-rvHW;
@@ -16846,15 +16896,15 @@ function refreshWater(xM,yM){
    const mesh=new THREE.Mesh(geometry,material);scene.add(mesh);return mesh;
   }
   function buildLake(){
-   const nr=state.fastRender?900:1700,grids=[state.water.lakeGrid(xM,yM,nr,1,-(state.fastRender?900:1500),anchor,false),state.fastRender?null:state.water.lakeGrid(xM,yM,9000,3,1500,anchor,false),state.water.lakeGrid(xM,yM,nr,1,-(state.fastRender?900:1500),anchor,true),state.fastRender?null:state.water.lakeGrid(xM,yM,9000,3,1500,anchor,true)],pos=[],msk=[],shr=[];
+   const nr=state.fastRender?900:1700,mo=(()=>{try{const p=state.world.riverPts?rvPoints():null;return p?p.mouths:null;}catch(e){return null;}})(),grids=[state.water.lakeGrid(xM,yM,nr,1,-(state.fastRender?900:1500),anchor,false),state.fastRender?null:state.water.lakeGrid(xM,yM,9000,3,1500,anchor,false),state.water.lakeGrid(xM,yM,nr,1,-(state.fastRender?900:1500),anchor,true,mo),state.fastRender?null:state.water.lakeGrid(xM,yM,9000,3,1500,anchor,true,mo)],pos=[],msk=[],shr=[];
    for(const g of grids)if(g){for(let i=0;i<g.pos.length;i++)pos.push(g.pos[i]);for(let i=0;i<g.msk.length;i++)msk.push(g.msk[i]);for(let i=0;i<g.shr.length;i++)shr.push(g.shr[i]);}
    if(!pos.length)return null;
-   const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geometry.setAttribute('lkMask',new THREE.Float32BufferAttribute(msk,1));geometry.setAttribute('lkShore',new THREE.Float32BufferAttribute(shr,2));geometry.computeVertexNormals();
+   const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geometry.setAttribute('lkMask',new THREE.Float32BufferAttribute(msk,1));geometry.setAttribute('lkShore',new THREE.Float32BufferAttribute(shr,4));geometry.computeVertexNormals();
    const material=new THREE.MeshLambertMaterial({color:0x2a82b2,transparent:true,opacity:.84,depthWrite:false});
-   material.onBeforeCompile=sh=>{sh.vertexShader='attribute float lkMask;attribute vec2 lkShore;varying float vLk;varying vec2 vSh;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvLk=lkMask;vSh=lkShore;');
+   material.onBeforeCompile=sh=>{sh.vertexShader='attribute float lkMask;attribute vec4 lkShore;varying float vLk;varying vec4 vSh;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvLk=lkMask;vSh=lkShore;');
     // 水際の性格：急な岸（崖・岩場）は縁がはっきり、なだらかな浜は広く透けて浅瀬になり、湿地は緑がかって縁がぼやける。浜と崖には波打ち際の白い筋
-    sh.fragmentShader='varying float vLk;varying vec2 vSh;\n'+sh.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\nfloat lo=mix(.2,.40,vSh.x),hi=mix(.64,.46,vSh.x);lo=mix(lo,.1,vSh.y);hi=mix(hi,.8,vSh.y);float lkA=smoothstep(lo,hi,vLk);if(lkA<.02)discard;diffuseColor.a*=lkA;float fo=smoothstep(lo+.02,lo+.1,vLk)*(1.-smoothstep(lo+.1,lo+.22,vLk))*(1.-vSh.y);diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.9,.95,.96),fo*(.35+.35*vSh.x));diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.30,.42,.26),vSh.y*(1.-smoothstep(.5,1.,vLk))*.55);');};
-   material.customProgramCacheKey=()=>'lake-surface-v2';
+    sh.fragmentShader='varying float vLk;varying vec4 vSh;\n'+sh.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\nfloat lo=mix(.2,.40,vSh.x),hi=mix(.64,.46,vSh.x);lo=mix(lo,.1,vSh.y);hi=mix(hi,.8,vSh.y);float lkA=smoothstep(lo,hi,vLk);if(lkA<.02)discard;diffuseColor.a*=lkA;float fo=smoothstep(lo+.02,lo+.1,vLk)*(1.-smoothstep(lo+.1,lo+.22,vLk))*(1.-vSh.y);diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.9,.95,.96),fo*(.35+.35*vSh.x));diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.30,.42,.26),vSh.y*(1.-smoothstep(.5,1.,vLk))*.55);float shW=mix(28.,6.,vSh.x)*(1.+.8*vSh.w),shF=smoothstep(0.,shW,vSh.z);diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.34,.82,.82),(1.-shF)*.85);diffuseColor.a*=mix(.5,1.,shF);diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.52,.50,.34),vSh.w*.7*(1.-.5*shF));   // 浅瀬（大陸棚）：岸から離れるほど深い色へ。急な岸は棚が狭く、河口の沖はにごる');};
+   material.customProgramCacheKey=()=>'lake-surface-v3';
    const mesh=new THREE.Mesh(geometry,material);mesh.renderOrder=1;return mesh;
   }
   state.waterMesh=buildWater(state.water.patches(xM,yM,state.fastRender?900:2800),.005,true);
