@@ -15561,17 +15561,18 @@ function installRockMaterials(THREE,bridge){
 float rockNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);vec4 n=fract(sin(vec4(dot(i,vec2(127.1,311.7)),dot(i+vec2(1,0),vec2(127.1,311.7)),dot(i+vec2(0,1),vec2(127.1,311.7)),dot(i+vec2(1,1),vec2(127.1,311.7))))*43758.5453);return mix(mix(n.x,n.y,f.x),mix(n.z,n.w,f.x),f.y);}
 `+sh.fragmentShader;
    sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>',`#include <map_fragment>
-vec2 rg=clamp(vec2(rockUV.x,1.0-rockUV.y),0.0,1.0);vec2 ra=(min(floor(rg*rockSource),rockSize-1.0)+0.5)/rockSize;vec4 rd=texture2D(rockAtlas,ra),rc=texture2D(rockCondition,ra);float rid=floor(rd.r*255.0+0.5);vec4 rp=texture2D(rockPalette,vec2((rid+0.5)/72.0,0.5));
+vec2 rg=clamp(vec2(rockUV.x,1.0-rockUV.y),0.0,1.0);{vec2 p0=rg*99900.0;vec2 wv=(vec2(rockNoise(p0/230.0),rockNoise(p0/230.0+19.7))-.5)*2.0+(vec2(rockNoise(p0/70.0+3.1),rockNoise(p0/70.0+7.3))-.5)*.7;rg=clamp(rg+wv*(190.0/99900.0),0.0,1.0);}   // 岩石の格子（約266m）の境目を、ゆがめて不規則にする
+vec2 ra=(min(floor(rg*rockSource),rockSize-1.0)+0.5)/rockSize;vec4 rd=texture2D(rockAtlas,ra),rc=texture2D(rockCondition,ra);float rid=floor(rd.r*255.0+0.5);vec4 rp=texture2D(rockPalette,vec2((rid+0.5)/72.0,0.5));
 if(rockEnabled>0.5&&rockMode==0.0){
  vec2 p=rg*99900.0;float height=rockHeight*rockHeightParams.x+rockHeightParams.y,flatness=abs(normalize(rockN).y);vec2 grainPlane=mix(vec2(p.x+p.y*.3,height),p,flatness);float grain=rockNoise(grainPlane*2.0),broad=rockNoise(grainPlane*.07),pattern=floor(rp.a*255.0/24.0+0.5),bands=sin(height*.8+sin(p.x*.04)*3.0+rc.a*p.x*.6);float surface=0.85+0.20*grain;
  if(pattern<0.5)surface+=step(.8,grain)*.22-step(grain,.16)*.18;
  else if(pattern<1.5)surface*=.82+.18*smoothstep(.03,.12,abs(sin(p.x*.7)*sin(p.y*.61)));
  else if(pattern<2.5)surface*=.88+.12*step(.2,grain);
  else if(pattern<3.5)surface*=.78+.13*broad;
- else if(pattern<5.5)surface*=.82+.18*smoothstep(-.8,.2,bands);
+ else if(pattern<5.5)surface*=1.0-(.18-.18*smoothstep(-.8,.2,bands))*(1.0-.85*flatness);
  else if(pattern<6.5)surface*=.8+.2*smoothstep(.15,.5,broad);
  else if(pattern<8.5)surface*=.9+.1*step(.65,grain);
- else surface*=.78+.26*sin(height*.9+3.0*sin(p.x*.08));
+ else surface*=1.0-(.22-.26*sin(height*.9+3.0*sin(p.x*.08)))*(1.0-.85*flatness);   // 平らな所では縞（年輪のような模様）を弱める
  vec4 minerals=texture2D(rockPalette,vec2((rid+48.5)/72.0,.5));vec3 col=rp.rgb*surface;col+=minerals.r*.05*step(.75,grain)+minerals.g*vec3(.035,.015,.01)*step(.6,grain);col*=1.0-minerals.b*.12*step(grain,.3);col=mix(col,col*vec3(1.12,.94,.78),rd.b*(.08+.3*minerals.a));col*=1.0-rd.a*.22;
  float slope=1.0-abs(normalize(rockN).y),exposure=rd.g*smoothstep(.015,.2,slope)+rd.g*.45;diffuseColor.rgb=mix(diffuseColor.rgb,col,clamp(exposure,0.0,1.0));
 }`);
