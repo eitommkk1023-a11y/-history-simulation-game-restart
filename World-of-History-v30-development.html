@@ -15795,6 +15795,7 @@ function playableOverviewHeight(world,gridX,gridY){
 }
 
 /** Known sea/lake levels only; geography and saved data are read-only. */
+const LAKE_MESH=true;   // 湖は専用の滑らかな水面で描く（false で従来の四角いパッチ）
 function createWaterSurface(terrain,world){
  const toMeters=terrain.elevationToMeters??(e=>e*(terrain.elevationScale??1));
  function nodeLevel(x,y){
@@ -15823,8 +15824,30 @@ function createWaterSurface(terrain,world){
   for(let gy=Math.max(0,Math.floor(minY/s-.5));gy<=Math.min(terrain.height-1,Math.ceil(maxY/s+.5));gy++)for(let gx=Math.max(0,Math.floor(minX/s-.5));gx<=Math.min(terrain.width-1,Math.ceil(maxX/s+.5));gx++){
    const water=nodeLevel(gx,gy);if(!water)continue;const level=water.surfaceM;
    const x0=Math.max(minX,(gx-.5)*s),x1=Math.min(maxX,(gx+.5)*s),y0=Math.max(minY,(gy-.5)*s),y1=Math.min(maxY,(gy+.5)*s);
-   if(x1>x0&&y1>y0)out.push({x0,x1,y0,y1,surfaceM:level,kind:water.kind});
+   if(x1>x0&&y1>y0&&!(water.kind==='lake'&&LAKE_MESH))out.push({x0,x1,y0,y1,surfaceM:level,kind:water.kind});
   }return out;
+ }
+ // 湖の専用の水面：湖の格子を3×3でぼかした値（0〜1）を頂点に持たせ、描画側で0.4付近を水の縁にする（階段状でなく、なめらかな縁になる）。高さは湖の水位
+ function lakeIs(gx,gy){if(gx<0||gy<0||gx>=terrain.width||gy>=terrain.height)return -1;const i=gy*terrain.width+gx,id=world.lakeId?.[i];return world.water[i]===2&&id>0&&Number.isFinite(world.lakeLevels?.[id])&&world.type[i]!==0?toMeters(world.lakeLevels[id]):NaN;}
+ function lakeGrid(x,y,R,stride,skipR,anchor){
+  const s=terrain.metersPerCell,gx0=Math.max(0,Math.floor((x-R)/s/stride)*stride),gx1=Math.min(terrain.width-1,Math.ceil((x+R)/s/stride)*stride),gy0=Math.max(0,Math.floor((y-R)/s/stride)*stride),gy1=Math.min(terrain.height-1,Math.ceil((y+R)/s/stride)*stride);
+  const nx=Math.floor((gx1-gx0)/stride)+1,ny=Math.floor((gy1-gy0)/stride)+1;if(nx<2||ny<2)return null;
+  const mk=new Float32Array(nx*ny),lv=new Float32Array(nx*ny).fill(NaN),K=[1,2,1];let any=false;
+  for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){
+   const cx=gx0+i*stride,cy=gy0+j*stride;let sum=0,wl=0,best=-1,lev=NaN;
+   for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const w=K[dx+1]*K[dy+1],L=lakeIs(cx+dx*stride,cy+dy*stride);if(L===L&&L!==-1){sum+=w;if(w>best){best=w;lev=L;}}else if(L===-1){/* 世界の外 */}}
+   mk[j*nx+i]=sum/16;if(sum>0){lv[j*nx+i]=lev;any=true;}
+  }
+  if(!any)return null;const pos=[],msk=[];
+  const V=(i,j,L)=>{pos.push(gx0*s+i*stride*s-anchor.xM,L,gy0*s+j*stride*s-anchor.yM);msk.push(mk[j*nx+i]);};
+  for(let j=0;j<ny-1;j++)for(let i=0;i<nx-1;i++){
+   const a=j*nx+i,b=a+1,c=a+nx,d=c+1;if(!(mk[a]>0||mk[b]>0||mk[c]>0||mk[d]>0))continue;
+   const L=[lv[a],lv[b],lv[c],lv[d]].find(v=>v===v);if(L===undefined)continue;
+   const mx=gx0*s+(i+.5)*stride*s,my=gy0*s+(j+.5)*stride*s,inside=Math.abs(mx-x)<skipR&&Math.abs(my-y)<skipR;
+   if(skipR>0&&inside)continue;if(skipR<0&&!(Math.abs(mx-x)<-skipR&&Math.abs(my-y)<-skipR))continue;   // skipR>0：この範囲の内側は描かない（遠景）／skipR<0：この範囲の内側だけ描く（近景）
+   V(i,j,L);V(i,j+1,L);V(i+1,j,L);V(i+1,j,L);V(i,j+1,L);V(i+1,j+1,L);
+  }
+  return pos.length?{pos,msk}:null;
  }
  function distantPatches(x,y){
   const out=[],cell=256,radius=8192,inner=2048,s=terrain.metersPerCell;
@@ -15837,11 +15860,11 @@ function createWaterSurface(terrain,world){
    const samples=[[x0,y0],[x1,y0],[x0,y1],[x1,y1],[(x0+x1)/2,(y0+y1)/2]].map(([px,py])=>known(px,py));
    const sea=samples.some(p=>p?.kind==='sea'),lake=samples[0];
    if(sea)out.push({x0,x1,y0,y1,surfaceM:0,kind:'sea'});
-   else if(lake?.kind==='lake'&&samples.every(p=>p?.kind==='lake'&&p.id===lake.id))out.push({x0,x1,y0,y1,surfaceM:lake.surfaceM,kind:'lake'});
+   else if(!LAKE_MESH&&lake?.kind==='lake'&&samples.every(p=>p?.kind==='lake'&&p.id===lake.id))out.push({x0,x1,y0,y1,surfaceM:lake.surfaceM,kind:'lake'});
   }
   return out;
  }
- return {sample,patches,distantPatches};
+ return {sample,patches,distantPatches,lakeGrid};
 }
 
 /** Fixed-resolution metric terrain snapshot. No renderer or physics engine dependency. */
@@ -16519,7 +16542,7 @@ function updateCamera(){
 function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();if(state?.map){state.map.camera.aspect=innerWidth/innerHeight;state.map.camera.updateProjectionMatrix();}updateCamera();}
 function clearTerrain(){
   resetInput();crouched=false;crouchButton.classList.remove('active');crouchButton.setAttribute('aria-pressed','false');markerPoint=null;jumpHeight=0;jumpVelocity=0;
-  if(state){state.clearing=true;state.grass?.dispose();state.prefetch.clear();state.window.clear();state.work.clear();for(const mesh of [state.waterMesh,state.farWaterMesh])if(mesh){scene.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();}for(const entry of state.fallback.values())releaseMesh(entry);}
+  if(state){state.clearing=true;state.grass?.dispose();state.prefetch.clear();state.window.clear();state.work.clear();for(const mesh of [state.waterMesh,state.farWaterMesh])if(mesh){scene.remove(mesh);mesh.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose();});}for(const entry of state.fallback.values())releaseMesh(entry);}
   state=null;marker.visible=false;
 }
 function groundAt(xM,yM){
@@ -16687,7 +16710,7 @@ function refreshWater(xM,yM){
  rvRefresh(xM,yM);
  const key=(state.fastRender?'fast:':'normal:')+Math.floor(xM/512)+','+Math.floor(yM/512);
  if(key!==state.waterKey){
-  for(const mesh of [state.waterMesh,state.farWaterMesh])if(mesh){scene.remove(mesh);mesh.geometry.dispose();mesh.material.dispose();}
+  for(const mesh of [state.waterMesh,state.farWaterMesh])if(mesh){scene.remove(mesh);mesh.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose();});}
   const anchor={xM:Math.floor(xM/512)*512,yM:Math.floor(yM/512)*512};
   function buildWater(patches,offset,transparent){
    const positions=[];for(const p of patches){
@@ -16697,7 +16720,18 @@ function refreshWater(xM,yM){
    const material=new THREE.MeshLambertMaterial({color:0x2b95be,transparent,opacity:transparent?.72:1,depthWrite:!transparent});
    const mesh=new THREE.Mesh(geometry,material);scene.add(mesh);return mesh;
   }
+  function buildLake(){
+   const near=state.water.lakeGrid(xM,yM,state.fastRender?900:1700,1,-(state.fastRender?900:1500),anchor),far=state.fastRender?null:state.water.lakeGrid(xM,yM,9000,3,1500,anchor),pos=[],msk=[];
+   for(const g of [near,far])if(g){for(let i=0;i<g.pos.length;i++)pos.push(g.pos[i]);for(let i=0;i<g.msk.length;i++)msk.push(g.msk[i]);}
+   if(!pos.length)return null;
+   const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geometry.setAttribute('lkMask',new THREE.Float32BufferAttribute(msk,1));geometry.computeVertexNormals();
+   const material=new THREE.MeshLambertMaterial({color:0x2a82b2,transparent:true,opacity:.84,depthWrite:false});
+   material.onBeforeCompile=sh=>{sh.vertexShader='attribute float lkMask;varying float vLk;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvLk=lkMask;');sh.fragmentShader='varying float vLk;\n'+sh.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\nfloat lkA=smoothstep(.30,.46,vLk);if(lkA<.02)discard;diffuseColor.a*=lkA;');};
+   material.customProgramCacheKey=()=>'lake-surface-v1';
+   const mesh=new THREE.Mesh(geometry,material);mesh.renderOrder=1;return mesh;
+  }
   state.waterMesh=buildWater(state.water.patches(xM,yM,state.fastRender?900:2800),.005,true);
+  if(LAKE_MESH){const lk=buildLake();if(lk)state.waterMesh.add(lk);}
   state.farWaterMesh=buildWater((state.fastRender?[]:state.water.distantPatches(xM,yM)),.002,false);
   state.waterAnchor=anchor;state.waterKey=key;
  }
