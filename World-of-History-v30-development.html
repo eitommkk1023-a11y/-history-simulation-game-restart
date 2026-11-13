@@ -11158,6 +11158,7 @@ function heightAt(elev, fx, fy) {
   return e >= 0 ? e * LAND_SCALE : e * SEA_SCALE;
 }
 
+const BIOME_BLEND = true;   // 生態区分の境目をなじませる（false で従来のくっきりした境目）
 function buildTexture(elev, biome, mode) {
   const data = new Uint8Array(W * H * 4);
   const useBiome = mode === 'biome' && biome;
@@ -11198,6 +11199,16 @@ function buildTexture(elev, biome, mode) {
         } else if (bi > 1) {
           const c = BIOME_COLORS[bi];
           r = c[0]; g = c[1]; b = c[2];
+          // 生態区分の境目をなじませる：位置を少しずらした4点の色を混ぜる（境目が四角く・くっきり見えないように）。区分が同じ所は色が変わらない
+          if (BIOME_BLEND && type[i]) {
+            let hh = Math.imul(x * 73856093 ^ y * 19349663, 0x2545f491); hh ^= hh >>> 13; let w = 2, sr = r * 2, sg = g * 2, sb = b * 2;
+            for (let q = 0; q < 4; q++) {
+              const ox = ((hh >>> (q * 6)) & 7) - 3.5, oy = ((hh >>> (q * 6 + 3)) & 7) - 3.5, xx = x + Math.round(ox * 2.2) + (q & 1 ? 3 : -3), yy = y + Math.round(oy * 2.2) + (q & 2 ? 3 : -3);
+              if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue; const j = yy * W + xx, bj = biome[j]; if (!type[j] || bj <= 1 || bj === 16 || bj === bi) { if (bj === bi && type[j]) { w++; sr += r; sg += g; sb += b; } continue; }
+              const cj = BIOME_COLORS[bj]; w++; sr += cj[0]; sg += cj[1]; sb += cj[2];
+            }
+            r = sr / w; g = sg / w; b = sb / w;
+          }
           // 大砂丘：風下に並ぶ砂丘の縞
           if (bi === 15) { const st = 0.88 + 0.12 * Math.sin((x * 0.8 + y * 0.45) + 1.5 * Math.sin(y * 0.11 + x * 0.03)); r *= st; g *= st; b *= st; }
           // 標高が高い所は岩肌の色に寄せる
