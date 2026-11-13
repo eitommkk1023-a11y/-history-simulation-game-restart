@@ -11174,7 +11174,7 @@ function buildTexture(elev, biome, mode) {
       const yy = y + dy; if (yy < 0 || yy >= H) continue;
       for (let dx = -2; dx <= 2; dx++) {
         const xx = x + dx; if (xx < 0 || xx >= W) continue;
-        if (!type[yy * W + xx]) return true;
+        if (!type[yy * W + xx] || (water && water[yy * W + xx] === 2)) return true;   // 海だけでなく湖のほとりも浜・岩場にする
       }
     }
     return false;
@@ -11270,7 +11270,9 @@ function buildTexture(elev, biome, mode) {
         if (e < 120 && nearSea(x, y)) {
           const slope = Math.sqrt(gx * gx + gy * gy) * 1500 / 2;   // 1ブロックあたりの高低差(m)
           const bi = biome ? biome[i] : 0;
-          if (slope < 6 && e < 25 && bi !== 2 && bi !== 3) {
+          if (bi === 13 && slope < 6) {   // 湿地の水際：泥と草が混ざった暗い色（砂浜にしない）
+            r += (84 - r) * 0.55; g += (96 - g) * 0.55; b += (66 - b) * 0.55;
+          } else if (slope < 6 && e < 25 && bi !== 2 && bi !== 3) {
             r += (SAND_RGB[0] - r) * 0.7; g += (SAND_RGB[1] - g) * 0.7; b += (SAND_RGB[2] - b) * 0.7;
           } else if (slope > 18) {
             r += (ROCK_RGB[0] - r) * 0.55; g += (ROCK_RGB[1] - g) * 0.55; b += (ROCK_RGB[2] - b) * 0.55;
@@ -15795,7 +15797,7 @@ function playableOverviewHeight(world,gridX,gridY){
 }
 
 /** Known sea/lake levels only; geography and saved data are read-only. */
-const LAKE_MESH=true;   // 湖は専用の滑らかな水面で描く（false で従来の四角いパッチ）
+const LAKE_MESH=true;   // 湖・海は専用の滑らかな水面で描く（false で従来の四角いパッチ）
 function createWaterSurface(terrain,world){
  const toMeters=terrain.elevationToMeters??(e=>e*(terrain.elevationScale??1));
  function nodeLevel(x,y){
@@ -15824,22 +15826,31 @@ function createWaterSurface(terrain,world){
   for(let gy=Math.max(0,Math.floor(minY/s-.5));gy<=Math.min(terrain.height-1,Math.ceil(maxY/s+.5));gy++)for(let gx=Math.max(0,Math.floor(minX/s-.5));gx<=Math.min(terrain.width-1,Math.ceil(maxX/s+.5));gx++){
    const water=nodeLevel(gx,gy);if(!water)continue;const level=water.surfaceM;
    const x0=Math.max(minX,(gx-.5)*s),x1=Math.min(maxX,(gx+.5)*s),y0=Math.max(minY,(gy-.5)*s),y1=Math.min(maxY,(gy+.5)*s);
-   if(x1>x0&&y1>y0&&!(water.kind==='lake'&&LAKE_MESH))out.push({x0,x1,y0,y1,surfaceM:level,kind:water.kind});
+   if(x1>x0&&y1>y0&&!LAKE_MESH)out.push({x0,x1,y0,y1,surfaceM:level,kind:water.kind});
   }return out;
  }
  // 湖の専用の水面：湖の格子を3×3でぼかした値（0〜1）を頂点に持たせ、描画側で0.4付近を水の縁にする（階段状でなく、なめらかな縁になる）。高さは湖の水位
- function lakeIs(gx,gy){if(gx<0||gy<0||gx>=terrain.width||gy>=terrain.height)return -1;const i=gy*terrain.width+gx,id=world.lakeId?.[i];return world.water[i]===2&&id>0&&Number.isFinite(world.lakeLevels?.[id])&&world.type[i]!==0?toMeters(world.lakeLevels[id]):NaN;}
- function lakeGrid(x,y,R,stride,skipR,anchor){
+ function lakeIs(gx,gy,sea){if(gx<0||gy<0||gx>=terrain.width||gy>=terrain.height)return -1;const i=gy*terrain.width+gx;if(sea)return world.type[i]===0?0:NaN;const id=world.lakeId?.[i];return world.water[i]===2&&id>0&&Number.isFinite(world.lakeLevels?.[id])&&world.type[i]!==0?toMeters(world.lakeLevels[id]):NaN;}
+ // 水際の性格（傾斜の強さ steep と、湿地らしさ wet）：水の縁の頂点の近くの陸の高さ・生態区分から。縁のなだらかさ・岸の色・波打ち際の表現を変える
+ function shoreChar(cx,cy,level,sea){
+  const s=terrain.metersPerCell;let steep=0,wet=0,n=0;
+  for(const [dx,dy] of [[3,0],[-3,0],[0,3],[0,-3],[2,2],[-2,-2],[2,-2],[-2,2]]){
+   const gx=cx+dx,gy=cy+dy;if(gx<0||gy<0||gx>=terrain.width||gy>=terrain.height)continue;const i=gy*terrain.width+gx;if(world.type[i]===0||world.water[i]===2)continue;
+   const dh=toMeters(world.elev[i])-level,d=Math.hypot(dx,dy)*s;steep=Math.max(steep,Math.max(0,dh)/d);if(world.biome&&world.biome[i]===13)wet+=1;n++;
+  }
+  return [Math.min(1,Math.max(0,(steep-.05)/.3)),n?Math.min(1,wet/n*1.5):0];
+ }
+ function lakeGrid(x,y,R,stride,skipR,anchor,sea){
   const s=terrain.metersPerCell,gx0=Math.max(0,Math.floor((x-R)/s/stride)*stride),gx1=Math.min(terrain.width-1,Math.ceil((x+R)/s/stride)*stride),gy0=Math.max(0,Math.floor((y-R)/s/stride)*stride),gy1=Math.min(terrain.height-1,Math.ceil((y+R)/s/stride)*stride);
   const nx=Math.floor((gx1-gx0)/stride)+1,ny=Math.floor((gy1-gy0)/stride)+1;if(nx<2||ny<2)return null;
-  const mk=new Float32Array(nx*ny),lv=new Float32Array(nx*ny).fill(NaN),K=[1,2,1];let any=false;
+  const mk=new Float32Array(nx*ny),lv=new Float32Array(nx*ny).fill(NaN),sh=new Float32Array(nx*ny*2),K=[1,2,1];let any=false;
   for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){
    const cx=gx0+i*stride,cy=gy0+j*stride;let sum=0,wl=0,best=-1,lev=NaN;
-   for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const w=K[dx+1]*K[dy+1],L=lakeIs(cx+dx*stride,cy+dy*stride);if(L===L&&L!==-1){sum+=w;if(w>best){best=w;lev=L;}}else if(L===-1){/* 世界の外 */}}
-   mk[j*nx+i]=sum/16;if(sum>0){lv[j*nx+i]=lev;any=true;}
+   for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const w=K[dx+1]*K[dy+1],L=lakeIs(cx+dx*stride,cy+dy*stride,sea);if(L===L&&L!==-1){sum+=w;if(w>best){best=w;lev=L;}}else if(L===-1){/* 世界の外 */}}
+   mk[j*nx+i]=sum/16;if(sum>0){lv[j*nx+i]=lev;any=true;if(sum<16){const c=shoreChar(cx,cy,lev,sea);sh[(j*nx+i)*2]=c[0];sh[(j*nx+i)*2+1]=c[1];}}
   }
-  if(!any)return null;const pos=[],msk=[];
-  const V=(i,j,L)=>{pos.push(gx0*s+i*stride*s-anchor.xM,L,gy0*s+j*stride*s-anchor.yM);msk.push(mk[j*nx+i]);};
+  if(!any)return null;const pos=[],msk=[],shr=[];
+  const V=(i,j,L)=>{pos.push(gx0*s+i*stride*s-anchor.xM,L+(sea?.02:0),gy0*s+j*stride*s-anchor.yM);msk.push(mk[j*nx+i]);shr.push(sh[(j*nx+i)*2],sh[(j*nx+i)*2+1]);};
   for(let j=0;j<ny-1;j++)for(let i=0;i<nx-1;i++){
    const a=j*nx+i,b=a+1,c=a+nx,d=c+1;if(!(mk[a]>0||mk[b]>0||mk[c]>0||mk[d]>0))continue;
    const L=[lv[a],lv[b],lv[c],lv[d]].find(v=>v===v);if(L===undefined)continue;
@@ -15847,7 +15858,7 @@ function createWaterSurface(terrain,world){
    if(skipR>0&&inside)continue;if(skipR<0&&!(Math.abs(mx-x)<-skipR&&Math.abs(my-y)<-skipR))continue;   // skipR>0：この範囲の内側は描かない（遠景）／skipR<0：この範囲の内側だけ描く（近景）
    V(i,j,L);V(i,j+1,L);V(i+1,j,L);V(i+1,j,L);V(i,j+1,L);V(i+1,j+1,L);
   }
-  return pos.length?{pos,msk}:null;
+  return pos.length?{pos,msk,shr}:null;
  }
  function distantPatches(x,y){
   const out=[],cell=256,radius=8192,inner=2048,s=terrain.metersPerCell;
@@ -15859,7 +15870,7 @@ function createWaterSurface(terrain,world){
    if(x1<=x0||y1<=y0||(x0>=x-inner&&x1<=x+inner&&y0>=y-inner&&y1<=y+inner))continue;
    const samples=[[x0,y0],[x1,y0],[x0,y1],[x1,y1],[(x0+x1)/2,(y0+y1)/2]].map(([px,py])=>known(px,py));
    const sea=samples.some(p=>p?.kind==='sea'),lake=samples[0];
-   if(sea)out.push({x0,x1,y0,y1,surfaceM:0,kind:'sea'});
+   if(sea&&!LAKE_MESH)out.push({x0,x1,y0,y1,surfaceM:0,kind:'sea'});
    else if(!LAKE_MESH&&lake?.kind==='lake'&&samples.every(p=>p?.kind==='lake'&&p.id===lake.id))out.push({x0,x1,y0,y1,surfaceM:lake.surfaceM,kind:'lake'});
   }
   return out;
@@ -16721,13 +16732,15 @@ function refreshWater(xM,yM){
    const mesh=new THREE.Mesh(geometry,material);scene.add(mesh);return mesh;
   }
   function buildLake(){
-   const near=state.water.lakeGrid(xM,yM,state.fastRender?900:1700,1,-(state.fastRender?900:1500),anchor),far=state.fastRender?null:state.water.lakeGrid(xM,yM,9000,3,1500,anchor),pos=[],msk=[];
-   for(const g of [near,far])if(g){for(let i=0;i<g.pos.length;i++)pos.push(g.pos[i]);for(let i=0;i<g.msk.length;i++)msk.push(g.msk[i]);}
+   const nr=state.fastRender?900:1700,grids=[state.water.lakeGrid(xM,yM,nr,1,-(state.fastRender?900:1500),anchor,false),state.fastRender?null:state.water.lakeGrid(xM,yM,9000,3,1500,anchor,false),state.water.lakeGrid(xM,yM,nr,1,-(state.fastRender?900:1500),anchor,true),state.fastRender?null:state.water.lakeGrid(xM,yM,9000,3,1500,anchor,true)],pos=[],msk=[],shr=[];
+   for(const g of grids)if(g){for(let i=0;i<g.pos.length;i++)pos.push(g.pos[i]);for(let i=0;i<g.msk.length;i++)msk.push(g.msk[i]);for(let i=0;i<g.shr.length;i++)shr.push(g.shr[i]);}
    if(!pos.length)return null;
-   const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geometry.setAttribute('lkMask',new THREE.Float32BufferAttribute(msk,1));geometry.computeVertexNormals();
+   const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geometry.setAttribute('lkMask',new THREE.Float32BufferAttribute(msk,1));geometry.setAttribute('lkShore',new THREE.Float32BufferAttribute(shr,2));geometry.computeVertexNormals();
    const material=new THREE.MeshLambertMaterial({color:0x2a82b2,transparent:true,opacity:.84,depthWrite:false});
-   material.onBeforeCompile=sh=>{sh.vertexShader='attribute float lkMask;varying float vLk;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvLk=lkMask;');sh.fragmentShader='varying float vLk;\n'+sh.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\nfloat lkA=smoothstep(.30,.46,vLk);if(lkA<.02)discard;diffuseColor.a*=lkA;');};
-   material.customProgramCacheKey=()=>'lake-surface-v1';
+   material.onBeforeCompile=sh=>{sh.vertexShader='attribute float lkMask;attribute vec2 lkShore;varying float vLk;varying vec2 vSh;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvLk=lkMask;vSh=lkShore;');
+    // 水際の性格：急な岸（崖・岩場）は縁がはっきり、なだらかな浜は広く透けて浅瀬になり、湿地は緑がかって縁がぼやける。浜と崖には波打ち際の白い筋
+    sh.fragmentShader='varying float vLk;varying vec2 vSh;\n'+sh.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\nfloat lo=mix(.2,.40,vSh.x),hi=mix(.64,.46,vSh.x);lo=mix(lo,.1,vSh.y);hi=mix(hi,.8,vSh.y);float lkA=smoothstep(lo,hi,vLk);if(lkA<.02)discard;diffuseColor.a*=lkA;float fo=smoothstep(lo+.02,lo+.1,vLk)*(1.-smoothstep(lo+.1,lo+.22,vLk))*(1.-vSh.y);diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.9,.95,.96),fo*(.35+.35*vSh.x));diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.30,.42,.26),vSh.y*(1.-smoothstep(.5,1.,vLk))*.55);');};
+   material.customProgramCacheKey=()=>'lake-surface-v2';
    const mesh=new THREE.Mesh(geometry,material);mesh.renderOrder=1;return mesh;
   }
   state.waterMesh=buildWater(state.water.patches(xM,yM,state.fastRender?900:2800),.005,true);
