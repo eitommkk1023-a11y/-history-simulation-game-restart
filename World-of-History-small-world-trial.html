@@ -8429,7 +8429,8 @@ function pickWindow(world, seed, cellM, opt) {
     const lf = land / n; if (lf < (o.minLand || 0.82)) continue;
     let rivers = 0; for (let q = 0; q < riverCells.length; q += 2) { const rx = riverCells[q], ry = riverCells[q + 1]; if (rx >= x0 && rx < x0 + N && ry >= y0 && ry < y0 + N) rivers++; }
     const relief = Math.max(0, Math.min(1, (hMax - hMin) / 1500)), fm = forest / Math.max(1, land); let ent = 0, kinds = 0; for (let b = 0; b < 18; b++) if (bh[b]) { const q = bh[b] / n; ent -= q * Math.log(q); if (q >= 0.04) kinds++; }   // 地形の多様さ：生態区分（バイオーム）の偏りの少なさ（エントロピー）と、まとまった広さをもつ種類の数
-    const s = lf * 1.5 + Math.min(1, rivers / 400) * 2 + Math.min(1, relief) * 1 + Math.min(1, fm * 2.2) * 1.5 - (fm < 0.15 ? 2 : 0) + ent * 2.5 + kinds * 0.5 + (hash(seed >>> 0, x0, y0) / 4294967296) * 0.4;   // 森（樹木）の多い所を強く好み、森が薄い窓は大きく減点
+    let dl = 0; if (world.features) for (const f of world.features) if (f.kind === 'delta' && f.x >= x0 + 40 && f.x < x0 + N - 40 && f.y >= y0 + 40 && f.y < y0 + N - 40) dl++;   // 三角州を含む窓を好む（珍しい地形）
+    const s = (dl ? 4 : 0) + lf * 1.5 + Math.min(1, rivers / 400) * 2 + Math.min(1, relief) * 1 + Math.min(1, fm * 2.2) * 1.5 - (fm < 0.15 ? 2 : 0) + ent * 2.5 + kinds * 0.5 + (hash(seed >>> 0, x0, y0) / 4294967296) * 0.4;   // 森（樹木）の多い所を強く好み、森が薄い窓は大きく減点
     if (s > bs) { bs = s; best = { x0, y0, x1: x0 + N, y1: y0 + N, score: +s.toFixed(3), land: +lf.toFixed(2), rivers, kinds, diversity: +ent.toFixed(2) }; }
   }
   if (best) { let f = 0, n = 0; if (fe && fe.forest) for (let j = 0; j < N; j += 30) for (let i = 0; i < N; i += 30) { f += fe.forest[Math.min(fe.forest.length - 1, ((best.y0 + j) >> 3) * Math.ceil(W / 8) + ((best.x0 + i) >> 3))] / 255; n++; } best.forest = +(f / Math.max(1, n)).toFixed(2); }
@@ -16611,7 +16612,8 @@ function rvPrepare(world){
     const f0=line[0],f1=line[1];
     if(!otherNear(s,f0.x,f0.y,3)){
       const w=findWater(f0.x,f0.y,16),dir={x:f0.x-f1.x,y:f0.y-f1.y},dl=Math.hypot(dir.x,dir.y)||1;
-      if(w&&w.d>1.2){const dot=((w.x-f0.x)*dir.x+(w.y-f0.y)*dir.y)/(w.d*dl);if(dot>-.3){const tt={x:f0.x+(w.x-f0.x)*(1+.6/w.d),y:f0.y+(w.y-f0.y)*(1+.6/w.d)},e=ext(f0,tt,f0.w,(s%2?1:-1));line.unshift(...e.reverse());nExtDown++;mouths.push({gx:tt.x,gy:tt.y,sea:w.sea});}}
+      if(w&&w.d>1.2){const dot=((w.x-f0.x)*dir.x+(w.y-f0.y)*dir.y)/(w.d*dl);if(dot>-.3){const tt={x:f0.x+(w.x-f0.x)*(1+.6/w.d),y:f0.y+(w.y-f0.y)*(1+.6/w.d)},e=ext(f0,tt,f0.w,(s%2?1:-1));line.unshift(...e.reverse());nExtDown++;}}
+      if(w&&w.sea&&w.d<=16)mouths.push({gx:line[0].x,gy:line[0].y,sea:true,line:line.slice(0,24),hw,s});
     }
     // ② 上流の端＝源流
     const L=line[line.length-1],gx=Math.round(L.x),gy=Math.round(L.y);let kindS=null;
@@ -16630,12 +16632,35 @@ function rvPrepare(world){
     if(kindS){const sl=line[line.length-1];srcs.push({gx:sl.x,gy:sl.y,kind:kindS,label:RV_SRC_LABEL[kindS]});
       if(kindS!=='lake'){const r=kindS==='marsh'?9:kindS==='glacier'?8:5.5;outS.push(outP.length/3);outP.push(sl.x,sl.y,1,sl.x+.01,sl.y,1);hwp.push(r,r);hwq.push(r);kind.push(RV_KIND_CODE[kindS]);}}
   }
+  // 三角州：世界の生成で作られた三角州（河口の海側に積もった土砂の扇）の位置にある河口では、川が数本の分流に分かれて海へ出る
+  let nDelta=0;
+  for(const f of (world.features||[]))if(f.kind==='delta'){
+    let m=null,bd=16;for(const q of mouths){if(!q.sea)continue;const d=Math.hypot(q.gx-f.x,q.gy-f.y);if(d<bd){bd=d;m=q;}}
+    if(!m)continue;const ln=m.line;if(ln.length<3)continue;
+    const E=ln[0],B=ln[Math.min(ln.length-1,Math.max(2,Math.round(5/1.5)))];
+    // 扇の向き：河口から見た、海のある向き（近くの海の格子の平均方向）
+    let sx=0,sy=0,sn=0;for(let dy=-12;dy<=12;dy++)for(let dx=-12;dx<=12;dx++){const gx=Math.round(E.x)+dx,gy=Math.round(E.y)+dy;if(gx<0||gy<0||gx>=W||gy>=H)continue;if(type[gy*W+gx]===0){sx+=dx;sy+=dy;sn++;}}
+    if(!sn)continue;const base=Math.atan2(sy,sx),nch=4+((f.x+f.y)%2),sp=[];
+    for(let i=0;i<nch;i++)sp.push((i/(nch-1)-.5)*2*(.62+.08*Math.sin(f.x*.7+i)));   // 約±36°に広がる
+    for(let i=0;i<nch;i++){
+      const ang=base+sp[i],pts=[{x:B.x,y:B.y,w:1}];let x=B.x,y=B.y,dirx=Math.cos(ang),diry=Math.sin(ang),reached=false;
+      for(let st=0;st<26;st++){
+        // 少し蛇行しながら、おおむね同じ向きに進む
+        const wob=Math.sin(st*.55+i*2.1+f.x)*.16;dirx=Math.cos(ang+wob);diry=Math.sin(ang+wob);x+=dirx*1.5;y+=diry*1.5;pts.push({x,y,w:1});
+        const gx=Math.round(x),gy=Math.round(y);if(gx<0||gy<0||gx>=W||gy>=H)break;if(type[gy*W+gx]===0){reached=true;x+=dirx*1.2;y+=diry*1.2;pts.push({x,y,w:1});break;}
+      }
+      if(!reached&&pts.length<8)continue;
+      const hwc=Math.max(2,m.hw*(i===(nch>>1)?.7:.5));
+      outS.push(outP.length/3);for(let k=0;k<pts.length;k++){outP.push(pts[k].x,pts[k].y,1);hwp.push(hwc*(.75+.25*(k/pts.length)));}hwq.push(hwc);kind.push(200);
+    }
+    nDelta++;
+  }
   const n=outP.length/3,M=new Float32Array(n*2);
   const toM=(gx,gy)=>state.terrain.gridToMeters(gx,gy);
   for(let k=0;k<n;k++){const q=toM(outP[k*3],outP[k*3+1]);M[k*2]=q.xM;M[k*2+1]=q.yM;}
   for(const sc of srcs){const q=toM(sc.gx,sc.gy);sc.x=q.xM;sc.y=q.yM;}
   for(const m of mouths){const q=toM(m.gx,m.gy);m.x=q.xM;m.y=q.yM;}
-  return {world,M,S:Int32Array.from(outS),np:n,hw:hwq,hwp:Float32Array.from(hwp),kind,srcs,mouths,stat:{lines:S.length,extDown:nExtDown,extLake:nExtLake,sources:srcs.length}};
+  return {world,M,S:Int32Array.from(outS),np:n,hw:hwq,hwp:Float32Array.from(hwp),kind,srcs,mouths,stat:{deltas:nDelta,lines:S.length,extDown:nExtDown,extLake:nExtLake,sources:srcs.length}};
 }
 function rvPoints(){
   const W=state.world;if(!W.riverPts)return null;if(rvPts&&rvPts.world===W)return rvPts;
@@ -16718,7 +16743,8 @@ const RV_GLSL_BODY=`
    }
   }
   // 源流のまわり：湧水・斜面の湧き水は湿った苔の緑、氷河・雪解けは雪と氷、湿地は泥と葦
-  {float rvK=rvM.b*255.0;if(rvK>30.0&&rvHW>0.1){float sk=rvD-rvHW;
+  {float rvK=rvM.b*255.0;if(rvK>190.0&&rvHW>0.1){float sk=rvD-rvHW;if(sk<0.0)rvC=mix(rvC,vec3(0.30,0.46,0.42),0.55);else rvC=mix(rvC,vec3(0.50,0.46,0.33),(1.0-smoothstep(0.0,22.0,sk))*0.6);}
+   else if(rvK>30.0&&rvHW>0.1){float sk=rvD-rvHW;
     if(rvK<90.0){if(sk<0.0)rvC=mix(rvC,vec3(0.16,0.42,0.46),0.7);else rvC=mix(rvC,vec3(0.2,0.4,0.18),(1.0-smoothstep(0.0,9.0,sk))*0.75);}
     else if(rvK<150.0){if(sk<0.0)rvC=mix(rvC,vec3(0.45,0.68,0.78),0.8);else rvC=mix(rvC,vec3(0.92,0.95,0.98),(1.0-smoothstep(0.0,13.0,sk))*0.85);}
     else{if(sk<0.0)rvC=mix(rvC,vec3(0.22,0.33,0.26),0.7);else rvC=mix(rvC,vec3(0.3,0.34,0.2),(1.0-smoothstep(0.0,12.0,sk))*0.7);}}}
@@ -16735,7 +16761,7 @@ function rvPatch(material){
   };
   material.customProgramCacheKey=()=>(prevKey?prevKey.call(material):'')+'|river-v2';
 }
-globalThis.__wohRiver={depthAt:rvDepthAt,get stats(){return {...rvStat};},get sources(){const p=state&&state.world&&state.world.riverPts?rvPoints():null;return p?p.srcs:[];},get mouths(){const p=state&&state.world&&state.world.riverPts?rvPoints():null;return p?p.mouths:[];},get prep(){const p=state&&state.world&&state.world.riverPts?rvPoints():null;return p?p.stat:null;},rebuild(){rvCenter=null;if(markerPoint)rvRefresh(markerPoint.xM,markerPoint.yM);}};
+globalThis.__wohRiver={depthAt:rvDepthAt,get stats(){return {...rvStat};},get sources(){const p=state&&state.world&&state.world.riverPts?rvPoints():null;return p?p.srcs:[];},get polys(){const p=state&&state.world&&state.world.riverPts?rvPoints():null;if(!p)return [];const out=[],G=state.terrain.metersPerCell||99866.7/state.world.stats.width;for(let s=0;s<p.S.length;s++){const a=p.S[s],b=s+1<p.S.length?p.S[s+1]:p.np,pts=[];for(let k=a;k<b;k++)pts.push({x:p.M[k*2]/G,y:p.M[k*2+1]/G});out.push({pts,kind:p.kind[s]});}return out;},get mouths(){const p=state&&state.world&&state.world.riverPts?rvPoints():null;return p?p.mouths:[];},get prep(){const p=state&&state.world&&state.world.riverPts?rvPoints():null;return p?p.stat:null;},rebuild(){rvCenter=null;if(markerPoint)rvRefresh(markerPoint.xM,markerPoint.yM);}};
 
 function makeTerrainMesh(chunk,far=false,edgeCuts){
  if(state)state.terrainBuilds++;
