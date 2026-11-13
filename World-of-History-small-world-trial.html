@@ -17413,6 +17413,8 @@ function godFlyTo(gid,h){
 }
 function godTick(dt){
   const c=god;if(!c)return false;const now=performance.now();let ch=false;
+  // 読み込みの中心が動いて原点が変わったら、注目点（原点からの相対座標）も同じだけ直す。直さないと、注目点が原点の移動分だけずれ、さらに次の読み込みを起こして、勝手に端まで動き続ける
+  { const o=state.origin;if(c.lastOrigin&&(c.lastOrigin.xM!==o.xM||c.lastOrigin.yM!==o.yM)){c.target.x+=c.lastOrigin.xM-o.xM;c.target.z+=c.lastOrigin.yM-o.yM;c.target.y+=c.lastOrigin.elevationM-o.elevationM;ch=true;}c.lastOrigin={xM:o.xM,yM:o.yM,elevationM:o.elevationM}; }
   // キーボード（画面の向きに合わせて動く）：WASD／矢印＝移動、Q・E＝回転、R・F＝拡大縮小、Shift＝速く
   const K=c.keys,kx=(K.has('KeyD')||K.has('ArrowRight')?1:0)-(K.has('KeyA')||K.has('ArrowLeft')?1:0),kz=(K.has('KeyS')||K.has('ArrowDown')?1:0)-(K.has('KeyW')||K.has('ArrowUp')?1:0);
   if(kx||kz){const sp=c.h*(K.has('ShiftLeft')||K.has('ShiftRight')?2.4:0.8)*dt,s=Math.sin(c.yaw),co=Math.cos(c.yaw);c.target.x+=(kx*co+kz*s)*sp;c.target.z+=(-kx*s+kz*co)*sp;ch=true;}
