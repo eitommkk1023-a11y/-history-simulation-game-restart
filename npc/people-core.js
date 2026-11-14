@@ -8,6 +8,7 @@
 const Npc = typeof require !== 'undefined' ? require('./npc-core.js') : root.WohNpc;
 const Arch = typeof require !== 'undefined' ? require('./arch-gen.js') : root.WohArch, Settle = typeof require !== 'undefined' ? require('./settle-layout.js') : root.WohSettle;
 const Nation = typeof require !== 'undefined' ? require('./nation.js') : root.WohNation, Tech = typeof require !== 'undefined' ? require('./tech.js') : root.WohTech;
+const Cohort = (typeof require !== 'undefined' ? require('./pop-cohort.js') : root.WohCohort).Cohort;   // 人口の集計の層（docs/population-layers-v1.md）
 const { Population, NJOB, NSKILL, SI, mix, SOC_K } = Npc, NONE = 0xffffffff, ALIVE = 0x7fffffff;
 
 // ---------------------------------------------------------------- 設定値
@@ -608,9 +609,54 @@ function peStats(people) {
     st.c6[g * 6 + (a < 15 ? 0 : a < 60 ? 1 : 2) + (male ? 0 : 3)]++;
     if (!male && a >= 15 && a < 50) st.women[g]++;
   }
+  // 集計の層（個人にしていない住民）：人数・必要な食料・働き手・女性の数を足す。仕事の構成は、個人の仕事の構成に比例させる（個人がいない集団では、集計の住民は生産に数えない）
+  for (const g of people.groups) {
+    const A = g.agg; if (!A) continue; const k = g.id; let n = 0, need = 0, lab = 0, wom = 0;
+    for (let y = 0; y < 81; y++) { let f = 0, m = 0; for (let q = y * 12; q < y * 12 + 12; q++) { f += A.f[q]; m += A.m[q]; } n += f + m; need += f * PE_NEED_F[y] + m * PE_NEED_M[y]; lab += (f + m) * PE_LABOR[y]; if (y >= 15 && y < 50) wom += f; const ci = (y < 15 ? 0 : y < 60 ? 1 : 2); st.c6[k * 6 + ci] += m; st.c6[k * 6 + 3 + ci] += f; }
+    const Lind = st.labor[k]; st.pop[k] += n; st.need[k] += need; st.labor[k] += lab; st.women[k] += wom;
+    if (Lind > 0 && lab > 0) { const r = 1 + lab / Lind; for (let j = 0; j < NJOB; j++) { st.lab[k * NJOB + j] *= r; st.jobCount[k * NJOB + j] *= r; } for (let j = 0; j < 4; j++) st.sk[k * 4 + j] *= r; }
+  }
   for (const g of people.groups) { const k = g.id; g.pop = st.pop[k]; g.c6 = Array.from(st.c6.subarray(k * 6, k * 6 + 6)); }
   return st;
 }
+// ---------------------------------------------------------------- 集計の層（個人にしていない住民）：昇格（集計→個人）・降格（個人→集計）
+// 集団 g.agg（Cohort）が、その集団の「個人にしていない住民」。集団の人口＝個人＋集計。降格した人は、個人IDを残したまま「集計へ移った」扱い（死亡ではない：死亡の数に入らない。cause=98）。昇格した人は、新しい個人ID（親なしの住民）になる
+const PE_FOLD = 98, PE_MARR = (a) => (a < 17 ? 0 : a < 20 ? 0.35 : a < 25 ? 0.75 : a < 40 ? 0.85 : 0.8);   // 既婚の女性の割合（個人の層から測った形［仮］。test-cohort.js）
+function peAggRates(people, g) {
+  const P = people.npc, id = g.id;
+  return { qm: (a, sex) => 1 - Math.exp(-P.hazardFn(a, id) / 12), pf: (a) => P.fertFn(a, id), marr: PE_MARR, sexRatio: 1 - PE.SEX_RATIO };
+}
+function peAggMonth(people) {
+  if (!people.npc || !people.npc.hazardFn) return;
+  for (const g of people.groups) { if (!g.alive || !g.agg) continue; const r = g.agg.step(Cohort.tables(peAggRates(people, g))); g.born += r.births; g.agg.lastBirths = r.births; }
+}
+function peAggTotal(g) { return g.agg ? g.agg.total() : 0; }
+// 降格できる人：個人の層の重要な人（重要人物・プレイヤー・首長）でない人の世帯。同じ世帯（夫婦と子ども）は、まとめて降格する。maxN 人まで。戻り値：降格した人数
+function peopleLayerDemote(people, gid, maxN) {
+  const P = people.npc, g = people.groups[gid - 1]; if (!g || !g.alive || !(maxN > 0)) return 0;
+  const keep = new Set(); const pl = people.player; if (pl && pl.id >= 0) { keep.add(pl.id); if (P.house[pl.id] !== NONE) keep.add(-1 - P.house[pl.id]); }
+  for (const id of P.focus.keys()) { keep.add(id); if (P.house[id] !== NONE) keep.add(-1 - P.house[id]); }
+  const lead = g.leader; if (lead != null && lead >= 0) { keep.add(lead); if (P.house[lead] !== NONE) keep.add(-1 - P.house[lead]); }
+  const A = g.agg || (g.agg = new Cohort()), day = P.day, ids = [], houses = new Map(); let n = 0;
+  for (let i = 0; i < P.n; i++) { if (P.group[i] !== gid || P.death[i] !== ALIVE) continue; const hh = P.house[i] !== NONE ? P.house[i] : -1 - i; let l = houses.get(hh); if (!l) houses.set(hh, l = []); l.push(i); }   // 世帯ごとに（世帯のない人は1人で1世帯）
+  for (const [hh, mem] of houses) { if (n >= maxN) break; if (mem.some(i => i === P.actId || keep.has(i)) || (hh >= 0 && keep.has(-1 - hh))) continue; for (const i of mem) ids.push(i); n += mem.length; }
+  for (const i of ids) {
+    const age = (day - P.birth[i]) / 360; A.add(Math.min(80.99, Math.max(0, age)), P.sex[i] === 1 ? 1 : 0, 1);
+    P.death[i] = day; P.cause[i] = PE_FOLD; P._setJob(i, 0);   // 個人IDは残す（死亡の数には入れない）。夫婦の結びつきも残す（同じ世帯でいっしょに降格する）
+  }
+  if (ids.length) { g.folded = (g.folded || 0) + ids.length; }
+  return ids.length;
+}
+// 昇格：集計から n 人を、新しい個人にする（年齢・性別は集計の分布から。決定的：日付・集団から乱数を決める）。戻り値：新しい個人のID
+function peopleLayerPromote(people, gid, n) {
+  const P = people.npc, g = people.groups[gid - 1], out = []; if (!g || !g.agg || !(n > 0)) return out;
+  const A = g.agg, tot = A.total(); if (tot < 0.5) return out; n = Math.min(n, Math.floor(tot + 0.5));
+  let s = mix(P.seed, gid, P.day, 4242) >>> 0; const rnd = () => { s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const smp = A.sampleAges(n, rnd); A.scale(Math.max(0, (tot - smp.length) / tot));   // 人数ぶんを、分布を変えずに取り除く
+  for (const x of smp) { const id = P.addFounder(gid, x.age); P.sex[id] = x.sex; out.push(id); }
+  return out;
+}
+function peopleLayerSummary(people) { let ind = 0, agg = 0; for (const g of people.groups) { if (!g.alive) continue; agg += peAggTotal(g); } for (let i = 0; i < people.npc.n; i++) if (people.npc.death[i] === ALIVE) ind++; return { individuals: ind, aggregated: agg, total: ind + agg }; }
 // 集団の状況（飢え・寒さ・病気）を、個人の死亡率・出生率に反映する表（集団の id で引く）
 function peHazards(people) {
   const ng = people.groups.length + 1;
@@ -1017,6 +1063,7 @@ function peopleMonthly(people, ctx) {
   peNeighbors(people);   // 近くの集団（結婚・接触・文化の影響）
   for (const g of alive) peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel);
   if (ctx.populationAdvanced !== true) for (let d = 0; d < 30; d++) P.stepDay();   // 住民を30日進める（人ごとに月に1回判定。日付はずれている）
+  peAggMonth(people);   // 集計の層の住民を1か月進める（個人の層と同じ死亡・出生の率）
   peStats(people);
   peopleSuccession(people, ev);   // プレイヤーの人物が亡くなっていれば、その文化の決まりで継承
   peApplyActivity(people);
@@ -1034,7 +1081,7 @@ function peopleMonthly(people, ctx) {
     if (pop < PE.EXTINCT_MIN || (pop < 8 && peStatsWomen(people, g) < 1)) {
       g.alive = false;
       for (let i = 0; i < P.n; i++) if (P.group[i] === g.id && P.death[i] === ALIVE) { P._die(i, 9); g.died.natural++; }
-      g.pop = 0;
+      g.pop = 0; g.agg = null;
       ev.push({ type: 'extinct', imp: 1, relevant: rel(g.ethId), group: g.id, eth: g.ethId, x: g.x, y: g.y });
       const eth = people.ethnicities.find(e => e.id === g.ethId);
       if (eth && eth.alive && !people.groups.some(o => o.alive && o.ethId === eth.id)) {
@@ -1540,7 +1587,8 @@ function peSplit(people, g, S, world, rng, ev, rel) {
   c.moveTo = { x: d.x, y: d.y, by: 'ai', site: d.site };
   const hz = peHazards(people); hz.fert[c.id] = hz.fert[g.id]; hz.starv[c.id] = hz.starv[g.id]; hz.cold[c.id] = hz.cold[g.id]; hz.dis[c.id] = hz.dis[g.id]; hz.hungerDis[c.id] = hz.hungerDis[g.id];
   P.gdemand.set(P.gdemand.subarray(g.id * NJOB, g.id * NJOB + NJOB), c.id * NJOB);
-  c.pop = moved; g.pop = all - moved; c.radius = peRadius(c.pop); g.radius = peRadius(g.pop);
+  let aggMoved = 0; if (g.agg && g.agg.total() > 0) { c.agg = g.agg.split(share); aggMoved = c.agg.total(); }   // 集計の層の住民も、同じ割合で分かれる
+  c.pop = moved + aggMoved; g.pop = (all - moved) + (g.agg ? g.agg.total() : 0); c.radius = peRadius(c.pop); g.radius = peRadius(g.pop);
   ev.push({ type: 'split', imp: 1, relevant: rel(g.ethId), group: g.id, child: c.id, eth: g.ethId, x: g.x, y: g.y, toX: d.x, toY: d.y });
   return c;
 }
@@ -1567,7 +1615,7 @@ function peopleSave(people) {
   const pool = [], poolStart = [0]; for (let g = 0; g < P.groups; g++) { for (const v of P.pool[g]) pool.push(v); poolStart.push(pool.length); }
   const members = [], memberStart = [0]; for (let g = 0; g < P.groups; g++) { for (const id of P.members[g]) members.push(id); memberStart.push(members.length); }
   const meta = { win: people.win || null, version: people.version, nextGroupId: people.nextGroupId, nextEthId: people.nextEthId, rngState: people.rngState, playerEth: people.playerEth,
-    ethnicities: people.ethnicities, groups: people.groups.map(g => Object.assign({}, g, { c6: undefined })), contacts: people.contacts, ties: people.ties || {}, nation: people.nation ? Nation.save(people.nation) : (people.nationSave || null), ethSpeed: people.ethSpeed || 1, languages: people.languages, autoNames: people.autoNames || {}, placeLangs: people.placeLangs || {}, nextLangId: people.nextLangId || 0, player: people.player,
+    ethnicities: people.ethnicities, groups: people.groups.map(g => Object.assign({}, g, { c6: undefined, agg: g.agg ? g.agg.pack() : undefined })), contacts: people.contacts, ties: people.ties || {}, nation: people.nation ? Nation.save(people.nation) : (people.nationSave || null), ethSpeed: people.ethSpeed || 1, languages: people.languages, autoNames: people.autoNames || {}, placeLangs: people.placeLangs || {}, nextLangId: people.nextLangId || 0, player: people.player,
     npc: { seed: P.seed, n, day: P.day, rng: P.rng, stats: P.stats, delta: Array.from(P.delta), focus: Array.from(P.focus), ethSecondary: Array.from(P.ethSecondary), groups: P.groups } };
   return { meta, birth: cut(P.birth), death: cut(P.death), sex: cut(P.sex), group: cut(P.group), mother: cut(P.mother), father: cut(P.father), spouse: cut(P.spouse), job: cut(P.job), flags: cut(P.flags),
     eth: cut(P.eth), house: cut(P.house), cause: cut(P.cause), groupEth: P.groupEth.slice(), relId: cut(P.relId, SOC_K), relV: cut(P.relV, SOC_K * 3), pers: cut(P.pers, 4), skills: cut(P.skills, NSKILL), train: cut(P.train, Npc.NABIL), gdemand: P.gdemand.slice(), gflags: P.gflags.slice(), pool: Int32Array.from(pool), poolStart: Int32Array.from(poolStart),
@@ -1577,7 +1625,7 @@ function peopleSave(people) {
 }
 function peopleLoad(sv) {
   const m = sv.meta, people = { win: m.win || null, version: m.version, nextGroupId: m.nextGroupId, nextEthId: m.nextEthId, rngState: m.rngState, playerEth: m.playerEth, ethnicities: m.ethnicities,
-    groups: m.groups.map(g => { if (g.layout && Settle && Settle.upgradeLayout) Settle.upgradeLayout(g.layout); return Object.assign(g, { c6: [0, 0, 0, 0, 0, 0] }); }), contacts: m.contacts, ties: m.ties || {}, nationSave: m.nation || null, ethSpeed: m.ethSpeed || 1, nbr: {}, languages: m.languages, autoNames: m.autoNames || {}, placeLangs: m.placeLangs || {}, nextLangId: m.nextLangId || 0, player: m.player || null, npc: null, haz: null, stat: null };
+    groups: m.groups.map(g => { if (g.layout && Settle && Settle.upgradeLayout) Settle.upgradeLayout(g.layout); if (g.agg) g.agg = Cohort.unpack(g.agg); return Object.assign(g, { c6: [0, 0, 0, 0, 0, 0] }); }), contacts: m.contacts, ties: m.ties || {}, nationSave: m.nation || null, ethSpeed: m.ethSpeed || 1, nbr: {}, languages: m.languages, autoNames: m.autoNames || {}, placeLangs: m.placeLangs || {}, nextLangId: m.nextLangId || 0, player: m.player || null, npc: null, haz: null, stat: null };
   if (sv.stat) peStatLoad(people, sv.stat);
   const n = m.npc.n, P = people.npc = new Population(m.npc.seed, m.npc.groups, Math.max(1024, n * 2));
   const put = (name, src, per = 1) => { P[name].set(src.subarray ? src.subarray(0, n * per) : src); };
@@ -1622,6 +1670,6 @@ function peopleEthCounts(people) {
   const P = people.npc, o = {}; for (let i = 0; i < P.n; i++) { if (P.death[i] !== ALIVE) continue; const e = P.eth[i] || P.groupEth[P.group[i]]; o[e] = (o[e] || 0) + 1; } return o;
 }
 
-if (typeof module !== 'undefined' && module.exports) module.exports = { peopleDaily, peopleDailyFoodNeed, peopleStorageStrides, PE, resetSiteCache() { peCache = null; }, peSites, peSiteScore, peNearestSite, peopleSiteInfo, SITE_KINDS, SITE_LABEL, peNationEnsure, peChron, peArchInit, peArchYear, ARCH, peStatRecord, peopleStatSeries, peopleStatChange, FACIL_SERVES, peCover, TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, peCultureRules, PROPOSALS, peopleProposal, LEADERSHIP, peLeaders, ACTIVITIES, peopleSetActivity, peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
-else root.WohPeople = { peopleDaily, peopleDailyFoodNeed, peopleStorageStrides, peStats, peSites, peSiteScore, peNearestSite, peopleSiteInfo, SITE_KINDS, SITE_LABEL, peNationEnsure, peChron, peArchInit, peArchYear, ARCH, peStatRecord, peopleStatSeries, peopleStatChange, FACIL_SERVES, peCover, TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peopleSuccession, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, PROPOSALS, peopleProposal, LEADERSHIP, ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+if (typeof module !== 'undefined' && module.exports) module.exports = { peopleLayerDemote, peopleLayerPromote, peopleLayerSummary, peAggTotal, peopleDaily, peopleDailyFoodNeed, peopleStorageStrides, PE, resetSiteCache() { peCache = null; }, peSites, peSiteScore, peNearestSite, peopleSiteInfo, SITE_KINDS, SITE_LABEL, peNationEnsure, peChron, peArchInit, peArchYear, ARCH, peStatRecord, peopleStatSeries, peopleStatChange, FACIL_SERVES, peCover, TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, peCultureRules, PROPOSALS, peopleProposal, LEADERSHIP, peLeaders, ACTIVITIES, peopleSetActivity, peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+else root.WohPeople = { peopleLayerDemote, peopleLayerPromote, peopleLayerSummary, peAggTotal, peopleDaily, peopleDailyFoodNeed, peopleStorageStrides, peStats, peSites, peSiteScore, peNearestSite, peopleSiteInfo, SITE_KINDS, SITE_LABEL, peNationEnsure, peChron, peArchInit, peArchYear, ARCH, peStatRecord, peopleStatSeries, peopleStatChange, FACIL_SERVES, peCover, TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peopleSuccession, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, PROPOSALS, peopleProposal, LEADERSHIP, ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
