@@ -8423,10 +8423,10 @@ root.WohVillageView = { createFields: M.fields.createFields, plotWorldPoint: M.f
 // 窓の外には人を置かず、窓の外の動物の個体群は計算から外す（計算量が窓の広さに比例して減る）。大規模世界の既存の設定は変えない（この設定を使ったときだけ働く）。
 // 単位：セル（世界の格子。世界全体で widthM / width メートル、既定の世界では約33.3m）。乱数は整数ハッシュだけ（同じSeedなら同じ窓）。
 (function (root) {
-const SMALL = { sizeM: 20000, villages: 4, popTotal: 200, minDm: 3000, maxDm: 10000 };   // 世界の広さ・初期の村の数・初期人口・村どうしの距離（m）
+const SMALL = { sizeM: 20000, villages: 4, popTotal: 1200, popMin: 100, popMax: 500, minDm: 3000, maxDm: 10000 };   // popMin〜popMax：初期の村ひとつの人数の範囲（村ごとに幅広くばらつく）。popTotal は目安（平均300人×村の数）   // 世界の広さ・初期の村の数・初期人口・村どうしの距離（m）
 const hash = (a, b, c) => { let h = (a ^ Math.imul(b, 374761393) ^ Math.imul(c, 668265263)) >>> 0; h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0; return (h ^ (h >>> 16)) >>> 0; };
 // 段階：S1（20km・4村）→ S2（40km・10村）→ S3（80km・24村）。広げるほど村の間隔と人数も増やす
-const STAGES = { 1: SMALL, 2: { sizeM: 40000, villages: 10, popTotal: 600, minDm: 3500, maxDm: 14000 }, 3: { sizeM: 80000, villages: 24, popTotal: 2000, minDm: 4000, maxDm: 20000, minLand: 0.55 } };
+const STAGES = { 1: SMALL, 2: { sizeM: 40000, villages: 10, popTotal: 3000, popMin: 100, popMax: 500, minDm: 3500, maxDm: 14000 }, 3: { sizeM: 80000, villages: 24, popTotal: 7200, popMin: 100, popMax: 500, minDm: 4000, maxDm: 20000, minLand: 0.55 } };
 const stageOf = (n) => STAGES[n] || SMALL;
 // 窓：{ x0, y0, x1, y1 }（セル）。cellM＝1セルのメートル。陸地が多く、川・起伏・森がある所を選ぶ
 function pickWindow(world, seed, cellM, opt) {
@@ -9237,6 +9237,8 @@ function peopleGenerate(seed, W) {
   for (let a = 0; a < PE_AGES; a++) { surv[a] = l; l *= 1 - PE_H0[a] * (1 - PE_H0[a] / 2); }
   let ssum = 0; for (let a = 0; a < PE_AGES; a++) ssum += surv[a];
   const hue0 = rng(), pops = [];
+  // 小規模ワールド：村ごとの人数は popMin〜popMax で幅広くばらつかせ、点数の高い（暮らしやすい）場所の村ほど大きくする（大きな村が食料不足にならないように）
+  const popPlan = SM && SM.popMin != null ? (() => { const pr2 = peRng(sd ^ peHash('villagePops')); return Array.from({ length: sites.length }, () => Math.round(SM.popMin + (SM.popMax - SM.popMin) * Math.pow(pr2(), 1.25))).sort((a, b) => b - a); })() : null;
   for (let i = 0; i < sites.length; i++) {
     const s = sites[i];
     const eth = { id: people.nextEthId++, nameKey: '', langId: 0, family: 0, parent: 0, founded: 0, alive: true, color: null };
@@ -9246,7 +9248,7 @@ function peopleGenerate(seed, W) {
     people.ethnicities.push(eth);
     let r = rng(), cls = PE.SIZE_CLASS[0];
     for (const c of PE.SIZE_CLASS) { cls = c; if (r < c[0]) break; r -= c[0]; }
-    pops.push(SM ? Math.round(SM.popTotal / SM.n * (0.8 + 0.4 * rng())) : Math.round(cls[1] + (cls[2] - cls[1]) * rng()));
+    pops.push(SM ? (popPlan ? popPlan[i] : Math.round(SM.popTotal / SM.n * (0.8 + 0.4 * rng()))) : Math.round(cls[1] + (cls[2] - cls[1]) * rng()));
     const g = peNewGroup(people, eth.id, s.x, s.y);
     g.site = s.site;
     g.radius = peRadius(pops[i]);
@@ -13607,7 +13609,7 @@ function peopleCtx(month) {
 // 小規模ワールド（試験）：20km四方の窓の中に4村・約200人。既存の世界の生成をそのまま使い、窓の外の人と動物の計算を外す。通常の（大規模）世界の設定は変えない
 function smallParams() {
   if (!globalThis.__wohSmallNext || !window.WohSmall) return null; if (globalThis.__wohSmallStage === 4) return null; /* S4＝世界全体（窓なし。通常の世界の人々） */ const cellM = 99866.7 / world.stats.width, win = WohSmall.pickWindow(world, seedToInt(currentSeed), cellM, WohSmall.stageOf(globalThis.__wohSmallStage)); if (!win) return null;
-  WohSmall.pruneFauna(fauna, world, win, cellM); const S = WohSmall.stageOf(globalThis.__wohSmallStage); return { win, n: S.villages, popTotal: S.popTotal, minD: S.minDm / cellM, maxD: S.maxDm / cellM };
+  WohSmall.pruneFauna(fauna, world, win, cellM); const S = WohSmall.stageOf(globalThis.__wohSmallStage); return { win, n: S.villages, popTotal: S.popTotal, popMin: S.popMin, popMax: S.popMax, minD: S.minDm / cellM, maxD: S.maxDm / cellM };
 }
 // 窓（メートル）：保存された人々（people.win）から。歩く・神モードの動きを、この中にとどめる
 function smallApply() {

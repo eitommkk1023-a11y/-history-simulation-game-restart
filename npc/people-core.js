@@ -776,6 +776,8 @@ function peopleGenerate(seed, W) {
   for (let a = 0; a < PE_AGES; a++) { surv[a] = l; l *= 1 - PE_H0[a] * (1 - PE_H0[a] / 2); }
   let ssum = 0; for (let a = 0; a < PE_AGES; a++) ssum += surv[a];
   const hue0 = rng(), pops = [];
+  // 小規模ワールド：村ごとの人数は popMin〜popMax で幅広くばらつかせ、点数の高い（暮らしやすい）場所の村ほど大きくする（大きな村が食料不足にならないように）
+  const popPlan = SM && SM.popMin != null ? (() => { const pr2 = peRng(sd ^ peHash('villagePops')); return Array.from({ length: sites.length }, () => Math.round(SM.popMin + (SM.popMax - SM.popMin) * Math.pow(pr2(), 1.25))).sort((a, b) => b - a); })() : null;
   for (let i = 0; i < sites.length; i++) {
     const s = sites[i];
     const eth = { id: people.nextEthId++, nameKey: '', langId: 0, family: 0, parent: 0, founded: 0, alive: true, color: null };
@@ -785,7 +787,7 @@ function peopleGenerate(seed, W) {
     people.ethnicities.push(eth);
     let r = rng(), cls = PE.SIZE_CLASS[0];
     for (const c of PE.SIZE_CLASS) { cls = c; if (r < c[0]) break; r -= c[0]; }
-    pops.push(SM ? Math.round(SM.popTotal / SM.n * (0.8 + 0.4 * rng())) : Math.round(cls[1] + (cls[2] - cls[1]) * rng()));
+    pops.push(SM ? (popPlan ? popPlan[i] : Math.round(SM.popTotal / SM.n * (0.8 + 0.4 * rng()))) : Math.round(cls[1] + (cls[2] - cls[1]) * rng()));
     const g = peNewGroup(people, eth.id, s.x, s.y);
     g.site = s.site;
     g.radius = peRadius(pops[i]);

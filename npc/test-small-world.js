@@ -6,15 +6,15 @@ const P = require('./people-core.js'), SW = require('./small-world.js'), ST = SW
 const env = world.fauna.env, cc = world.climate.cell, W = world.stats.width, cellM = 99866.7 / W, plantFood = (c, m, out) => G.faunaPlantFood(env, cc, c, m, out, 0, 0), FA = { faunaHunt: G.faunaHunt, faunaDensity: G.faunaDensity, ANIMAL_SPECIES: G.ANIMAL_SPECIES };
 let fail = 0; const ok = (c, m) => { if (!c) fail++; console.log((c ? '○ ' : '× ') + m); };
 const km = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) * cellM / 1000;
-function make(seed) { const win = SW.pickWindow(world, seed, cellM, ST), small = Object.assign({ win, n: ST.villages, popTotal: ST.popTotal, minD: ST.minDm / cellM, maxD: ST.maxDm / cellM }); const fauna = G.faunaClone(world.fauna); const pr = process.env.NOPRUNE ? null : SW.pruneFauna(fauna, world, win, cellM); const people = P.peopleGenerate(seed, { world, plantFood, fauna, FA, small }); return { win, people, fauna, pr }; }
+function make(seed) { const win = SW.pickWindow(world, seed, cellM, ST), small = Object.assign({ win, n: ST.villages, popTotal: ST.popTotal, popMin: ST.popMin, popMax: ST.popMax, minD: ST.minDm / cellM, maxD: ST.maxDm / cellM }); const fauna = G.faunaClone(world.fauna); const pr = process.env.NOPRUNE ? null : SW.pruneFauna(fauna, world, win, cellM); const people = P.peopleGenerate(seed, { world, plantFood, fauna, FA, small }); return { win, people, fauna, pr }; }
 const sig = (p) => JSON.stringify(p.groups.map(g => [g.x, g.y, g.ethId, Math.round(g.pop), g.site && g.site.kind]));
 for (const seed of SEEDS) {
   console.log(`\n== 人のSeed ${seed}`);
   const A = make(seed), win = A.win; ok(win && win.x1 - win.x0 === Math.round(ST.sizeM / cellM), `${ST.sizeM/1000}km四方の窓（${win.x1 - win.x0}セル×${win.y1 - win.y0}セル）、陸地 ${(win.land * 100).toFixed(0)}%、川の点 ${win.rivers}`);
-  const gs = A.people.groups; ok(gs.length === NV, `初期の村は${NV}`); const pop = gs.reduce((a, g) => a + g.pop, 0), np = A.people.npc.livingCount(); ok(np >= ST.popTotal*0.85 && np <= ST.popTotal*1.2, `初期人口 ${np}人（目標 約200）`);
+  const gs = A.people.groups; ok(gs.length === NV, `初期の村は${NV}`); const pop = gs.reduce((a, g) => a + g.pop, 0), np = A.people.npc.livingCount(); ok(np >= NV * ST.popMin * 0.9 && np <= NV * ST.popMax * 1.1, `初期人口 ${np}人（村ごとに${ST.popMin}〜${ST.popMax}人）`);
   ok(gs.every(g => g.settle === 2 && g.alive), '全て定住の村'); ok(new Set(gs.map(g => g.ethId)).size >= Math.min(NV, 4), '複数の民族');
   ok(gs.every(g => g.x >= win.x0 && g.x < win.x1 && g.y >= win.y0 && g.y < win.y1), '全ての村が窓の中');
-  const d = []; for (let i = 0; i < NV; i++) for (let j = i + 1; j < NV; j++) d.push(km(gs[i], gs[j])); const nn = gs.map(a => Math.min(...gs.filter(b => b !== a).map(b => km(a, b)))); console.log('   村どうしの距離(km)', d.map(x => x.toFixed(1)).join(', '));
+  const d = []; for (let i = 0; i < NV; i++) for (let j = i + 1; j < NV; j++) d.push(km(gs[i], gs[j])); const nn = gs.map(a => Math.min(...gs.filter(b => b !== a).map(b => km(a, b)))); console.log('   初期の村の人数', gs.map(g => Math.round(g.pop)).join(', ')); console.log('   村どうしの距離(km)', d.map(x => x.toFixed(1)).join(', '));
   ok(nn.every(x => x >= ST.minDm/1000*0.8 && x <= ST.maxDm/1000*1.05), `最も近い村までの距離が ${ST.minDm/1000}〜${ST.maxDm/1000}km（${nn.map(x => x.toFixed(1)).join(', ')}）`);
   ok(sig(make(seed).people) === sig(A.people), '同じSeedで、窓・村・民族・人口が同じ（再現性）');
   // 長期の安定
@@ -25,8 +25,8 @@ for (const seed of SEEDS) {
   ok(alive.length >= 3 && (series.length ? series[series.length - 1] : Math.round(A.people.groups.reduce((a, g) => a + (g.alive ? g.pop : 0), 0))) > 60, `${YEARS}年後も集落が続く（集団 ${alive.length}、人口 ${series.length ? series[series.length - 1] : '-'}）`);
   ok(alive.every(g => g.homeX >= win.x0 - 60 && g.homeX < win.x1 + 60 && g.homeY >= win.y0 - 60 && g.homeY < win.y1 + 60), '窓の外へ出ていない');
   ok(!Object.keys(ev).some(k => /war|battle|raid|attack/i.test(k)), '戦争・襲撃は、強制していない（起きていない）');
-  ok(Object.keys(ev).includes('migrate') === false || ev.migrate <= 6, `移住は強制していない（自然に起きた ${ev.migrate || 0}件）`);
-  ok(ms / YEARS / 12 < 30, '1か月の計算が軽い（30ms未満）');
+  ok(Object.keys(ev).includes('migrate') === false || ev.migrate <= Math.max(6, np / 40), `移住は強制していない（自然に起きた ${ev.migrate || 0}件）`);
+  ok(ms / YEARS / 12 < 60, '1か月の計算が軽い（60ms未満。1年/秒は83ms未満）');
 }
 
 // ---- 整合性（人口・食料・死亡・血縁・世界履歴）と、同じSeedでの結果の再現

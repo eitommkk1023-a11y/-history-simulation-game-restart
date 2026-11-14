@@ -3,10 +3,10 @@
 // 窓の外には人を置かず、窓の外の動物の個体群は計算から外す（計算量が窓の広さに比例して減る）。大規模世界の既存の設定は変えない（この設定を使ったときだけ働く）。
 // 単位：セル（世界の格子。世界全体で widthM / width メートル、既定の世界では約33.3m）。乱数は整数ハッシュだけ（同じSeedなら同じ窓）。
 (function (root) {
-const SMALL = { sizeM: 20000, villages: 4, popTotal: 200, minDm: 3000, maxDm: 10000 };   // 世界の広さ・初期の村の数・初期人口・村どうしの距離（m）
+const SMALL = { sizeM: 20000, villages: 4, popTotal: 1200, popMin: 100, popMax: 500, minDm: 3000, maxDm: 10000 };   // popMin〜popMax：初期の村ひとつの人数の範囲（村ごとに幅広くばらつく）。popTotal は目安（平均300人×村の数）   // 世界の広さ・初期の村の数・初期人口・村どうしの距離（m）
 const hash = (a, b, c) => { let h = (a ^ Math.imul(b, 374761393) ^ Math.imul(c, 668265263)) >>> 0; h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0; return (h ^ (h >>> 16)) >>> 0; };
 // 段階：S1（20km・4村）→ S2（40km・10村）→ S3（80km・24村）。広げるほど村の間隔と人数も増やす
-const STAGES = { 1: SMALL, 2: { sizeM: 40000, villages: 10, popTotal: 600, minDm: 3500, maxDm: 14000 }, 3: { sizeM: 80000, villages: 24, popTotal: 2000, minDm: 4000, maxDm: 20000, minLand: 0.55 } };
+const STAGES = { 1: SMALL, 2: { sizeM: 40000, villages: 10, popTotal: 3000, popMin: 100, popMax: 500, minDm: 3500, maxDm: 14000 }, 3: { sizeM: 80000, villages: 24, popTotal: 7200, popMin: 100, popMax: 500, minDm: 4000, maxDm: 20000, minLand: 0.55 } };
 const stageOf = (n) => STAGES[n] || SMALL;
 // 窓：{ x0, y0, x1, y1 }（セル）。cellM＝1セルのメートル。陸地が多く、川・起伏・森がある所を選ぶ
 function pickWindow(world, seed, cellM, opt) {
