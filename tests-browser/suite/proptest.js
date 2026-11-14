@@ -1,0 +1,20 @@
+const WOH = require('../woh-env.js');
+const { chromium } = require('playwright');
+(async () => {
+  const b = await chromium.launch({ args: ['--use-gl=swiftshader','--enable-webgl','--ignore-gpu-blocklist'] });
+  const ctx = await b.newContext({ viewport: { width: 874, height: 402 }, hasTouch: true, isMobile: true });
+  const p = await ctx.newPage(); const errs = [];
+  p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
+  await p.goto(WOH.url('?autostart'));
+  await p.waitForFunction(() => window.__geo && window.__geo.world && !document.getElementById('loading').classList.contains('show'), null, { timeout: 400000 });
+  await p.waitForTimeout(1500);
+  const run = async (kind) => { await p.evaluate((k) => { const s = document.getElementById('iProp'); s.value = k; }, kind); await p.evaluate(() => document.getElementById('iPropGo').click()); return p.evaluate(() => document.getElementById('iPropMsg').textContent); };
+  console.log('選択肢', await p.evaluate(() => document.getElementById('iProp').options.length));
+  console.log('方針（狩猟）', await run('hunt'));
+  console.log('すぐもう一度', await run('gather'));
+  await p.evaluate(() => window.__geo.skipDays(360 * 1)); console.log('1年後に採集', await run('gather'));
+  const st = await p.evaluate(() => { const pe = window.__geo.people, g = pe.groups[pe.npc.group[pe.player.id] - 1]; return { policy: g.policy, moveTo: g.moveTo, ev: window.__geo.history.list.filter(e => e.group === 'player-proposal').map(e => e.text) }; });
+  console.log('集団の状態', JSON.stringify(st));
+  await p.evaluate(() => window.__geo.skipDays(360 * 1)); console.log('移住（今の場所）', await run('migrate'));
+  console.log('errors', errs.slice(0, 5)); await b.close();
+})();

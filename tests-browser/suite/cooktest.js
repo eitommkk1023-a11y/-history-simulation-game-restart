@@ -1,0 +1,41 @@
+const WOH = require('../woh-env.js');
+const { chromium } = require('playwright');
+(async () => {
+  const b = await chromium.launch({ args: ['--use-gl=swiftshader','--enable-webgl','--ignore-gpu-blocklist'] });
+  const ctx = await b.newContext({ viewport: { width: 874, height: 402 }, hasTouch: true, isMobile: true });
+  const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
+  await p.goto(WOH.url('?autostart'));
+  await p.waitForFunction(() => window.__geo && window.__geo.world && !document.getElementById('loading').classList.contains('show'), null, { timeout: 400000 });
+  await p.waitForTimeout(2500);
+  const sp = await p.evaluate(() => { const w = window.__geo.world, W = w.stats.width, H = w.stats.height; const coastNear = (x, y, r) => { for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (!w.type[(y + dy) * W + x + dx]) return true; return false; };
+    for (let y = 80; y < H - 80; y += 2) for (let x = 80; x < W - 80; x += 2) { const i = y * W + x; if (w.type[i] && w.water[i] && !coastNear(x, y, 6)) return { x: x + 3, y }; } return null; });
+  console.log('水辺', JSON.stringify(sp));
+  for (let k = 0; k < 3; k++) { await p.evaluate(([x, y]) => window.__wohAvatar.toBlock(x, y, 0, 0), [sp.x, sp.y]); await p.waitForTimeout(1300); }
+  console.log('文脈', await p.evaluate(() => { const c = __wohForage.context().ctx; return JSON.stringify({ water: c.water, coast: c.coast, forest: c.forest.toFixed(2) }); }));
+  await p.evaluate(() => { const s = __wohForage.state; s.inv = { nut: 10, firewood: 6, fiber: 12, fish: 2, fruit: 2, root: 1, shell: 2 }; s.kcal = 800; });
+  await p.evaluate(() => document.getElementById('fgBag').click()); await p.waitForTimeout(300);
+  const msg = () => p.evaluate(() => document.getElementById('forageMsg').textContent);
+  const act = async (a, id) => { await p.evaluate(([a, id]) => { const el = document.querySelector('#bagPanel [data-act="' + a + '"]' + (id ? '[data-id="' + id + '"]' : '')); if (el) el.click(); else document.getElementById('forageMsg').textContent = '(ボタンなし ' + a + ')'; }, [a, id]); await p.waitForTimeout(150); return msg(); };
+  const panel = () => p.evaluate(() => document.getElementById('bagPanel').innerText.replace(/\n+/g, ' / '));
+  console.log('生の木の実を食べる:', await act('eat', 'nut'));
+  console.log('水さらし:', await act('soak'));
+  console.log('すぐ受け取る:', await act('collect'));
+  await p.evaluate(() => window.__geo.skipDays(2)); await p.waitForTimeout(800);
+  console.log('2日後に受け取る:', await act('collect'));
+  let r = ''; for (let i = 0; i < 6; i++) { r = await act('fire'); if (/火がついた/.test(r)) break; }
+  console.log('火を起こす:', r);
+  console.log('くべる:', await act('stoke'));
+  console.log('焼く:', await act('roast'));
+  console.log('焼き魚を食べる:', await act('eat', 'fishC'));
+  console.log('生の貝を食べる:', await act('eat', 'shell'));
+  console.log('パネル:', await panel());
+  await p.screenshot({ path: WOH.out('cook_0.png') });
+  const k0 = await p.evaluate(() => Math.round(__wohForage.state.kcal));
+  await p.evaluate(() => window.__geo.skipDays(1)); await p.waitForTimeout(800);   const k1 = await p.evaluate(() => { const d = window.__geo.clock.day; return Math.round(__wohForage.state.kcal - 0); });
+  await p.evaluate(() => { document.getElementById('fgBag').click(); document.getElementById('fgBag').click(); });
+  console.log('パネル再描画後', await panel());
+  console.log('1日で空腹度', k0, '→', k1);
+  const sv = await p.evaluate(() => { const f = window.__geo.serializeState().forage; return { kcal: Math.round(f.kcal), t: f.t, fire: f.fire, soak: f.soak, inv: f.inv }; });
+  console.log('保存', JSON.stringify(sv));
+  console.log('errors', errs.slice(0, 5)); await b.close();
+})();

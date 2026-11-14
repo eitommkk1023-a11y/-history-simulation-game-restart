@@ -1,0 +1,20 @@
+const WOH = require('../woh-env.js');
+const { chromium } = require('playwright');
+(async () => {
+  const b = await chromium.launch({ args: ['--use-gl=swiftshader','--enable-webgl','--ignore-gpu-blocklist'] });
+  const ctx = await b.newContext({ viewport: { width: 874, height: 402 }, hasTouch: true, isMobile: true });
+  const p = await ctx.newPage(); const errs = [];
+  p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
+  await p.goto(WOH.url('?autostart'));
+  await p.waitForFunction(() => window.__geo && window.__geo.world && !document.getElementById('loading').classList.contains('show'), null, { timeout: 400000 });
+  await p.waitForTimeout(2500);
+  const pos = () => p.evaluate(() => { const a = window.__wohAvatar, bl = a.block(), pt = a.point; return { block: [Math.round(bl.x), Math.round(bl.y)], 標高m: Math.round(pt.elevationM) }; });
+  console.log('最初', JSON.stringify(await pos()));
+  console.log('選択肢', await p.evaluate(() => { const s = document.getElementById('iGo'); s._fill(); return Array.from(s.options).slice(0, 6).map(o => o.textContent).join(' / '); }));
+  const go = async (key) => { await p.evaluate((k) => { const s = document.getElementById('iGo'); s._fill(); s.value = k; }, key); await p.evaluate(() => document.getElementById('iGoBtn').click()); await p.waitForTimeout(2500); return { msg: await p.evaluate(() => document.getElementById('iGoMsg').textContent), pos: await pos() }; };
+  console.log('山頂へ', JSON.stringify(await go('peak')));
+  console.log('海辺へ', JSON.stringify(await go('coast')));
+  const g2 = await p.evaluate(() => { const s = document.getElementById('iGo'); s._fill(); return Array.from(s.options).filter(o => o.value.startsWith('g'))[2].value; });
+  console.log('別の集落へ', JSON.stringify(await go(g2)));
+  console.log('errors', errs.slice(0, 3)); await b.close();
+})();

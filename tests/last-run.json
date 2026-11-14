@@ -1,0 +1,218 @@
+{
+ "at": "2026-11-14T12:47:01.139Z",
+ "html": "World-of-History-v30-development.html",
+ "pass": 29,
+ "fail": 1,
+ "results": [
+  {
+   "kind": "node",
+   "name": "test-activity",
+   "ok": true,
+   "sec": 307.5,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-arch",
+   "ok": true,
+   "sec": 0.8,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-attrs",
+   "ok": true,
+   "sec": 14.4,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-battle",
+   "ok": true,
+   "sec": 69.5,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-cohort",
+   "ok": true,
+   "sec": 1.2,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-culture",
+   "ok": true,
+   "sec": 33,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-demand",
+   "ok": true,
+   "sec": 2,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-durability",
+   "ok": true,
+   "sec": 0.6,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-ethno",
+   "ok": true,
+   "sec": 51.3,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-forage",
+   "ok": true,
+   "sec": 0.1,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-growth",
+   "ok": true,
+   "sec": 24.5,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-layers",
+   "ok": false,
+   "sec": 12.5,
+   "detail": "exit 1"
+  },
+  {
+   "kind": "node",
+   "name": "test-layout-history",
+   "ok": true,
+   "sec": 0.5,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-layout-natural",
+   "ok": true,
+   "sec": 2.3,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-layout",
+   "ok": true,
+   "sec": 1.1,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-materials",
+   "ok": true,
+   "sec": 0.1,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-nation",
+   "ok": true,
+   "sec": 6,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-people",
+   "ok": true,
+   "sec": 23.7,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-player",
+   "ok": true,
+   "sec": 93.8,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-proposal",
+   "ok": true,
+   "sec": 2.7,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-settle-people",
+   "ok": true,
+   "sec": 1.4,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-settle",
+   "ok": true,
+   "sec": 51.6,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-sites",
+   "ok": true,
+   "sec": 55.8,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-small-world",
+   "ok": true,
+   "sec": 9,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-social",
+   "ok": true,
+   "sec": 10.2,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-stats",
+   "ok": true,
+   "sec": 27.7,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-succession",
+   "ok": true,
+   "sec": 0.1,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-tech",
+   "ok": true,
+   "sec": 0.2,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-techview",
+   "ok": true,
+   "sec": 2.6,
+   "detail": ""
+  },
+  {
+   "kind": "node",
+   "name": "test-view",
+   "ok": true,
+   "sec": 1,
+   "detail": ""
+  }
+ ]
+}

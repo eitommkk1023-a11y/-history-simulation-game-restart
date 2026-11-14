@@ -669,7 +669,7 @@ function peopleLayerPromote(people, gid, n) {
   const A = g.agg, tot = A.total(); if (tot < 0.5) return out; n = Math.min(n, Math.floor(tot + 0.5));
   let s = mix(P.seed, gid, P.day, 4242) >>> 0; const rnd = () => { s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   const smp = A.sampleAges(n, rnd); A.scale(Math.max(0, (tot - smp.length) / tot));   // 人数ぶんを、分布を変えずに取り除く
-  for (const x of smp) { const id = P.addFounder(gid, x.age); P.sex[id] = x.sex; out.push(id); }
+  for (const x of smp) { const id = P.addFounder(gid, Math.floor(x.age)); P.sex[id] = x.sex; out.push(id); }   // addFounder は、歳の中でランダムに誕生日を決めるので、整数の歳を渡す
   return out;
 }
 function peopleLayerSummary(people) { let ind = 0, agg = 0; for (const g of people.groups) { if (!g.alive) continue; agg += peAggTotal(g); } for (let i = 0; i < people.npc.n; i++) if (people.npc.death[i] === ALIVE) ind++; return { individuals: ind, aggregated: agg, total: ind + agg }; }
