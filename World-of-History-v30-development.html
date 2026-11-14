@@ -617,6 +617,10 @@ body.god-on #joystick, body.god-on #actions, body.god-on #uiToggle, body.god-on 
 #godLabels .gl { position: fixed; transform: translate(-50%, -100%); pointer-events: auto; min-height: 30px; padding: 2px 8px; border-radius: 8px; border: 1px solid #ffffff55; background: #0e1a2acc; color: #f1eee0; font: 11px/1.25 system-ui, sans-serif; text-align: center; white-space: nowrap; }
 #godLabels .gl b { display: block; font-size: 12px; } #godLabels .gl i { font-style: normal; color: #b9cdb0; }
 #godLabels .gl.s2 { border-color: #62d26f; } #godLabels .gl.s1 { border-color: #ecc94b; } #godLabels .gl.s0 { border-color: #b9b9b9; } #godLabels .gl.on { background: #3b4f2ecc; border-color: #fff; }
+#godUiToggle { display: none; position: fixed; z-index: 130; left: calc(10px + env(safe-area-inset-left)); bottom: calc(10px + env(safe-area-inset-bottom)); min-width: 64px; height: 38px; padding: 0 12px; border-radius: 19px; border: 1px solid #ffffff55; background: #0e1a2acc; color: #e8f0f8; font: 13px system-ui; opacity: .75; }
+body.god-on #godUiToggle { display: block; }
+body.god-ui-off #godBar, body.god-ui-off #godLabels, body.god-ui-off .hud, body.god-ui-off #toasts, body.god-ui-off #hudBtns, body.god-ui-off #miniMap, body.god-ui-off #miniZoom, body.god-ui-off #uiToggle { display: none !important; }
+body.god-ui-off #godUiToggle { opacity: .35; }
 #godBar { position: fixed; z-index: 120; right: calc(8px + env(safe-area-inset-right)); top: calc(8px + env(safe-area-inset-top)); width: min(270px, 48vw); max-height: calc(100vh - 16px); overflow-y: auto; display: none; padding: 8px; border-radius: 10px; background: #0e1a2aee; color: #e8f0f8; border: 1px solid #ffffff2a; font: 12px/1.5 system-ui, sans-serif; -webkit-overflow-scrolling: touch; touch-action: pan-y; overscroll-behavior: contain; }
 body.god-on #godBar { display: block; }
 #godBar .gb-top { display: flex; align-items: center; gap: 6px; } #godBar .gb-top b { flex: 1; font-size: 13px; } #godBar button { min-height: 34px; padding: 2px 8px; background: #21303a; color: #e4dec6; border: 1px solid #3b4d57; border-radius: 6px; font-size: 12px; }
@@ -6418,6 +6422,9 @@ function place(layout, spec, b, opts) {
   const organic = !!o.grow || o.prefDist === 0, Rc = extentOf(layout), pool = o.grow ? growPool(layout) : null, ax = layout.axis;
   let best = null, bestS = -1e9;
   const nTry = 40, R = o.radius || (layout.plaza.r + r0 + 2);
+  // 近くの建物だけを調べる（空間の格子）：全ての建物を毎回調べると、建物の数の2乗に比例して遅くなる（約9000人の集落で18秒）。重なりの判定・最も近い建物・近くの建物の数は、近くの建物だけで同じ結果になる
+  const CELL = 24, grid = new Map(); let live = 0, ext = 0;
+  for (const it of items) { if (it.state === 'removed') continue; live++; const sh2 = shapeOf(it), e2 = Math.hypot(sh2.hw, sh2.hd); if (e2 > ext) ext = e2; const key = Math.floor(it.x / CELL) + ',' + Math.floor(it.z / CELL); let l = grid.get(key); if (!l) grid.set(key, l = []); l.push(it, sh2, e2); }
   for (let k = 0; k < nTry; k++) {
     const grow = 1 + Math.floor(k / 14) * 0.45;   // 見つからなければ、外へ広げる
     const ang = rnd(seed, b.key, 200 + k) * Math.PI * 2; let cx = anchor.x, cz = anchor.z, rad;
@@ -6429,8 +6436,10 @@ function place(layout, spec, b, opts) {
     const slope = terr.slope(x, z); if (slope > maxSlope) continue;
     b.x = x; b.z = z; b.rot = doorDirection(trad, terr, b, layout);
     const sh = shapeOf(b); let bad = false, nnMin = 1e9, nb = 0;
-    for (const it of items) { if (it.state === 'removed') continue; if (overlaps(sh, shapeOf(it), 1.6)) { bad = true; break; } const dd = Math.hypot(x - it.x, z - it.z); if (dd < nnMin) nnMin = dd; if (dd < 16) nb++; }
+    const esh = Math.hypot(sh.hw, sh.hd), Rq = Math.max(Math.hypot(sh.hw, sh.hd) + ext + 3, r0 + 3 + 26), gx0 = Math.floor((x - Rq) / CELL), gx1 = Math.floor((x + Rq) / CELL), gz0 = Math.floor((z - Rq) / CELL), gz1 = Math.floor((z + Rq) / CELL);
+    outer: for (let gx = gx0; gx <= gx1; gx++) for (let gz = gz0; gz <= gz1; gz++) { const l = grid.get(gx + ',' + gz); if (!l) continue; for (let q = 0; q < l.length; q += 3) { const it = l[q], dd = Math.hypot(x - it.x, z - it.z); if (dd <= esh + l[q + 2] + 6 && overlaps(sh, l[q + 1], 1.6)) { bad = true; break outer; } if (dd < nnMin) nnMin = dd; if (dd < 16) nb++; } }
     if (bad) continue;
+    if (live > 0 && nnMin > 1e8) nnMin = Rq + 1;   // 近くに建物がない（遠くにはある）：点数の上限（-3）に当たる距離
     const nw = terr.nearestWater(x, z); let s;
     if (organic) {
       // 自然な育ち方：平らさ・水との距離・まとまり（近すぎず遠すぎない間隔）・集落の広がりの上限・その集落の伸びる向き
@@ -12705,11 +12714,18 @@ document.getElementById('deathOk')?.addEventListener('click', () => document.get
   const pad = n => Math.round(n).toLocaleString('ja-JP'), esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const msg = t => { const d = document.createElement('div'); d.textContent = t; d.style.cssText = 'position:fixed;z-index:200;left:50%;top:18%;transform:translateX(-50%);padding:8px 14px;border-radius:10px;background:#0e1a2aee;color:#fff;font:13px system-ui'; document.body.appendChild(d); setTimeout(() => d.remove(), 2800); };
   function build() {
+    if (!document.getElementById('godUiToggle')) {
+      const tg = document.createElement('button'); tg.id = 'godUiToggle'; tg.textContent = 'UI 非表示'; tg.setAttribute('aria-label', 'UIの表示・非表示');
+      const flip = () => { const off = document.body.classList.toggle('god-ui-off'); tg.textContent = off ? 'UI 表示' : 'UI 非表示'; try { localStorage.setItem('woh-god-ui-off', off ? '1' : '0'); } catch (e) { } };
+      tg.addEventListener('click', e => { e.stopPropagation(); flip(); }); tg.addEventListener('pointerdown', e => e.stopPropagation()); document.body.appendChild(tg);
+      window.addEventListener('keydown', e => { if (e.code === 'KeyH' && document.body.classList.contains('god-on') && !/INPUT|SELECT|TEXTAREA/.test((document.activeElement || {}).tagName || '')) flip(); });
+      try { if (localStorage.getItem('woh-god-ui-off') === '1') { document.body.classList.add('god-ui-off'); tg.textContent = 'UI 表示'; } } catch (e) { }
+    }
     if (bar) return; bar = document.createElement('div'); bar.id = 'godBar'; bar.className = 'scrollable';   // scrollable：画面全体の指の動きの止め方（スクロール禁止）から外す
     bar.innerHTML = '<div class="gb-top"><b id="godTitle">神モード</b><button id="godExit">出る</button></div><div class="gb-pop" id="godPop"></div><details open class="gb-sec"><summary>村へジャンプ</summary><div id="godJump" class="gb-jump"></div></details><details class="gb-sec"><summary>川の源流（理由つき）</summary><div id="godSrc" class="gb-jump"></div><div id="godSrcInfo" class="gb-pop"></div></details><div class="gb-time">' + [['pause', '⏸ 止める'], ['real', '標準'], ['d10', '日×10'], ['m1', '月/秒'], ['ymax', '最大速度']].map(([k, n]) => '<button data-gt="' + k + '">' + n + '</button>').join('') + '</div><div class="gb-pop" id="godRate"></div><div id="godFastMsg"></div>' +
       '<div class="gb-sec"><b style="font-size:12px">年数を指定して進める</b><div class="gb-adv">' + [['1', '1か月'], ['3', '3か月'], ['6', '半年'], ['12', '1年'], ['60', '5年'], ['120', '10年'], ['360', '30年'], ['1200', '100年']].map(([m, n]) => '<button data-am="' + m + '">' + n + '</button>').join('') + '</div><div class="gb-adv"><input id="godYears" type="number" min="1" max="12000" value="20" inputmode="numeric"><select id="godUnit"><option value="12">年</option><option value="1">か月</option></select><button id="godAdvGo">進める</button></div><div class="gb-pop">進行画面を出して、毎月の計算を省かずに進めます（待ち時間は端末しだい。途中で中止できます）。</div></div>' +
       '<details open class="gb-sec"><summary>人口の推移</summary><div class="gb-opts"><select id="godScope"><option value="world">世界全体</option><option value="region">地域</option><option value="group">選んだ集落</option></select><select id="godSpan"><option value="0">全期間</option><option value="18000">50年</option><option value="3600">10年</option></select><select id="godMetric"><option value="pop">人口</option><option value="bd">出生・死亡（年）</option><option value="vil">村の数</option><option value="fed">食料の充足（%）</option><option value="food">食料の蓄え</option></select></div><canvas id="godChart" width="480" height="200" style="width:100%;height:auto;background:#0b141e;border-radius:6px"></canvas><div class="gb-pop" id="godChartTxt"></div></details>' +
-      '<details class="gb-sec"><summary>性能モニター</summary><div id="godPerf" class="gb-pop"></div><div class="gb-adv"><button id="godSaveMeasure">保存容量を測る</button><button id="godBench">実機の性能診断（約25秒）</button></div><div id="godSaveOut" class="gb-pop"></div><textarea id="godBenchOut" readonly rows="9" style="display:none;width:100%;font-size:11px;background:#0b1520;color:#cfe;border:1px solid #345;border-radius:6px"></textarea></details><details class="gb-sec"><summary>ランキング</summary><div class="gb-opts"><select id="godRankKind"><option value="pop">人口の多い順</option><option value="up">増えた順（50年）</option><option value="down">減った順（50年）</option><option value="dev">発展した集落（50年）</option></select></div><div id="godRank"></div></details>' +
+      '<details class="gb-sec"><summary>最近の出来事</summary><div id="godEv" class="gb-pop"></div></details><details class="gb-sec"><summary>性能モニター</summary><div id="godPerf" class="gb-pop"></div><div class="gb-adv"><button id="godSaveMeasure">保存容量を測る</button><button id="godBench">実機の性能診断（約25秒）</button></div><div id="godSaveOut" class="gb-pop"></div><textarea id="godBenchOut" readonly rows="9" style="display:none;width:100%;font-size:11px;background:#0b1520;color:#cfe;border:1px solid #345;border-radius:6px"></textarea></details><details class="gb-sec"><summary>ランキング</summary><div class="gb-opts"><select id="godRankKind"><option value="pop">人口の多い順</option><option value="up">増えた順（50年）</option><option value="down">減った順（50年）</option><option value="dev">発展した集落（50年）</option></select></div><div id="godRank"></div></details>' +
       '<div id="godInfo"></div><details class="gb-sec"><summary>表示・操作</summary><div class="gb-opts"><label><input type="checkbox" id="godLbl" checked> 村の名前</label><label>村人の大きさ <select id="godSz"><option value="0.5">小</option><option value="1" selected>標準</option><option value="2">大</option></select></label></div><div class="gb-pop">ドラッグ：移動／2本指：拡大・回転／村の名前：そこへ飛ぶ／村人をタップ：詳細／キー：WASD・QE・RF</div></details>';
     document.body.appendChild(bar);
     bar.querySelector('#godExit').onclick = exit;
@@ -12780,7 +12796,11 @@ document.getElementById('deathOk')?.addEventListener('click', () => document.get
     const key = gs.map(g => g.id + ':' + Math.round(g.pop) + ':' + (g.settle || 0) + (sel === g.id ? '*' : '')).join(','); if (box.dataset.k === key) return; box.dataset.k = key;
     box.innerHTML = gs.map(g => '<button data-jg="' + g.id + '"' + (sel === g.id ? ' class="on"' : '') + '><b>' + esc(peGrpName(g.id)) + '</b><small>' + LV[g.settle || 0] + '・' + Math.round(g.pop) + '人</small></button>').join('');
     const t = bar.querySelector('#godTitle'); if (t) t.textContent = globalThis.__wohSmallBounds ? '神モード（小規模ワールド）' : '神モード';
-    srcList();
+    srcList(); evList();
+  }
+  function evList() {
+    const box = bar && bar.querySelector('#godEv'); if (!box) return; const L = globalThis.__wohGodEvents || []; const key = L.length + ':' + (L.length ? L[L.length - 1].text : ''); if (box.dataset.k === key) return; box.dataset.k = key;
+    box.innerHTML = L.length ? L.slice(-8).reverse().map(e => '<div style="margin:2px 0;font-size:11.5px"><span style="opacity:.65">' + esc(fmtDate(e.day)) + '</span>　' + esc(e.text) + '</div>').join('') : '<small>まだありません</small>';
   }
   // 川の源流の一覧：川はどこから・なぜ始まるか（湖から流れ出す／湧水／氷河・雪解け水／湿地／斜面からしみ出す水）。窓の中（小規模ワールド）か、視点に近い順
   function srcList() {
@@ -14710,7 +14730,7 @@ function postEvent(ev) {
   ev.day = clock.day;
   ev.imp = ev.imp || 0;
   history.list.push(ev);
-  if (ev.imp >= 2 || (ev.imp === 1 && ev.relevant)) toast(ev);
+  if (ev.imp >= 2 || (ev.imp === 1 && ev.relevant)) { if (document.body.classList.contains('god-on')) { (globalThis.__wohGodEvents = globalThis.__wohGodEvents || []).push({ day: ev.day, text: ev.text, imp: ev.imp }); if (globalThis.__wohGodEvents.length > 40) globalThis.__wohGodEvents.shift(); } else toast(ev); }   // 神モードでは、画面に通知を出さず、操作盤の「最近の出来事」に残す
   if (ev.imp >= 3) clockSetPlaying(false);
   if (history.list.length > HISTORY_MAX) historyCompact();
   if (histOpen) historyRender();
@@ -16604,6 +16624,14 @@ function updateCamera(){
     if(ground)camera.position.y=Math.max(camera.position.y,ground.elevationM-state.origin.elevationM+.4);}
   camera.lookAt(target);draw();
 }
+// 自動の解像度調整：神モードで、描画が遅い（約22FPS未満）と画面の解像度を下げ、軽くなったら戻す。重い場面（大きな村・引いた視点）でも、操作の反応を保つ。globalThis.__wohAutoRes=false で無効
+const AR={t0:0,n:0,cool:0,max:Math.min(window.devicePixelRatio||1,2),min:.6};
+function adaptRes(now){
+  if(globalThis.__wohAutoRes===false||!document.body.classList.contains('god-on')||globalThis.__wohFastSim){AR.t0=now;AR.n=0;return;}
+  if(!AR.t0){AR.t0=now;return;}AR.n++;const dt=now-AR.t0;if(dt<2500)return;const fps=AR.n*1000/dt;AR.t0=now;AR.n=0;if(now<AR.cool)return;
+  const cur=renderer.getPixelRatio();let nr=cur;if(fps<22&&cur>AR.min+.01)nr=Math.max(AR.min,cur*.8);else if(fps>48&&cur<AR.max-.01)nr=Math.min(AR.max,cur*1.15);
+  if(Math.abs(nr-cur)>.01){renderer.setPixelRatio(nr);resize();AR.cool=now+4000;globalThis.__wohFrameStats.pixelRatio=+nr.toFixed(2);}
+}
 function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();if(state?.map){state.map.camera.aspect=innerWidth/innerHeight;state.map.camera.updateProjectionMatrix();}updateCamera();}
 function clearTerrain(){
   resetInput();crouched=false;crouchButton.classList.remove('active');crouchButton.setAttribute('aria-pressed','false');markerPoint=null;jumpHeight=0;jumpVelocity=0;
@@ -17142,7 +17170,7 @@ const PF={on:false,acc:Object.create(null),frameMs:[],renderMs:[],draws:0,interv
 function pf(name,fn){if(!PF.on)return fn();const t=performance.now();try{return fn();}finally{PF.acc[name]=(PF.acc[name]||0)+performance.now()-t;}}
 let lastTime=null;
 function frame(time){
-  const _pf=PF.on?performance.now():0;globalThis.__wohFrameStats.frames++;
+  const _pf=PF.on?performance.now():0;globalThis.__wohFrameStats.frames++;adaptRes(performance.now());
   if(state&&bridge.revision!==bridge.seenRevision&&performance.now()-bridge.lastChange>500)adoptNativeWorld();
   const dt=lastTime===null?0:(time-lastTime)/1000;lastTime=time;
   if(state&&markerPoint&&!document.hidden){

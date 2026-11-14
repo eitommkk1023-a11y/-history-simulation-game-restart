@@ -1,0 +1,6 @@
+const A = require('/home/user/-history-simulation-game-restart/npc/arch-gen.js'), S = require('/home/user/-history-simulation-game-restart/npc/settle-layout.js'), { terr } = require('/home/user/-history-simulation-game-restart/npc/shape-metrics.js');
+const env = { tempC: 14, precip: 1100, wood: 0.7, stone: 0.2, clay: 0.4, fertile: 0.5, forest: 0.6, grass: 0.3, desert: 0, tundra: 0, wetland: 0.1, rugged: 0.1, elev: 100 };
+for (const nH of [+process.argv[2] || 600]) { const seed = 3, lv = 2, gen = A.genome(seed, 5, 5), hist = S.settleHistory(seed, 7, lv, nH * 4, 0.7, { neighbors: false }), trad = A.tradition(seed, gen, env, hist.tech, [180, 120, 90]);
+  const households = Array.from({ length: nH }, (_, i) => ({ house: 1000 + i * 7, members: 2 + (i * 5 + seed) % 6, kin: 1 + Math.floor(i / 4) }));
+  const spec = { seed, gid: 7, trad, hist, level: lv, households, economy: { fish: 0.3, gather: 0.4, hunt: 0.2, tool: 0.1 }, terr: terr('river', seed) };
+  const t = Date.now(); let L; try { L = S.layoutSettlement(spec); } catch (e) { console.log(nH, 'error', e.message); continue; } console.log('世帯', nH, '人口 約', Math.round(nH * 4.5), '：配置の生成', Date.now() - t, 'ms', '建物', (L.buildings || L.items || []).length); }

@@ -100,6 +100,9 @@ function place(layout, spec, b, opts) {
   const organic = !!o.grow || o.prefDist === 0, Rc = extentOf(layout), pool = o.grow ? growPool(layout) : null, ax = layout.axis;
   let best = null, bestS = -1e9;
   const nTry = 40, R = o.radius || (layout.plaza.r + r0 + 2);
+  // 近くの建物だけを調べる（空間の格子）：全ての建物を毎回調べると、建物の数の2乗に比例して遅くなる（約9000人の集落で18秒）。重なりの判定・最も近い建物・近くの建物の数は、近くの建物だけで同じ結果になる
+  const CELL = 24, grid = new Map(); let live = 0, ext = 0;
+  for (const it of items) { if (it.state === 'removed') continue; live++; const sh2 = shapeOf(it), e2 = Math.hypot(sh2.hw, sh2.hd); if (e2 > ext) ext = e2; const key = Math.floor(it.x / CELL) + ',' + Math.floor(it.z / CELL); let l = grid.get(key); if (!l) grid.set(key, l = []); l.push(it, sh2, e2); }
   for (let k = 0; k < nTry; k++) {
     const grow = 1 + Math.floor(k / 14) * 0.45;   // 見つからなければ、外へ広げる
     const ang = rnd(seed, b.key, 200 + k) * Math.PI * 2; let cx = anchor.x, cz = anchor.z, rad;
@@ -111,8 +114,10 @@ function place(layout, spec, b, opts) {
     const slope = terr.slope(x, z); if (slope > maxSlope) continue;
     b.x = x; b.z = z; b.rot = doorDirection(trad, terr, b, layout);
     const sh = shapeOf(b); let bad = false, nnMin = 1e9, nb = 0;
-    for (const it of items) { if (it.state === 'removed') continue; if (overlaps(sh, shapeOf(it), 1.6)) { bad = true; break; } const dd = Math.hypot(x - it.x, z - it.z); if (dd < nnMin) nnMin = dd; if (dd < 16) nb++; }
+    const esh = Math.hypot(sh.hw, sh.hd), Rq = Math.max(Math.hypot(sh.hw, sh.hd) + ext + 3, r0 + 3 + 26), gx0 = Math.floor((x - Rq) / CELL), gx1 = Math.floor((x + Rq) / CELL), gz0 = Math.floor((z - Rq) / CELL), gz1 = Math.floor((z + Rq) / CELL);
+    outer: for (let gx = gx0; gx <= gx1; gx++) for (let gz = gz0; gz <= gz1; gz++) { const l = grid.get(gx + ',' + gz); if (!l) continue; for (let q = 0; q < l.length; q += 3) { const it = l[q], dd = Math.hypot(x - it.x, z - it.z); if (dd <= esh + l[q + 2] + 6 && overlaps(sh, l[q + 1], 1.6)) { bad = true; break outer; } if (dd < nnMin) nnMin = dd; if (dd < 16) nb++; } }
     if (bad) continue;
+    if (live > 0 && nnMin > 1e8) nnMin = Rq + 1;   // 近くに建物がない（遠くにはある）：点数の上限（-3）に当たる距離
     const nw = terr.nearestWater(x, z); let s;
     if (organic) {
       // 自然な育ち方：平らさ・水との距離・まとまり（近すぎず遠すぎない間隔）・集落の広がりの上限・その集落の伸びる向き
