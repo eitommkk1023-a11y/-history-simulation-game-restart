@@ -14850,20 +14850,29 @@ async function zRun(bytes, Stream, mode) { const s = new Blob([bytes]).stream().
 async function zPack(st) {
   if (!zOk()) return st; const out = {}; let n = 0;
   const walk = async (v, depth) => {
-    if (ArrayBuffer.isView(v)) { if (v.byteLength < 4096 || !Z_CTOR[v.constructor.name]) return v; const d = await zRun(new Uint8Array(v.buffer, v.byteOffset, v.byteLength), CompressionStream, 'deflate-raw'); if (d.byteLength >= v.byteLength * 0.9) return v; n++; return { __z: 1, t: v.constructor.name, d }; }
+    if (ArrayBuffer.isView(v)) { if (v.byteLength < 4096 || !Z_CTOR[v.constructor.name]) return v; { let z = true; for (let i = 0; i < v.length; i++) if (v[i] !== 0) { z = false; break; } if (z) { n++; return { __z0: 1, t: v.constructor.name, n: v.length }; } }   // 全部0の配列（雪・土砂・洪水など、変化のない天気の状態）は、長さだけ覚える
+      const d = await zRun(new Uint8Array(v.buffer, v.byteOffset, v.byteLength), CompressionStream, 'deflate-raw'); if (d.byteLength >= v.byteLength * 0.9) return v; n++; return { __z: 1, t: v.constructor.name, d }; }
     if (v && typeof v === 'object' && !Array.isArray(v) && depth < 4 && !(v instanceof Date)) { const o = {}; for (const k of Object.keys(v)) o[k] = await walk(v[k], depth + 1); return o; }
     if (Array.isArray(v) && depth < 4 && v.length && ArrayBuffer.isView(v[0])) { const o = []; for (const x of v) o.push(await walk(x, depth + 1)); return o; }
     return v;
   };
   for (const k of Object.keys(st)) {
-    if (k === 'fauna' && st.fauna) { const d = await zRun(new TextEncoder().encode(JSON.stringify(st.fauna, (k, v) => ArrayBuffer.isView(v) ? { __ta: v.constructor.name, a: Array.from(v) } : v)), CompressionStream, 'deflate-raw'); out.fauna = { __zj: 1, d }; n++; }   // 動物の状態は、小さな型付き配列が多いので、型の印をつけて文字にしてから圧縮
+    if (k === 'fauna' && st.fauna) {
+      // 動物の状態：型付き配列は数字の文字列にせず、生のバイト列として1つにまとめ（JSON側には位置と型だけ）、それぞれ deflate で縮める（速く、小さい）
+      const chunks = []; let off = 0;
+      const json = JSON.stringify(st.fauna, (kk, v) => { if (ArrayBuffer.isView(v) && Z_CTOR[v.constructor.name]) { const u = new Uint8Array(v.buffer, v.byteOffset, v.byteLength), o = off; chunks.push(u); off += (u.byteLength + 7) & ~7; return { __tb: v.constructor.name, o, n: v.length }; } return v; });
+      const bin = new Uint8Array(off); let p = 0; for (const u of chunks) { bin.set(u, p); p += (u.byteLength + 7) & ~7; }
+      out.fauna = { __zj2: 1, j: await zRun(new TextEncoder().encode(json), CompressionStream, 'deflate-raw'), b: await zRun(bin, CompressionStream, 'deflate-raw') }; n++;
+    }
     else out[k] = await walk(st[k], 0);
   }
   if (!n) return st; out.zpack = 1; return out;
 }
 async function zUnpack(st) {
   const walk = async (v, depth) => {
+    if (v && v.__z0 === 1) { const C = Z_CTOR[v.t] || Uint8Array; return new C(v.n); }
     if (v && v.__z === 1 && v.d) { const u8 = await zRun(v.d, DecompressionStream, 'deflate-raw'); const C = Z_CTOR[v.t] || Uint8Array; return new C(u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength)); }
+    if (v && v.__zj2 === 1 && v.j && v.b) { const bin = await zRun(v.b, DecompressionStream, 'deflate-raw'); return JSON.parse(new TextDecoder().decode(await zRun(v.j, DecompressionStream, 'deflate-raw')), (k, x) => { if (x && x.__tb) { const C = Z_CTOR[x.__tb] || Uint8Array; return new C(bin.buffer.slice(bin.byteOffset + x.o, bin.byteOffset + x.o + x.n * C.BYTES_PER_ELEMENT)); } return x; }); }
     if (v && v.__zj === 1 && v.d) return JSON.parse(new TextDecoder().decode(await zRun(v.d, DecompressionStream, 'deflate-raw')), (k, x) => x && x.__ta && Array.isArray(x.a) ? new (Z_CTOR[x.__ta] || Array)(x.a) : x);
     if (v && typeof v === 'object' && !ArrayBuffer.isView(v) && !Array.isArray(v) && depth < 4) { const o = {}; for (const k of Object.keys(v)) o[k] = await walk(v[k], depth + 1); return o; }
     if (Array.isArray(v) && depth < 4) { const o = []; for (const x of v) o.push(await walk(x, depth + 1)); return o; }
@@ -14871,7 +14880,7 @@ async function zUnpack(st) {
   };
   const out = {}; for (const k of Object.keys(st)) if (k !== 'zpack') out[k] = await walk(st[k], 0); return out;
 }
-globalThis.__wohZ = { pack: zPack, unpack: zUnpack };
+globalThis.__wohZ = { pack: zPack, unpack: zUnpack, serialize: serializeState };
 function saveTo(slot) {
   if (!world) return Promise.resolve();
   const st0 = serializeState();
