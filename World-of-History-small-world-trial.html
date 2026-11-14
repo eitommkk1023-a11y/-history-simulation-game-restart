@@ -220,6 +220,7 @@
   #titleScreen .tstage button:active { background: rgba(255, 226, 150, .18); }
   #titleScreen button:disabled { cursor: default; }
   #titleScreen #tSmall { left: 2.5%; top: 75%; width: 24%; height: 8%; color: #d9f0c6; font-size: calc(var(--sw) * 0.0125); font-weight: 600; letter-spacing: 1px; border: 1px solid #6fae5a; border-radius: 10px; background: linear-gradient(#1c2a18e6, #0e140ce6); box-shadow: 0 0 12px #000a; text-shadow: 0 1px 3px #000; }
+  #titleScreen #tSmallStage { position: absolute; left: 2.5%; top: 66.5%; width: 24%; height: 7%; color: #d9f0c6; background: #12200fcc; border: 1px solid #6fae5a; border-radius: 8px; font-size: calc(var(--sw) * 0.0105); padding: 0 6px; }
   #titleScreen #tSmall:active { background: #2f5a1a; }
   #titleScreen #tGod { left: 2.5%; top: 86%; width: 24%; height: 8%; color: #ecd9a6; font-size: calc(var(--sw) * 0.0125); font-weight: 600; letter-spacing: 1px; border: 1px solid #b9964a; border-radius: 10px; background: linear-gradient(#2a2418e6, #14110ce6); box-shadow: 0 0 12px #000a; text-shadow: 0 1px 3px #000; }
   #titleScreen #tGod:active { background: #5c4210; }
@@ -12708,7 +12709,7 @@ document.getElementById('deathOk')?.addEventListener('click', () => document.get
     bar.innerHTML = '<div class="gb-top"><b id="godTitle">神モード</b><button id="godExit">出る</button></div><div class="gb-pop" id="godPop"></div><details open class="gb-sec"><summary>村へジャンプ</summary><div id="godJump" class="gb-jump"></div></details><details class="gb-sec"><summary>川の源流（理由つき）</summary><div id="godSrc" class="gb-jump"></div><div id="godSrcInfo" class="gb-pop"></div></details><div class="gb-time">' + [['pause', '⏸ 止める'], ['real', '標準'], ['d10', '日×10'], ['m1', '月/秒'], ['ymax', '最大速度']].map(([k, n]) => '<button data-gt="' + k + '">' + n + '</button>').join('') + '</div><div class="gb-pop" id="godRate"></div><div id="godFastMsg"></div>' +
       '<div class="gb-sec"><b style="font-size:12px">年数を指定して進める</b><div class="gb-adv">' + [['1', '1か月'], ['3', '3か月'], ['6', '半年'], ['12', '1年'], ['60', '5年'], ['120', '10年'], ['360', '30年'], ['1200', '100年']].map(([m, n]) => '<button data-am="' + m + '">' + n + '</button>').join('') + '</div><div class="gb-adv"><input id="godYears" type="number" min="1" max="12000" value="20" inputmode="numeric"><select id="godUnit"><option value="12">年</option><option value="1">か月</option></select><button id="godAdvGo">進める</button></div><div class="gb-pop">進行画面を出して、毎月の計算を省かずに進めます（待ち時間は端末しだい。途中で中止できます）。</div></div>' +
       '<details open class="gb-sec"><summary>人口の推移</summary><div class="gb-opts"><select id="godScope"><option value="world">世界全体</option><option value="region">地域</option><option value="group">選んだ集落</option></select><select id="godSpan"><option value="0">全期間</option><option value="18000">50年</option><option value="3600">10年</option></select><select id="godMetric"><option value="pop">人口</option><option value="bd">出生・死亡（年）</option><option value="vil">村の数</option><option value="fed">食料の充足（%）</option><option value="food">食料の蓄え</option></select></div><canvas id="godChart" width="480" height="200" style="width:100%;height:auto;background:#0b141e;border-radius:6px"></canvas><div class="gb-pop" id="godChartTxt"></div></details>' +
-      '<details class="gb-sec"><summary>性能モニター</summary><div id="godPerf" class="gb-pop"></div><div class="gb-adv"><button id="godSaveMeasure">保存容量を測る</button></div><div id="godSaveOut" class="gb-pop"></div></details><details class="gb-sec"><summary>ランキング</summary><div class="gb-opts"><select id="godRankKind"><option value="pop">人口の多い順</option><option value="up">増えた順（50年）</option><option value="down">減った順（50年）</option><option value="dev">発展した集落（50年）</option></select></div><div id="godRank"></div></details>' +
+      '<details class="gb-sec"><summary>性能モニター</summary><div id="godPerf" class="gb-pop"></div><div class="gb-adv"><button id="godSaveMeasure">保存容量を測る</button><button id="godBench">実機の性能診断（約25秒）</button></div><div id="godSaveOut" class="gb-pop"></div><textarea id="godBenchOut" readonly rows="9" style="display:none;width:100%;font-size:11px;background:#0b1520;color:#cfe;border:1px solid #345;border-radius:6px"></textarea></details><details class="gb-sec"><summary>ランキング</summary><div class="gb-opts"><select id="godRankKind"><option value="pop">人口の多い順</option><option value="up">増えた順（50年）</option><option value="down">減った順（50年）</option><option value="dev">発展した集落（50年）</option></select></div><div id="godRank"></div></details>' +
       '<div id="godInfo"></div><details class="gb-sec"><summary>表示・操作</summary><div class="gb-opts"><label><input type="checkbox" id="godLbl" checked> 村の名前</label><label>村人の大きさ <select id="godSz"><option value="0.5">小</option><option value="1" selected>標準</option><option value="2">大</option></select></label></div><div class="gb-pop">ドラッグ：移動／2本指：拡大・回転／村の名前：そこへ飛ぶ／村人をタップ：詳細／キー：WASD・QE・RF</div></details>';
     document.body.appendChild(bar);
     bar.querySelector('#godExit').onclick = exit;
@@ -12717,6 +12718,7 @@ document.getElementById('deathOk')?.addEventListener('click', () => document.get
     bar.querySelector('#godSrc').addEventListener('click', e => { const b = e.target.closest('[data-rs]'); if (!b) return; const s = (globalThis.__wohSrcShown || [])[+b.dataset.rs]; if (!s) return; window.__wohGodView.flyToXY(s.x, s.y, 90); const o = bar.querySelector('#godSrcInfo'); if (o) o.textContent = s.label + '（' + ({ lake: '湖がいっぱいになってあふれた水が川になる', spring: '湧水地の水が地表に出る', glacier: '氷河・氷雪が融けた水が集まる', snow: '高い山の雪解け水が集まる', marsh: '湿地にたまった水が流れ出す', seep: '斜面に降った雨が地中をしみ出して地表に出る' })[s.kind] + '）'; });
     bar.querySelector('#godJump').addEventListener('click', e => { const b = e.target.closest('[data-jg]'); if (!b) return; const gid = +b.dataset.jg; window.__wohGodView.flyTo(gid); sel = gid; info({ gid }); drawChart(); });
     bar.querySelector('#godSaveMeasure').onclick = measureSave;
+    bar.querySelector('#godBench').onclick = runBench;
     bar.querySelector('.gb-time').addEventListener('click', e => { const b = e.target.closest('[data-gt]'); if (!b) return; setTime(b.dataset.gt); });
     for (const id of ['godScope', 'godSpan', 'godMetric', 'godRankKind']) bar.querySelector('#' + id).onchange = () => { drawChart(); rank(); };
     bar.querySelector('#godRank').addEventListener('click', e => { const b = e.target.closest('[data-rk]'); if (!b) return; const gid = +b.dataset.rk; window.__wohGodView.flyTo(gid); sel = gid; info({ gid }); drawChart(); });
@@ -12795,6 +12797,29 @@ document.getElementById('deathOk')?.addEventListener('click', () => document.get
     let fps = '—', loop = '—'; if (perfPrev) { const dt = (now - perfPrev.t) / 1000; fps = ((F.draws - perfPrev.d) / dt).toFixed(0); loop = ((F.frames - perfPrev.f) / dt).toFixed(0); } perfPrev = { t: now, d: F.draws, f: F.frames };
     const mem = performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) + 'MB' : '—', n = Math.max(1, PM.n);
     el.innerHTML = '描画 ' + fps + ' FPS・更新ループ ' + loop + '回/秒' + (globalThis.__wohFastSim ? '（高速進行中：3D省略）' : '') + '<br>1か月の計算：直近 ' + PM.ema.toFixed(1) + 'ms・平均 ' + (PM.ms / n).toFixed(1) + 'ms（動物 ' + (PM.fauna / n).toFixed(1) + '・人 ' + (PM.people / n).toFixed(1) + '）<br>1年あたり ' + (PM.ema * 12 / 1000).toFixed(2) + '秒・メモリ ' + mem;
+  }
+  // 実機の性能診断：高さ（近・中・遠）ごとのFPS・三角形・描画の呼び出し、1か月の計算、保存の圧縮、メモリ、端末の情報を、貼り付けられる文章にして出す。診断中の視点は終わると元に戻る
+  let benchBusy = false;
+  async function runBench() {
+    if (benchBusy) return; benchBusy = true; const out = bar.querySelector('#godBenchOut'), btn = bar.querySelector('#godBench'); out.style.display = 'block'; const lines = []; const log = (s) => { lines.push(s); out.value = lines.join('\n'); out.scrollTop = out.scrollHeight; };
+    const gv0 = window.__wohGodView.state, sleep = (ms) => new Promise(r => setTimeout(r, ms)); btn.disabled = true;
+    try {
+      const nav = navigator, scr = screen; log('診断 ' + new Date().toLocaleString('ja-JP')); log('端末 ' + (nav.userAgent.match(/\(([^)]+)\)/) || [, ''])[1].slice(0, 70) + '／画面 ' + scr.width + '×' + scr.height + '×' + (window.devicePixelRatio || 1) + '／CPU ' + (nav.hardwareConcurrency || '?') + '／メモリ ' + (nav.deviceMemory || '?') + 'GB');
+      const F = globalThis.__wohFrameStats; const pf = () => ({ fr: F.frames, dr: F.draws, t: performance.now() });
+      for (const [name, hh] of [['近い(120m)', 120], ['中(600m)', 600], ['遠い(1500m)', 1500]]) {
+        window.__wohGodView.setView({ h: hh, pitch: 0.9 }); log(name + '…読み込み待ち'); await sleep(3500); const a = pf(); await sleep(4000); const b = pf(); const sec = (b.t - a.t) / 1000;
+        log(name + '：描画 ' + ((b.dr - a.dr) / sec).toFixed(1) + ' FPS／更新 ' + ((b.fr - a.fr) / sec).toFixed(1) + '回/秒／三角形 ' + (F.tri != null ? Math.round(F.tri / 1000) + 'k' : '?') + '／呼び出し ' + (F.calls ?? '?') + '／木 ' + (globalThis.__wohTrees ? globalThis.__wohTrees.count : '?') + '本');
+      }
+      // 1か月の計算
+      const t0 = performance.now(); window.__geo.skipDays(90); const tm = (performance.now() - t0) / 3; log('1か月の計算：' + tm.toFixed(1) + 'ms（目標 1年/秒＝83ms未満）');
+      // 保存の圧縮
+      const t1 = performance.now(); const st = serializeState(); const t2 = performance.now(); const z = await zPack(st); const t3 = performance.now(); let zb = 0; const sz = (v) => { if (v == null) return; if (ArrayBuffer.isView(v)) { zb += v.byteLength; return; } if (typeof v === 'object') for (const k of Object.keys(v)) sz(v[k]); else if (typeof v === 'string') zb += v.length; }; sz(z);
+      log('保存：組み立て ' + (t2 - t1).toFixed(0) + 'ms／圧縮 ' + (t3 - t2).toFixed(0) + 'ms／圧縮後 約' + Math.round(zb / 1024) + 'KB');
+      const pm = performance.memory; log('メモリ：' + (pm ? Math.round(pm.usedJSHeapSize / 1048576) + 'MB（上限 ' + Math.round(pm.jsHeapSizeLimit / 1048576) + 'MB）' : 'この端末では取得できません'));
+      log('診断おわり。この文章をそのまま貼り付けてください');
+      try { out.select(); if (navigator.clipboard) await navigator.clipboard.writeText(out.value); } catch (e) { }
+    } catch (e) { log('診断でエラー：' + e); }
+    finally { try { if (gv0) window.__wohGodView.setView({ h: gv0.h, pitch: gv0.pitch, xM: gv0.xM, yM: gv0.yM }); } catch (e) { } btn.disabled = false; benchBusy = false; }
   }
   function measureSave() {
     const out = bar.querySelector('#godSaveOut'); out.textContent = '測っています…'; setTimeout(async () => {
@@ -13561,7 +13586,7 @@ function peopleCtx(month) {
 }
 // 小規模ワールド（試験）：20km四方の窓の中に4村・約200人。既存の世界の生成をそのまま使い、窓の外の人と動物の計算を外す。通常の（大規模）世界の設定は変えない
 function smallParams() {
-  if (!globalThis.__wohSmallNext || !window.WohSmall) return null; const cellM = 99866.7 / world.stats.width, win = WohSmall.pickWindow(world, seedToInt(currentSeed), cellM, WohSmall.stageOf(globalThis.__wohSmallStage)); if (!win) return null;
+  if (!globalThis.__wohSmallNext || !window.WohSmall) return null; if (globalThis.__wohSmallStage === 4) return null; /* S4＝世界全体（窓なし。通常の世界の人々） */ const cellM = 99866.7 / world.stats.width, win = WohSmall.pickWindow(world, seedToInt(currentSeed), cellM, WohSmall.stageOf(globalThis.__wohSmallStage)); if (!win) return null;
   WohSmall.pruneFauna(fauna, world, win, cellM); const S = WohSmall.stageOf(globalThis.__wohSmallStage); return { win, n: S.villages, popTotal: S.popTotal, minD: S.minDm / cellM, maxD: S.maxDm / cellM };
 }
 // 窓（メートル）：保存された人々（people.win）から。歩く・神モードの動きを、この中にとどめる
@@ -14850,20 +14875,29 @@ async function zRun(bytes, Stream, mode) { const s = new Blob([bytes]).stream().
 async function zPack(st) {
   if (!zOk()) return st; const out = {}; let n = 0;
   const walk = async (v, depth) => {
-    if (ArrayBuffer.isView(v)) { if (v.byteLength < 4096 || !Z_CTOR[v.constructor.name]) return v; const d = await zRun(new Uint8Array(v.buffer, v.byteOffset, v.byteLength), CompressionStream, 'deflate-raw'); if (d.byteLength >= v.byteLength * 0.9) return v; n++; return { __z: 1, t: v.constructor.name, d }; }
+    if (ArrayBuffer.isView(v)) { if (v.byteLength < 4096 || !Z_CTOR[v.constructor.name]) return v; { let z = true; for (let i = 0; i < v.length; i++) if (v[i] !== 0) { z = false; break; } if (z) { n++; return { __z0: 1, t: v.constructor.name, n: v.length }; } }   // 全部0の配列（雪・土砂・洪水など、変化のない天気の状態）は、長さだけ覚える
+      const d = await zRun(new Uint8Array(v.buffer, v.byteOffset, v.byteLength), CompressionStream, 'deflate-raw'); if (d.byteLength >= v.byteLength * 0.9) return v; n++; return { __z: 1, t: v.constructor.name, d }; }
     if (v && typeof v === 'object' && !Array.isArray(v) && depth < 4 && !(v instanceof Date)) { const o = {}; for (const k of Object.keys(v)) o[k] = await walk(v[k], depth + 1); return o; }
     if (Array.isArray(v) && depth < 4 && v.length && ArrayBuffer.isView(v[0])) { const o = []; for (const x of v) o.push(await walk(x, depth + 1)); return o; }
     return v;
   };
   for (const k of Object.keys(st)) {
-    if (k === 'fauna' && st.fauna) { const d = await zRun(new TextEncoder().encode(JSON.stringify(st.fauna, (k, v) => ArrayBuffer.isView(v) ? { __ta: v.constructor.name, a: Array.from(v) } : v)), CompressionStream, 'deflate-raw'); out.fauna = { __zj: 1, d }; n++; }   // 動物の状態は、小さな型付き配列が多いので、型の印をつけて文字にしてから圧縮
+    if (k === 'fauna' && st.fauna) {
+      // 動物の状態：型付き配列は数字の文字列にせず、生のバイト列として1つにまとめ（JSON側には位置と型だけ）、それぞれ deflate で縮める（速く、小さい）
+      const chunks = []; let off = 0;
+      const json = JSON.stringify(st.fauna, (kk, v) => { if (ArrayBuffer.isView(v) && Z_CTOR[v.constructor.name]) { const u = new Uint8Array(v.buffer, v.byteOffset, v.byteLength), o = off; chunks.push(u); off += (u.byteLength + 7) & ~7; return { __tb: v.constructor.name, o, n: v.length }; } return v; });
+      const bin = new Uint8Array(off); let p = 0; for (const u of chunks) { bin.set(u, p); p += (u.byteLength + 7) & ~7; }
+      out.fauna = { __zj2: 1, j: await zRun(new TextEncoder().encode(json), CompressionStream, 'deflate-raw'), b: await zRun(bin, CompressionStream, 'deflate-raw') }; n++;
+    }
     else out[k] = await walk(st[k], 0);
   }
   if (!n) return st; out.zpack = 1; return out;
 }
 async function zUnpack(st) {
   const walk = async (v, depth) => {
+    if (v && v.__z0 === 1) { const C = Z_CTOR[v.t] || Uint8Array; return new C(v.n); }
     if (v && v.__z === 1 && v.d) { const u8 = await zRun(v.d, DecompressionStream, 'deflate-raw'); const C = Z_CTOR[v.t] || Uint8Array; return new C(u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength)); }
+    if (v && v.__zj2 === 1 && v.j && v.b) { const bin = await zRun(v.b, DecompressionStream, 'deflate-raw'); return JSON.parse(new TextDecoder().decode(await zRun(v.j, DecompressionStream, 'deflate-raw')), (k, x) => { if (x && x.__tb) { const C = Z_CTOR[x.__tb] || Uint8Array; return new C(bin.buffer.slice(bin.byteOffset + x.o, bin.byteOffset + x.o + x.n * C.BYTES_PER_ELEMENT)); } return x; }); }
     if (v && v.__zj === 1 && v.d) return JSON.parse(new TextDecoder().decode(await zRun(v.d, DecompressionStream, 'deflate-raw')), (k, x) => x && x.__ta && Array.isArray(x.a) ? new (Z_CTOR[x.__ta] || Array)(x.a) : x);
     if (v && typeof v === 'object' && !ArrayBuffer.isView(v) && !Array.isArray(v) && depth < 4) { const o = {}; for (const k of Object.keys(v)) o[k] = await walk(v[k], depth + 1); return o; }
     if (Array.isArray(v) && depth < 4) { const o = []; for (const x of v) o.push(await walk(x, depth + 1)); return o; }
@@ -14871,7 +14905,7 @@ async function zUnpack(st) {
   };
   const out = {}; for (const k of Object.keys(st)) if (k !== 'zpack') out[k] = await walk(st[k], 0); return out;
 }
-globalThis.__wohZ = { pack: zPack, unpack: zUnpack };
+globalThis.__wohZ = { pack: zPack, unpack: zUnpack, serialize: serializeState };
 function saveTo(slot) {
   if (!world) return Promise.resolve();
   const st0 = serializeState();
@@ -15142,11 +15176,12 @@ function titleShow(st) {
     el = document.createElement('div'); el.id = 'titleScreen'; const A = uiAssets();
     el.innerHTML = '<div class="tblur"></div><div class="tstage"><button id="tContinue" aria-label="続きから始める"></button><div id="tVeil"></div><div id="tContInfo"></div>' +
       '<button id="tNew" aria-label="新しい世界を創る"></button><button id="tLoad" aria-label="セーブデータ"></button><button id="tDev" aria-label="開発者モード"></button>' +
-      '<button id="tSmall" aria-label="小規模ワールド（試験）">小規模ワールド（試験）</button><button id="tGod" aria-label="神モード（空から見守る）">神モード（空から見守る）</button><div id="tDevSw"><i></i><b></b></div><div id="tDevBox"><input id="tSeed" type="text" placeholder="Seed（空ならランダム）" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><button id="tSeedGo">Seedを指定して始める</button></div><div id="tVer"></div></div>';
+      '<button id="tSmall" aria-label="小規模ワールド（試験）">小規模ワールド（試験）</button><select id="tSmallStage" aria-label="広さ"><option value="1">S1 20km・4村</option><option value="2">S2 40km・10村</option><option value="3">S3 80km・24村</option><option value="4">S4 世界全体・100集団</option></select><button id="tGod" aria-label="神モード（空から見守る）">神モード（空から見守る）</button><div id="tDevSw"><i></i><b></b></div><div id="tDevBox"><input id="tSeed" type="text" placeholder="Seed（空ならランダム）" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"><button id="tSeedGo">Seedを指定して始める</button></div><div id="tVer"></div></div>';
     el.querySelector('.tblur').style.backgroundImage = `url(${A.title})`; el.querySelector('.tstage').style.backgroundImage = `url(${A.title})`;
     document.body.appendChild(el);
     bindTap(el.querySelector('#tNew'), () => { titleHide(); generate(randomSeed()); });
-    bindTap(el.querySelector('#tSmall'), () => { globalThis.__wohSmallNext = true; godAfterLoad(); titleHide(); generate(randomSeed()); });   // 小規模ワールド：新しい世界を作り、20km四方・4村で始めて、神モードで見守る
+    try { const sv = localStorage.getItem('woh-small-stage'); if (sv) el.querySelector('#tSmallStage').value = sv; } catch (e) { }
+    bindTap(el.querySelector('#tSmall'), () => { try { const v = el.querySelector('#tSmallStage').value; globalThis.__wohSmallStage = +v; localStorage.setItem('woh-small-stage', v); } catch (e) { } globalThis.__wohSmallNext = true; godAfterLoad(); titleHide(); generate(randomSeed()); });   // 小規模ワールド：新しい世界を作り、20km四方・4村で始めて、神モードで見守る
     bindTap(el.querySelector('#tGod'), () => { godAfterLoad(); const s = titleSaved; titleHide(); if (s) loadState(s); else generate(randomSeed()); });   // 神モード：続きの記録があればそれを、なければ新しい世界を始めて、空から見守る
     bindTap(el.querySelector('#tLoad'), () => { document.body.classList.add('title-open'); menuShow(true); });
     bindTap(el.querySelector('#tDev'), () => { devModeSet(!devModeGet()); titleDevRefresh(); });
