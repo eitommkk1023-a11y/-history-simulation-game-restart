@@ -8615,6 +8615,9 @@ const PE = {
   MOVE_FOOD: 0.7,                                 // 移動中の食料集めの効率
   RIVER_SNAP: 60,                                 // 指定された移住先から川を探す距離（ブロック）
   SPLIT_POP: 220,                                 // この人口を超えると分かれることがある
+  SPLIT_POP_SETTLED: 800,                         // 定住した村（settle=2）で、食料が足りている（充足0.85以上）ときは、この人口まで分かれない（大きな村・町が育つ）［仮］
+  LAYER_CAP: 300, LAYER_NEAR_CAP: 2000,           // 層の方針（ctx.layers を与えたときだけ働く）：遠い集団の個人の上限／近い集団の個人の上限［仮］
+  LAYER_DEMOTE_RATE: 0.25, LAYER_PROMOTE_PER_MONTH: 40, LAYER_NEAR_DIST: 40,   // 1か月に降格する割合の上限／1か月に昇格する人数／近いとみなす距離（ブロック）［仮］
   SPLIT_P: 0.08,                                  // 分かれる確率（1か月）
   SPLIT_SHARE: [0.3, 0.45],                       // 分かれて出ていく割合
   SPLIT_RANGE: [12, 45],                          // 新しい集団の行き先の距離（ブロック）
@@ -9139,6 +9142,19 @@ function peAggMonth(people) {
   if (!people.npc || !people.npc.hazardFn) return;
   for (const g of people.groups) { if (!g.alive || !g.agg) continue; const r = g.agg.step(Cohort.tables(peAggRates(people, g))); g.born += r.births; g.agg.lastBirths = r.births; }
 }
+// 層の方針（毎月）：opt = { cap, nearCap, focus:[集団id…] }。focus は、プレイヤー・カメラの近くの集団（なければ、プレイヤーの集団と、近くの集団）。
+//  - 近い集団：集計の住民を、1か月に最大 LAYER_PROMOTE_PER_MONTH 人ずつ個人へ昇格（個人が nearCap を超えない範囲）。
+//  - 遠い集団：個人が cap を超えていたら、超えた分を降格（1か月に最大 LAYER_DEMOTE_RATE の割合）。重要人物・プレイヤー・首長の世帯は残る。
+function peLayersMonth(people, opt) {
+  const P = people.npc, cap = opt.cap || PE.LAYER_CAP, nearCap = opt.nearCap || PE.LAYER_NEAR_CAP; let focus = opt.focus ? new Set(opt.focus) : null;
+  if (!focus) { focus = new Set(); const pl = people.player; const pg = pl && pl.id >= 0 && P.death[pl.id] === ALIVE ? people.groups[P.group[pl.id] - 1] : null; if (pg) for (const g of people.groups) if (g.alive && Math.hypot(g.x - pg.x, g.y - pg.y) <= PE.LAYER_NEAR_DIST) focus.add(g.id); }
+  const cnt = new Int32Array(people.groups.length + 2); for (let i = 0; i < P.n; i++) if (P.death[i] === ALIVE) cnt[P.group[i]]++;
+  for (const g of people.groups) {
+    if (!g.alive) continue; const ind = cnt[g.id], aggN = peAggTotal(g);
+    if (focus.has(g.id)) { if (aggN >= 1 && ind < nearCap) peopleLayerPromote(people, g.id, Math.min(PE.LAYER_PROMOTE_PER_MONTH, Math.floor(aggN), nearCap - ind)); }
+    else if (ind > cap) peopleLayerDemote(people, g.id, Math.min(ind - cap, Math.max(5, Math.floor(ind * PE.LAYER_DEMOTE_RATE))));
+  }
+}
 function peAggTotal(g) { return g.agg ? g.agg.total() : 0; }
 // 降格できる人：個人の層の重要な人（重要人物・プレイヤー・首長）でない人の世帯。同じ世帯（夫婦と子ども）は、まとめて降格する。maxN 人まで。戻り値：降格した人数
 function peopleLayerDemote(people, gid, maxN) {
@@ -9147,7 +9163,7 @@ function peopleLayerDemote(people, gid, maxN) {
   for (const id of P.focus.keys()) { keep.add(id); if (P.house[id] !== NONE) keep.add(-1 - P.house[id]); }
   const lead = g.leader; if (lead != null && lead >= 0) { keep.add(lead); if (P.house[lead] !== NONE) keep.add(-1 - P.house[lead]); }
   const A = g.agg || (g.agg = new Cohort()), day = P.day, ids = [], houses = new Map(); let n = 0;
-  for (let i = 0; i < P.n; i++) { if (P.group[i] !== gid || P.death[i] !== ALIVE) continue; const hh = P.house[i] !== NONE ? P.house[i] : -1 - i; let l = houses.get(hh); if (!l) houses.set(hh, l = []); l.push(i); }   // 世帯ごとに（世帯のない人は1人で1世帯）
+  for (const i of P.members[gid]) { if (P.group[i] !== gid || P.death[i] !== ALIVE) continue; const hh = P.house[i] !== NONE ? P.house[i] : -1 - i; let l = houses.get(hh); if (!l) houses.set(hh, l = []); l.push(i); }   // 世帯ごとに（世帯のない人は1人で1世帯）
   for (const [hh, mem] of houses) { if (n >= maxN) break; if (mem.some(i => i === P.actId || keep.has(i)) || (hh >= 0 && keep.has(-1 - hh))) continue; for (const i of mem) ids.push(i); n += mem.length; }
   for (const i of ids) {
     const age = (day - P.birth[i]) / 360; A.add(Math.min(80.99, Math.max(0, age)), P.sex[i] === 1 ? 1 : 0, 1);
@@ -9573,6 +9589,7 @@ function peopleMonthly(people, ctx) {
   for (const g of alive) peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel);
   if (ctx.populationAdvanced !== true) for (let d = 0; d < 30; d++) P.stepDay();   // 住民を30日進める（人ごとに月に1回判定。日付はずれている）
   peAggMonth(people);   // 集計の層の住民を1か月進める（個人の層と同じ死亡・出生の率）
+  if (ctx.layers) peLayersMonth(people, ctx.layers);   // 層の方針：近い集団は個人へ、遠くて大きい集団は集計へ
   peStats(people);
   peopleSuccession(people, ev);   // プレイヤーの人物が亡くなっていれば、その文化の決まりで継承
   peApplyActivity(people);
@@ -9581,7 +9598,7 @@ function peopleMonthly(people, ctx) {
   // 分裂
   for (const g of alive) {
     if (!g.alive || g.moveTo) continue;
-    if (g.pop > PE.SPLIT_POP && rng() < PE.SPLIT_P) peSplit(people, g, S, world, rng, ev, rel);
+    if (g.pop > (g.settle === 2 && g.fed >= 0.85 ? PE.SPLIT_POP_SETTLED : PE.SPLIT_POP) && rng() < PE.SPLIT_P) peSplit(people, g, S, world, rng, ev, rel);
   }
   // 全滅
   for (const g of people.groups) {
