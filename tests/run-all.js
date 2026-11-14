@@ -2,7 +2,7 @@
 // 検証の一括実行：node tests/run-all.js [--node] [--browser] [--only 名前,名前] [--list]
 //  - node：npc/test-*.js（世界データが要るものは、tools/make-world-fixture.js が .cache/ に作る）
 //  - browser：tests-browser/suite/*.js（Playwright。対象のHTMLは環境変数 WOH_HTML、既定は開発版）
-// 結果は tests/last-run.json と、画面の表に出る。終了コードは、不合格があれば 1
+// 結果は tests/last-run-{node,browser,all}.json と、画面の表に出る。終了コードは、不合格があれば 1
 const fs = require('fs'), path = require('path'), { spawnSync } = require('child_process');
 const ROOT = path.resolve(__dirname, '..'), args = process.argv.slice(2), has = (f) => args.includes(f), only = has('--only') ? (args[args.indexOf('--only') + 1] || '').split(',').filter(Boolean) : [];
 const runNode = has('--node') || !has('--browser'), runBrowser = has('--browser') || !has('--node');
@@ -38,5 +38,5 @@ if (runNode) {
 if (runBrowser) { for (const n of BROWSER) run('browser', n, 'node', ['tests-browser/suite/' + n + '.js'], SLOW.has(n) ? 600000 : 300000); }
 const pass = results.filter(r => r.ok).length, fail = results.length - pass;
 console.log('\n' + (fail ? `不合格 ${fail} ／ ` : '全て合格　') + `${pass}/${results.length}　` + results.reduce((a, r) => a + r.sec, 0).toFixed(0) + '秒');
-fs.writeFileSync(path.join(__dirname, 'last-run.json'), JSON.stringify({ at: new Date().toISOString(), html: process.env.WOH_HTML || 'World-of-History-v30-development.html', pass, fail, results }, null, 1));
+fs.writeFileSync(path.join(__dirname, 'last-run-' + (runNode && runBrowser ? 'all' : runNode ? 'node' : 'browser') + '.json'), JSON.stringify({ at: new Date().toISOString(), html: process.env.WOH_HTML || 'World-of-History-v30-development.html', pass, fail, results }, null, 1));
 process.exit(fail ? 1 : 0);

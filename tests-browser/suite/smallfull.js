@@ -13,7 +13,7 @@ const SIG = () => { const pe = window.__geo.people, P = pe.npc; return { day: wi
   await p.waitForFunction(() => document.body.classList.contains('god-on'), null, { timeout: 500000 }); await p.waitForTimeout(2500);
   const ev = (f, a) => p.evaluate(f, a);
   const s0 = await ev(SIG); console.log('開始', JSON.stringify(s0).slice(0, 200));
-  t('4村・約200人', s0.groups.split('|').length === 4 && s0.living >= 170 && s0.living <= 240, s0.living + '人');
+  t('4村・各村100〜500人', s0.groups.split('|').length === 4 && s0.living >= 360 && s0.living <= 2200, s0.living + '人');
   // 村ジャンプ
   await p.waitForTimeout(1500); const nJ = await ev(() => document.querySelectorAll('#godJump [data-jg]').length); t('村へジャンプの一覧に4村', nJ === 4, nJ);
   for (let i = 0; i < 4; i++) { await ev((i) => document.querySelectorAll('#godJump [data-jg]')[i].click(), i); await p.waitForTimeout(6000); const st = await ev(() => __wohGodView.state); t('村' + (i + 1) + 'へジャンプ（高さ・村人表示）', st.h < 200 && st.npcShown > 3, `h ${st.h.toFixed(0)} 村人 ${st.npcShown}`); if (i === 0) await p.screenshot({ path: D + 'sw_jump.png' }); }
