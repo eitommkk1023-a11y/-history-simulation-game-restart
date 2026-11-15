@@ -8417,16 +8417,62 @@ return {FACILITY_ROLES,FACILITY_LABELS,normalizeFacility,buildFacilityMesh,creat
 root.WohVillageView = { createFields: M.fields.createFields, plotWorldPoint: M.fields.plotWorldPoint, createLivestock: M.livestock.createLivestock, createFacilities: M.facilities.createFacilities, FACILITY_ROLES: M.facilities.FACILITY_ROLES, FACILITY_LABELS: M.facilities.FACILITY_LABELS };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
+<script id="game-config">
+'use strict';
+// ゲームの設定値（F1）：世界の段階・人口・層の方針・目標の規模・外との交易の量を、1か所に集める。
+// 値を変えるだけで、人口・段階が変わる（同じ設定・同じSeedなら、同じ結果）。［仮］は調整用の仮の値。
+// 上書き（開発・検証用）：node では環境変数 WOH_CONFIG（JSON）、ブラウザでは、スクリプトの読み込み前に globalThis.__wohConfigPatch = {...} を置く。
+(function (root) {
+const DEFAULT = {
+  version: 1,
+  // 世界：生成の格子と広さ（情報。生成そのものは変わらない）。スマホ前提のため、広さは今のまま（約100km四方・陸地約4,400km²）
+  world: { cells: 3000, widthM: 99866.7, landKm2: 4400 },
+  // 段階：小規模ワールドの窓の広さ（m）・初期の村の数・村の人数の範囲・村どうしの距離（m）・窓の陸地率の下限。S4＝世界全体（窓なし。通常の世界）
+  stages: {
+    1: { sizeM: 20000, villages: 4, popMin: 100, popMax: 500, minDm: 3000, maxDm: 10000 },
+    2: { sizeM: 40000, villages: 10, popMin: 100, popMax: 500, minDm: 3500, maxDm: 14000 },
+    3: { sizeM: 80000, villages: 24, popMin: 100, popMax: 500, minDm: 4000, maxDm: 20000, minLand: 0.55 },
+    4: { whole: true },
+  },
+  // 人口：初期人口の調整（立地の良さの順位 q で min(1, siteMin + siteSlope×q) 倍）と、分裂の人口
+  population: { initSiteMin: 0.45, initSiteSlope: 0.85, splitPop: 220, splitPopSettled: 800, splitFedMin: 0.85 },
+  // 層（個人・集計）の方針（ctx.layers を与えたときの既定値）
+  layers: { cap: 300, nearCap: 2000, demoteRate: 0.25, promotePerMonth: 40, nearDist: 40 },
+  // 規模の目標（目安。表示・検証用。ゲームの上限ではない）：世界全体と、最大の都市の人口
+  targets: { worldPopulation: [100000, 300000], cityPopulation: [30000, 100000] },
+  // 外との交易（地図の外の世界）：1か月に外から入る食料の量（0＝なし）。M2（輸送と外との交易）で使う。今は未使用
+  trade: { externalFoodPerMonth: 0 },
+};
+const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
+function merge(base, patch) { const out = Array.isArray(base) ? base.slice() : Object.assign({}, base); for (const k of Object.keys(patch || {})) out[k] = isObj(base[k]) && isObj(patch[k]) ? merge(base[k], patch[k]) : patch[k]; return out; }
+function validate(c) {
+  const errs = [], num = (path, v, lo, hi) => { if (typeof v !== 'number' || !isFinite(v) || v < lo || v > hi) errs.push(path + ' は ' + lo + '〜' + hi + ' の数（今：' + v + '）'); };
+  for (const n of [1, 2, 3]) { const s = (c.stages || {})[n]; if (!s) { errs.push('stages.' + n + ' がない'); continue; } num('stages.' + n + '.sizeM', s.sizeM, 5000, 100000); num('stages.' + n + '.villages', s.villages, 1, 200); num('stages.' + n + '.popMin', s.popMin, 5, 100000); num('stages.' + n + '.popMax', s.popMax, s.popMin, 1e6); num('stages.' + n + '.minDm', s.minDm, 200, 50000); num('stages.' + n + '.maxDm', s.maxDm, s.minDm, 100000); }
+  const p = c.population || {}; num('population.initSiteMin', p.initSiteMin, 0.05, 1); num('population.initSiteSlope', p.initSiteSlope, 0, 2); num('population.splitPop', p.splitPop, 20, 1e6); num('population.splitPopSettled', p.splitPopSettled, p.splitPop, 1e6); num('population.splitFedMin', p.splitFedMin, 0, 1);
+  const l = c.layers || {}; num('layers.cap', l.cap, 10, 1e5); num('layers.nearCap', l.nearCap, l.cap, 1e6); num('layers.demoteRate', l.demoteRate, 0.01, 1); num('layers.promotePerMonth', l.promotePerMonth, 1, 1e5); num('layers.nearDist', l.nearDist, 1, 3000);
+  const t = c.targets || {}; if (!Array.isArray(t.worldPopulation) || !Array.isArray(t.cityPopulation)) errs.push('targets の形が違う');
+  num('trade.externalFoodPerMonth', (c.trade || {}).externalFoodPerMonth, 0, 1e12);
+  return errs;
+}
+let patch = null; try { if (typeof process !== 'undefined' && process.env && process.env.WOH_CONFIG) patch = JSON.parse(process.env.WOH_CONFIG); else if (root.__wohConfigPatch) patch = root.__wohConfigPatch; } catch (e) { console.error('設定の上書きが読めない：', e.message); }
+const CONFIG = patch ? merge(DEFAULT, patch) : DEFAULT;
+const errs = validate(CONFIG); if (errs.length) { console.error('設定に問題があるため、既定の設定を使う：\n  ' + errs.join('\n  ')); }
+const api = { CONFIG: errs.length ? DEFAULT : CONFIG, DEFAULT, validate, merge };
+if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohConfig = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
 <script id="small-world">
 'use strict';
 // 小規模統合ワールド（試験用の設定）：既存の世界の生成をそのまま使い、陸地の20km四方の窓を選んで、その中に4村・約200人を置く。
 // 窓の外には人を置かず、窓の外の動物の個体群は計算から外す（計算量が窓の広さに比例して減る）。大規模世界の既存の設定は変えない（この設定を使ったときだけ働く）。
 // 単位：セル（世界の格子。世界全体で widthM / width メートル、既定の世界では約33.3m）。乱数は整数ハッシュだけ（同じSeedなら同じ窓）。
 (function (root) {
-const SMALL = { sizeM: 20000, villages: 4, popTotal: 1200, popMin: 100, popMax: 500, minDm: 3000, maxDm: 10000 };   // popMin〜popMax：初期の村ひとつの人数の範囲（村ごとに幅広くばらつく）。popTotal は目安（平均300人×村の数）   // 世界の広さ・初期の村の数・初期人口・村どうしの距離（m）
+const CFG = (typeof require !== 'undefined' ? require('./game-config.js') : root.WohConfig).CONFIG;   // 段階の設定は game-config.js
+const stageCfg = (n) => { const s = CFG.stages[n]; return s && !s.whole ? Object.assign({ popTotal: Math.round(s.villages * (s.popMin + s.popMax) / 2) }, s) : null; };
+const SMALL = stageCfg(1);   // popMin〜popMax：初期の村ひとつの人数の範囲（村ごとに幅広くばらつく）。popTotal は目安（平均×村の数）
 const hash = (a, b, c) => { let h = (a ^ Math.imul(b, 374761393) ^ Math.imul(c, 668265263)) >>> 0; h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0; return (h ^ (h >>> 16)) >>> 0; };
 // 段階：S1（20km・4村）→ S2（40km・10村）→ S3（80km・24村）。広げるほど村の間隔と人数も増やす
-const STAGES = { 1: SMALL, 2: { sizeM: 40000, villages: 10, popTotal: 3000, popMin: 100, popMax: 500, minDm: 3500, maxDm: 14000 }, 3: { sizeM: 80000, villages: 24, popTotal: 7200, popMin: 100, popMax: 500, minDm: 4000, maxDm: 20000, minLand: 0.55 } };
+const STAGES = { 1: SMALL, 2: stageCfg(2), 3: stageCfg(3) };
 const stageOf = (n) => STAGES[n] || SMALL;
 // 窓：{ x0, y0, x1, y1 }（セル）。cellM＝1セルのメートル。陸地が多く、川・起伏・森がある所を選ぶ
 function pickWindow(world, seed, cellM, opt) {
@@ -8517,7 +8563,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
 const Npc = typeof require !== 'undefined' ? require('./npc-core.js') : root.WohNpc;
 const Arch = typeof require !== 'undefined' ? require('./arch-gen.js') : root.WohArch, Settle = typeof require !== 'undefined' ? require('./settle-layout.js') : root.WohSettle;
 const Nation = typeof require !== 'undefined' ? require('./nation.js') : root.WohNation, Tech = typeof require !== 'undefined' ? require('./tech.js') : root.WohTech;
-const Cohort = (typeof require !== 'undefined' ? require('./pop-cohort.js') : root.WohCohort).Cohort;   // 人口の集計の層（docs/population-layers-v1.md）
+const Cohort = (typeof require !== 'undefined' ? require('./pop-cohort.js') : root.WohCohort).Cohort;
+const CFG = (typeof require !== 'undefined' ? require('./game-config.js') : root.WohConfig).CONFIG;   // 設定値は game-config.js   // 人口の集計の層（docs/population-layers-v1.md）
 const { Population, NJOB, NSKILL, SI, mix, SOC_K } = Npc, NONE = 0xffffffff, ALIVE = 0x7fffffff;
 
 // ---------------------------------------------------------------- 設定値
@@ -8614,12 +8661,12 @@ const PE = {
   MOVE_SPEED: 25,                                 // 移動の速さ（ブロック/月 ≒ 80km）
   MOVE_FOOD: 0.7,                                 // 移動中の食料集めの効率
   RIVER_SNAP: 60,                                 // 指定された移住先から川を探す距離（ブロック）
-  SPLIT_POP: 220,                                 // この人口を超えると分かれることがある
-  INIT_SITE_MIN: 0.45, INIT_SITE_SLOPE: 0.85,     // 立地の良さの順位 q（0〜1）で、初期の人口に min(1, MIN＋SLOPE×q) を掛ける［仮］
+  SPLIT_POP: CFG.population.splitPop,                                 // この人口を超えると分かれることがある
+  INIT_SITE_MIN: CFG.population.initSiteMin, INIT_SITE_SLOPE: CFG.population.initSiteSlope,     // 立地の良さの順位 q（0〜1）で、初期の人口に min(1, MIN＋SLOPE×q) を掛ける［仮］
   INIT_POP_SCALE: 1,                              // 初期の人口に掛ける係数（開始直後の人口の落ち込みを避けるための調整）［仮］
-  SPLIT_POP_SETTLED: 800,                         // 定住した村（settle=2）で、食料が足りている（充足0.85以上）ときは、この人口まで分かれない（大きな村・町が育つ）［仮］
-  LAYER_CAP: 300, LAYER_NEAR_CAP: 2000,           // 層の方針（ctx.layers を与えたときだけ働く）：遠い集団の個人の上限／近い集団の個人の上限［仮］
-  LAYER_DEMOTE_RATE: 0.25, LAYER_PROMOTE_PER_MONTH: 40, LAYER_NEAR_DIST: 40,   // 1か月に降格する割合の上限／1か月に昇格する人数／近いとみなす距離（ブロック）［仮］
+  SPLIT_POP_SETTLED: CFG.population.splitPopSettled, SPLIT_FED_MIN: CFG.population.splitFedMin,                         // 定住した村（settle=2）で、食料が足りている（充足0.85以上）ときは、この人口まで分かれない（大きな村・町が育つ）［仮］
+  LAYER_CAP: CFG.layers.cap, LAYER_NEAR_CAP: CFG.layers.nearCap,           // 層の方針（ctx.layers を与えたときだけ働く）：遠い集団の個人の上限／近い集団の個人の上限［仮］
+  LAYER_DEMOTE_RATE: CFG.layers.demoteRate, LAYER_PROMOTE_PER_MONTH: CFG.layers.promotePerMonth, LAYER_NEAR_DIST: CFG.layers.nearDist,   // 1か月に降格する割合の上限／1か月に昇格する人数／近いとみなす距離（ブロック）［仮］
   SPLIT_P: 0.08,                                  // 分かれる確率（1か月）
   SPLIT_SHARE: [0.3, 0.45],                       // 分かれて出ていく割合
   SPLIT_RANGE: [12, 45],                          // 新しい集団の行き先の距離（ブロック）
@@ -9603,7 +9650,7 @@ function peopleMonthly(people, ctx) {
   // 分裂
   for (const g of alive) {
     if (!g.alive || g.moveTo) continue;
-    if (g.pop > (g.settle === 2 && g.fed >= 0.85 ? PE.SPLIT_POP_SETTLED : PE.SPLIT_POP) && rng() < PE.SPLIT_P) peSplit(people, g, S, world, rng, ev, rel);
+    if (g.pop > (g.settle === 2 && g.fed >= PE.SPLIT_FED_MIN ? PE.SPLIT_POP_SETTLED : PE.SPLIT_POP) && rng() < PE.SPLIT_P) peSplit(people, g, S, world, rng, ev, rel);
   }
   // 全滅
   for (const g of people.groups) {

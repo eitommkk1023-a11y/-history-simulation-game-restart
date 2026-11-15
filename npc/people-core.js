@@ -8,7 +8,8 @@
 const Npc = typeof require !== 'undefined' ? require('./npc-core.js') : root.WohNpc;
 const Arch = typeof require !== 'undefined' ? require('./arch-gen.js') : root.WohArch, Settle = typeof require !== 'undefined' ? require('./settle-layout.js') : root.WohSettle;
 const Nation = typeof require !== 'undefined' ? require('./nation.js') : root.WohNation, Tech = typeof require !== 'undefined' ? require('./tech.js') : root.WohTech;
-const Cohort = (typeof require !== 'undefined' ? require('./pop-cohort.js') : root.WohCohort).Cohort;   // 人口の集計の層（docs/population-layers-v1.md）
+const Cohort = (typeof require !== 'undefined' ? require('./pop-cohort.js') : root.WohCohort).Cohort;
+const CFG = (typeof require !== 'undefined' ? require('./game-config.js') : root.WohConfig).CONFIG;   // 設定値は game-config.js   // 人口の集計の層（docs/population-layers-v1.md）
 const { Population, NJOB, NSKILL, SI, mix, SOC_K } = Npc, NONE = 0xffffffff, ALIVE = 0x7fffffff;
 
 // ---------------------------------------------------------------- 設定値
@@ -105,12 +106,12 @@ const PE = {
   MOVE_SPEED: 25,                                 // 移動の速さ（ブロック/月 ≒ 80km）
   MOVE_FOOD: 0.7,                                 // 移動中の食料集めの効率
   RIVER_SNAP: 60,                                 // 指定された移住先から川を探す距離（ブロック）
-  SPLIT_POP: 220,                                 // この人口を超えると分かれることがある
-  INIT_SITE_MIN: 0.45, INIT_SITE_SLOPE: 0.85,     // 立地の良さの順位 q（0〜1）で、初期の人口に min(1, MIN＋SLOPE×q) を掛ける［仮］
+  SPLIT_POP: CFG.population.splitPop,                                 // この人口を超えると分かれることがある
+  INIT_SITE_MIN: CFG.population.initSiteMin, INIT_SITE_SLOPE: CFG.population.initSiteSlope,     // 立地の良さの順位 q（0〜1）で、初期の人口に min(1, MIN＋SLOPE×q) を掛ける［仮］
   INIT_POP_SCALE: 1,                              // 初期の人口に掛ける係数（開始直後の人口の落ち込みを避けるための調整）［仮］
-  SPLIT_POP_SETTLED: 800,                         // 定住した村（settle=2）で、食料が足りている（充足0.85以上）ときは、この人口まで分かれない（大きな村・町が育つ）［仮］
-  LAYER_CAP: 300, LAYER_NEAR_CAP: 2000,           // 層の方針（ctx.layers を与えたときだけ働く）：遠い集団の個人の上限／近い集団の個人の上限［仮］
-  LAYER_DEMOTE_RATE: 0.25, LAYER_PROMOTE_PER_MONTH: 40, LAYER_NEAR_DIST: 40,   // 1か月に降格する割合の上限／1か月に昇格する人数／近いとみなす距離（ブロック）［仮］
+  SPLIT_POP_SETTLED: CFG.population.splitPopSettled, SPLIT_FED_MIN: CFG.population.splitFedMin,                         // 定住した村（settle=2）で、食料が足りている（充足0.85以上）ときは、この人口まで分かれない（大きな村・町が育つ）［仮］
+  LAYER_CAP: CFG.layers.cap, LAYER_NEAR_CAP: CFG.layers.nearCap,           // 層の方針（ctx.layers を与えたときだけ働く）：遠い集団の個人の上限／近い集団の個人の上限［仮］
+  LAYER_DEMOTE_RATE: CFG.layers.demoteRate, LAYER_PROMOTE_PER_MONTH: CFG.layers.promotePerMonth, LAYER_NEAR_DIST: CFG.layers.nearDist,   // 1か月に降格する割合の上限／1か月に昇格する人数／近いとみなす距離（ブロック）［仮］
   SPLIT_P: 0.08,                                  // 分かれる確率（1か月）
   SPLIT_SHARE: [0.3, 0.45],                       // 分かれて出ていく割合
   SPLIT_RANGE: [12, 45],                          // 新しい集団の行き先の距離（ブロック）
@@ -1094,7 +1095,7 @@ function peopleMonthly(people, ctx) {
   // 分裂
   for (const g of alive) {
     if (!g.alive || g.moveTo) continue;
-    if (g.pop > (g.settle === 2 && g.fed >= 0.85 ? PE.SPLIT_POP_SETTLED : PE.SPLIT_POP) && rng() < PE.SPLIT_P) peSplit(people, g, S, world, rng, ev, rel);
+    if (g.pop > (g.settle === 2 && g.fed >= PE.SPLIT_FED_MIN ? PE.SPLIT_POP_SETTLED : PE.SPLIT_POP) && rng() < PE.SPLIT_P) peSplit(people, g, S, world, rng, ev, rel);
   }
   // 全滅
   for (const g of people.groups) {
