@@ -106,6 +106,8 @@ const PE = {
   MOVE_FOOD: 0.7,                                 // 移動中の食料集めの効率
   RIVER_SNAP: 60,                                 // 指定された移住先から川を探す距離（ブロック）
   SPLIT_POP: 220,                                 // この人口を超えると分かれることがある
+  INIT_SITE_MIN: 0.45, INIT_SITE_SLOPE: 0.85,     // 立地の良さの順位 q（0〜1）で、初期の人口に min(1, MIN＋SLOPE×q) を掛ける［仮］
+  INIT_POP_SCALE: 1,                              // 初期の人口に掛ける係数（開始直後の人口の落ち込みを避けるための調整）［仮］
   SPLIT_POP_SETTLED: 800,                         // 定住した村（settle=2）で、食料が足りている（充足0.85以上）ときは、この人口まで分かれない（大きな村・町が育つ）［仮］
   LAYER_CAP: 300, LAYER_NEAR_CAP: 2000,           // 層の方針（ctx.layers を与えたときだけ働く）：遠い集団の個人の上限／近い集団の個人の上限［仮］
   LAYER_DEMOTE_RATE: 0.25, LAYER_PROMOTE_PER_MONTH: 40, LAYER_NEAR_DIST: 40,   // 1か月に降格する割合の上限／1か月に昇格する人数／近いとみなす距離（ブロック）［仮］
@@ -838,6 +840,9 @@ function peopleGenerate(seed, W) {
   for (let a = 0; a < PE_AGES; a++) { surv[a] = l; l *= 1 - PE_H0[a] * (1 - PE_H0[a] / 2); }
   let ssum = 0; for (let a = 0; a < PE_AGES; a++) ssum += surv[a];
   const hue0 = rng(), pops = [];
+  // 立地の良さ（暮らしやすさの順位 0〜1）に応じて、初期の人口を調整する：悪い立地の村は、はじめの数年で食料が足りず約4割減る（測定：立地の下位10%で3年後 0.61倍、上位半分は1.0倍前後）。はじめから、その立地が支える人数に近づけて、開始直後の落ち込みを避ける
+  const siteQ = (() => { const v = sites.map(s => peSiteValue(S, world, peCellOf(S, s.x, s.y))), ord = v.map((x, i) => i).sort((a, b) => v[a] - v[b]), q = new Float64Array(v.length); ord.forEach((i, r) => { q[i] = ord.length > 1 ? r / (ord.length - 1) : 1; }); return q; })();
+  const siteScale = (i) => Math.min(1, PE.INIT_SITE_MIN + PE.INIT_SITE_SLOPE * siteQ[i]);
   // 小規模ワールド：村ごとの人数は popMin〜popMax で幅広くばらつかせ、点数の高い（暮らしやすい）場所の村ほど大きくする（大きな村が食料不足にならないように）
   const popPlan = SM && SM.popMin != null ? (() => { const pr2 = peRng(sd ^ peHash('villagePops')); return Array.from({ length: sites.length }, () => Math.round(SM.popMin + (SM.popMax - SM.popMin) * Math.pow(pr2(), 1.25))).sort((a, b) => b - a); })() : null;
   for (let i = 0; i < sites.length; i++) {
@@ -849,7 +854,7 @@ function peopleGenerate(seed, W) {
     people.ethnicities.push(eth);
     let r = rng(), cls = PE.SIZE_CLASS[0];
     for (const c of PE.SIZE_CLASS) { cls = c; if (r < c[0]) break; r -= c[0]; }
-    pops.push(SM ? (popPlan ? popPlan[i] : Math.round(SM.popTotal / SM.n * (0.8 + 0.4 * rng()))) : Math.round(cls[1] + (cls[2] - cls[1]) * rng()));
+    { const base = SM ? (popPlan ? popPlan[i] : Math.round(SM.popTotal / SM.n * (0.8 + 0.4 * rng()))) : Math.round(cls[1] + (cls[2] - cls[1]) * rng()), floor = SM && SM.popMin != null ? SM.popMin : 0, sc = siteScale(i); pops.push(Math.round((floor + (base - floor) * sc) * PE.INIT_POP_SCALE)); }   // 小規模ワールドは、下限（100人）を保ち、それを超える分だけ立地で調整する
     const g = peNewGroup(people, eth.id, s.x, s.y);
     g.site = s.site;
     g.radius = peRadius(pops[i]);

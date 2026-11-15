@@ -1,0 +1,43 @@
+{
+ "at": "2026-11-15T23:23:07.514Z",
+ "html": "World-of-History-v30-development.html",
+ "pass": 5,
+ "fail": 0,
+ "results": [
+  {
+   "kind": "browser",
+   "name": "hudtest",
+   "ok": true,
+   "sec": 52.8,
+   "detail": ""
+  },
+  {
+   "kind": "browser",
+   "name": "titletest",
+   "ok": true,
+   "sec": 98.8,
+   "detail": ""
+  },
+  {
+   "kind": "browser",
+   "name": "godtest",
+   "ok": true,
+   "sec": 73.3,
+   "detail": ""
+  },
+  {
+   "kind": "browser",
+   "name": "stage",
+   "ok": true,
+   "sec": 50.9,
+   "detail": ""
+  },
+  {
+   "kind": "browser",
+   "name": "uitog",
+   "ok": true,
+   "sec": 32.9,
+   "detail": ""
+  }
+ ]
+}
