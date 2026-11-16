@@ -1,0 +1,33 @@
+'use strict';
+// 台帳・集落の階層の検証：node npc/test-ledger.js [<generator.js> <world.bin>]
+const v8 = require('v8'), fs = require('fs'), path = require('path'), { spawnSync } = require('child_process');
+const { Ledger, TICKS_PER_KG } = require('./ledger.js'), Tier = require('./settlement-tier.js'), C = require('./game-config.js'), P = require('./people-core.js');
+let ok = 0, ng = 0; const t = (name, cond, extra) => { if (cond) { ok++; console.log('○', name, extra == null ? '' : extra); } else { ng++; console.log('×', name, extra == null ? '' : extra); } };
+// ---- 台帳の単体
+t('1刻み＝100kcal、1kg＝18刻み、大人の1日（2,200kcal）＝22刻み', TICKS_PER_KG === 18 && Math.round(2200 / 100) === 22);
+{ const L = new Ledger(); let thrown = 0; for (const f of [() => L.credit('dur', 1.5), () => L.debit('fresh', 0.2), () => L.transfer('dur', 'fresh', 2.5), () => L.record('eat', 3.3)]) { try { f(); } catch (e) { thrown++; } } t('小数の量は受け付けない（整数だけ）', thrown === 4); }
+{ const L = new Ledger(), L2 = new Ledger(); let sumKg = 0, sumT = 0, sumT2 = 0; for (let i = 0; i < 2000; i++) { const kg = ((i * 7919) % 100) / 37; sumKg += kg; sumT += L.take('a', kg); sumT2 += L2.take('a', kg); }
+  t('端数の持ち越し：整数の合計が、小数の合計と1刻み以内で一致', Math.abs(sumT - sumKg * TICKS_PER_KG) < 1, `${sumT}／${(sumKg * TICKS_PER_KG).toFixed(2)}`); t('同じ入力で、同じ結果（決定的）', sumT === sumT2); }
+{ const L = new Ledger(); L.open({ dur: 10, fresh: 5, dried: 2 }); const t0 = L.total(); L.transfer('fresh', 'dried', 7); t('移すと、合計は変わらない', L.total() === t0); const q = Ledger.unpack(JSON.parse(JSON.stringify(L.pack()))); t('保存→読み込みで、残高・開始時・持ち越しが同じ', q.bal.dur === L.bal.dur && q.bal.fresh === L.bal.fresh && q.bal.dried === L.bal.dried && q.open0 === L.open0 && q.opened); }
+// ---- 集落の階層
+t('階層：定住の段階と人口で決まる', Tier.tierLabel({ settle: 0, pop: 5000 }) === '野営' && Tier.tierLabel({ settle: 1, pop: 5000 }) === '半定住' && Tier.tierLabel({ settle: 2, pop: 50 }) === '村' && Tier.tierLabel({ settle: 2, pop: 1000 }) === '町' && Tier.tierLabel({ settle: 2, pop: 9999 }) === '町' && Tier.tierLabel({ settle: 2, pop: 10000 }) === '都市' && Tier.tierLabel({ settle: 2, pop: 50000 }) === '大都市');
+t('階層の設定は、下から上へ並ぶ（検査が通る）', C.validate(C.DEFAULT).length === 0 && C.validate(C.merge(C.DEFAULT, { tiers: [{ id: 'a', label: 'a', minSettle: 2, minPop: 10 }, { id: 'b', label: 'b', minSettle: 1, minPop: 0 }, { id: 'c', label: 'c', minSettle: 2, minPop: 0 }] })).length > 0);
+if (process.argv[3]) {
+  const gen = path.resolve(process.argv[2]), wld = path.resolve(process.argv[3]);
+  const prog = (extra, whole) => `const v8=require('v8'),fs=require('fs'),G=require(${JSON.stringify(gen)}),w=v8.deserialize(fs.readFileSync(${JSON.stringify(wld)}));const P=require('./people-core.js'),SW=require('./small-world.js');const env=w.fauna.env,cc=w.climate.cell,W=w.stats.width,cm=99866.7/W,pf=(c,m,o)=>G.faunaPlantFood(env,cc,c,m,o,0,0),FA={faunaHunt:G.faunaHunt,faunaDensity:G.faunaDensity,ANIMAL_SPECIES:G.ANIMAL_SPECIES};const fa=G.faunaClone(w.fauna);let small=null;${whole ? '' : "const ST=SW.stageOf(3),win=SW.pickWindow(w,42,cm,ST);SW.pruneFauna(fa,w,win,cm);small={win,n:ST.villages,popTotal:ST.popTotal,popMin:ST.popMin,popMax:ST.popMax,minD:ST.minDm/cm,maxD:ST.maxDm/cm};"}const pe=P.peopleGenerate(42,{world:w,plantFood:pf,fauna:fa,FA,month:0,small});${extra}`;
+  const run = `const res=[];for(let i=0;i<${10 * 12};i++){const month=i%12;G.faunaMonthly(fa,{month,env,cc});P.peopleMonthly(pe,{month,day:i*30,world:w,fauna:fa,FA,plantFood:pf,env,cc,res:w.resources});for(const g of pe.groups)if(g.ledger&&g.ledger.opened&&g.alive)res.push(g.ledger.resid);}
+    const sig=pe.groups.map(g=>[g.id,Math.round(g.pop),Math.round(g.food*1000)]).join(';');const S=P.peLedgerSummary(pe);const idf=pe.groups.filter(g=>g.ledger&&g.ledger.opened).map(g=>{const L=g.ledger,T=L.tot;return L.open0+T.prod-T.eat-T.spoil-T.lost-T.dryLoss-T.move+L.residNet-L.total();});res.sort((a,b)=>a-b);console.log(JSON.stringify({idf,sig,res:[res.length,res[Math.floor(res.length/2)],res[Math.floor(res.length*0.99)],res[res.length-1]],S,groups:pe.groups.length}))`;
+  const A = JSON.parse(spawnSync('node', ['-e', prog(run)], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 26 }).stdout.trim().split('\n').pop()), B = JSON.parse(spawnSync('node', ['-e', prog(run)], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 26, env: Object.assign({}, process.env, { WOH_CONFIG: JSON.stringify({ ledger: { enabled: false } }) }) }).stdout.trim().split('\n').pop());
+  t('台帳を動かしても、人口・食料の結果が変わらない（影の台帳。S3・10年）', A.sig === B.sig, `${A.groups}集団`);
+  t('台帳を止めると、台帳は動かない', B.S.groups === 0 && A.S.groups > 0, `動いた集団 ${A.S.groups}`);
+  t('月ごとの残高のずれが小さい（中央 ≤ 2刻み、99% ≤ 6刻み＝600kcal、最大 ≤ 30）', A.res[1] <= 2 && A.res[2] <= 6 && A.res[3] <= 30, `${A.res[0]}件：中央 ${A.res[1]}・99% ${A.res[2]}・最大 ${A.res[3]}`);
+  t('台帳の整数が保たれている（残高・累計が整数）', Number.isInteger(A.S.bal) && Object.values(A.S.tot).every(Number.isInteger));
+  t('収穫・消費・傷みが記録されている', A.S.tot.prod > 0 && A.S.tot.eat > 0 && A.S.tot.spoil > 0, `収穫 ${A.S.tot.prod}・消費 ${A.S.tot.eat}・傷み ${A.S.tot.spoil}刻み`);
+  t('収支の恒等式：開始時＋収穫−消費−傷み−あふれ−目減り−移動＋ずれ＝残高（全集団で、ちょうど0）', A.idf.length > 0 && A.idf.every(x => x === 0), `${A.idf.length}集団`);
+  { const W4 = JSON.parse(spawnSync('node', ['-e', prog(run.replace(String(10 * 12), String(6 * 12)), true)], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 26 }).stdout.trim().split('\n').pop());
+    t('通常の世界（100集団・分裂あり、6年）でも、収支の恒等式が全集団でちょうど0', W4.idf.length > W4.groups * 0.95 && W4.idf.every(x => x === 0), `${W4.idf.length}集団（分裂で増えた集団を含む）、ずれの最大 ${W4.res[3]}刻み`); t('通常の世界で、分裂した集団へ食料が移る（移動の記録がある）', W4.S.tot.move > 0, `移動 ${W4.S.tot.move}刻み`); }
+  // 保存→読み込み
+  const rt = JSON.parse(spawnSync('node', ['-e', prog(`for(let i=0;i<24;i++){const month=i%12;G.faunaMonthly(fa,{month,env,cc});P.peopleMonthly(pe,{month,day:i*30,world:w,fauna:fa,FA,plantFood:pf,env,cc,res:w.resources});}const sv=P.peopleSave(pe);const js=JSON.parse(JSON.stringify(sv,(k,v)=>ArrayBuffer.isView(v)?{__ta:v.constructor.name,a:Array.from(v)}:v),(k,x)=>x&&x.__ta?new globalThis[x.__ta](x.a):x);let twice=true;try{P.peopleLoad(js);}catch(e){twice=false;}const l=P.peopleLoad(js);console.log(JSON.stringify({twice,a:pe.groups.map(g=>g.ledger?g.ledger.total():-1),b:l.groups.map(g=>g.ledger?g.ledger.total():-1),ta:pe.groups.map(g=>g.tier).join(),tb:l.groups.map(g=>g.tier).join()}))`)], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 26 }).stdout.trim().split('\n').pop());
+  t('保存→読み込みで、台帳の残高が同じ', JSON.stringify(rt.a) === JSON.stringify(rt.b) && rt.a.some(x => x > 0), `${rt.a.length}集団`); t('保存→読み込みで、階層が同じ', rt.ta === rt.tb); t('同じ保存データを2回読み込んでも、壊れない（検証と適用で2回呼ばれる）', rt.twice === true);
+}
+console.log(ng ? `不合格 ${ng}` : `全て合格（${ok}項目）`); process.exit(ng ? 1 : 0);

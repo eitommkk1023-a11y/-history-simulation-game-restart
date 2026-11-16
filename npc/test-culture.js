@@ -6,7 +6,7 @@ const A = require('./arch-gen.js'), P = require('./people-core.js'), S = require
 const env = world.fauna.env, cc = world.climate.cell, plantFood = (c, m, out) => G.faunaPlantFood(env, cc, c, m, out, 0, 0);
 const FA = { faunaHunt: G.faunaHunt, faunaDensity: G.faunaDensity, ANIMAL_SPECIES: G.ANIMAL_SPECIES };
 const mk = () => P.peopleGenerate(SEED, { world, plantFood, fauna: G.faunaClone(world.fauna), FA });
-const YEARS = +(process.env.YEARS || 60);
+const YEARS = +(process.env.YEARS || 100);   // 初期人口を立地で調整したので、分裂が遅くなり、同じ民族で複数の集団がある民族が増えるまで時間がかかる（60年では標本が少ない）
 function simulate(pp, years) { const fauna = G.faunaClone(world.fauna); for (let i = 0; i < years * 12; i++) { const month = i % 12; G.faunaMonthly(fauna, { month, env, cc }); P.peopleMonthly(pp, { month, day: i * 30, world, fauna, FA, plantFood, env, cc, res: world.resources }); } return pp; }
 const people = simulate(mk(), YEARS); console.log(`${YEARS}年進めた世界：集団 ${people.groups.filter(g => g.alive).length}、民族 ${people.ethnicities.filter(e => e.alive).length}`);
 let fail = 0; const ok = (c, m) => { if (!c) fail++; console.log((c ? '○ ' : '× ') + m); };

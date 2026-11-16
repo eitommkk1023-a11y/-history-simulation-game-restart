@@ -18,6 +18,17 @@ const DEFAULT = {
   population: { initSiteMin: 0.45, initSiteSlope: 0.85, splitPop: 220, splitPopSettled: 800, splitFedMin: 0.85 },
   // 層（個人・集計）の方針（ctx.layers を与えたときの既定値）
   layers: { enabled: true, activateAbove: 3000, cap: 300, nearCap: 2000, demoteRate: 0.25, promotePerMonth: 40, nearDist: 40, focusM: 3000 },   // enabled：通常のプレイで層の方針を使う／activateAbove：個人の総数がこれを超えたときだけ働く／focusM：プレイヤー・カメラからこの距離（m）以内の集団は、個人にする
+  // 集落の階層：定住の段階（minSettle：0野営 1半定住 2村）と人口（minPop）の下限。町以上は、今は人口だけ（M4 で水・衛生・統治・市場などの条件を足す）
+  tiers: [
+    { id: 'camp', label: '野営', minSettle: 0, minPop: 0 },
+    { id: 'semi', label: '半定住', minSettle: 1, minPop: 0 },
+    { id: 'village', label: '村', minSettle: 2, minPop: 0 },
+    { id: 'town', label: '町', minSettle: 2, minPop: 1000 },
+    { id: 'city', label: '都市', minSettle: 2, minPop: 10000 },
+    { id: 'metropolis', label: '大都市', minSettle: 2, minPop: 50000 },
+  ],
+  // 台帳（食料を整数の刻みで記録）：enabled＝影の台帳を動かす（食料の本体は、まだ従来のモデル）
+  ledger: { enabled: true },
   // 規模の目標（目安。表示・検証用。ゲームの上限ではない）：世界全体と、最大の都市の人口
   targets: { worldPopulation: [100000, 300000], cityPopulation: [30000, 100000] },
   // 外との交易（地図の外の世界）：1か月に外から入る食料の量（0＝なし）。M2（輸送と外との交易）で使う。今は未使用
@@ -30,6 +41,7 @@ function validate(c) {
   for (const n of [1, 2, 3]) { const s = (c.stages || {})[n]; if (!s) { errs.push('stages.' + n + ' がない'); continue; } num('stages.' + n + '.sizeM', s.sizeM, 5000, 100000); num('stages.' + n + '.villages', s.villages, 1, 200); num('stages.' + n + '.popMin', s.popMin, 5, 100000); num('stages.' + n + '.popMax', s.popMax, s.popMin, 1e6); num('stages.' + n + '.minDm', s.minDm, 200, 50000); num('stages.' + n + '.maxDm', s.maxDm, s.minDm, 100000); }
   const p = c.population || {}; num('population.initSiteMin', p.initSiteMin, 0.05, 1); num('population.initSiteSlope', p.initSiteSlope, 0, 2); num('population.splitPop', p.splitPop, 20, 1e6); num('population.splitPopSettled', p.splitPopSettled, p.splitPop, 1e6); num('population.splitFedMin', p.splitFedMin, 0, 1);
   const l = c.layers || {}; num('layers.cap', l.cap, 10, 1e5); num('layers.nearCap', l.nearCap, l.cap, 1e6); num('layers.demoteRate', l.demoteRate, 0.01, 1); num('layers.promotePerMonth', l.promotePerMonth, 1, 1e5); num('layers.nearDist', l.nearDist, 1, 3000); num('layers.activateAbove', l.activateAbove, 0, 1e7); num('layers.focusM', l.focusM, 100, 100000);
+  const tr = c.tiers; if (!Array.isArray(tr) || tr.length < 3) errs.push('tiers は3つ以上の配列'); else tr.forEach((x, i) => { if (!x.id || !x.label || !(x.minSettle >= 0) || !(x.minPop >= 0)) errs.push('tiers.' + i + ' の形が違う'); if (i && (x.minSettle < tr[i - 1].minSettle || (x.minSettle === tr[i - 1].minSettle && x.minPop < tr[i - 1].minPop))) errs.push('tiers は、段階・人口が下から上へ並ぶ（' + i + '番目）'); });
   const t = c.targets || {}; if (!Array.isArray(t.worldPopulation) || !Array.isArray(t.cityPopulation)) errs.push('targets の形が違う');
   num('trade.externalFoodPerMonth', (c.trade || {}).externalFoodPerMonth, 0, 1e12);
   return errs;

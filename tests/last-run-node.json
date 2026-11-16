@@ -1,14 +1,14 @@
 {
- "at": "2026-11-16T00:22:01.286Z",
+ "at": "2026-11-16T05:59:47.982Z",
  "html": "World-of-History-v30-development.html",
- "pass": 9,
- "fail": 0,
+ "pass": 4,
+ "fail": 1,
  "results": [
   {
    "kind": "node",
-   "name": "test-cohort",
+   "name": "test-activity",
    "ok": true,
-   "sec": 1.1,
+   "sec": 275.9,
    "detail": ""
   },
   {
@@ -20,51 +20,23 @@
   },
   {
    "kind": "node",
-   "name": "test-ethno",
-   "ok": true,
-   "sec": 38,
-   "detail": ""
-  },
-  {
-   "kind": "node",
-   "name": "test-growth",
-   "ok": true,
-   "sec": 20.2,
-   "detail": ""
+   "name": "test-culture",
+   "ok": false,
+   "sec": 24.6,
+   "detail": "exit 1"
   },
   {
    "kind": "node",
    "name": "test-layers",
    "ok": true,
-   "sec": 10.8,
+   "sec": 10.1,
    "detail": ""
   },
   {
    "kind": "node",
-   "name": "test-people",
+   "name": "test-ledger",
    "ok": true,
-   "sec": 19.7,
-   "detail": ""
-  },
-  {
-   "kind": "node",
-   "name": "test-small-world",
-   "ok": true,
-   "sec": 7.7,
-   "detail": ""
-  },
-  {
-   "kind": "node",
-   "name": "test-social",
-   "ok": true,
-   "sec": 7.4,
-   "detail": ""
-  },
-  {
-   "kind": "node",
-   "name": "test-stats",
-   "ok": true,
-   "sec": 20.4,
+   "sec": 11.5,
    "detail": ""
   }
  ]
