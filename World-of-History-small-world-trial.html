@@ -6062,7 +6062,6 @@ self.onmessage = function (e) {
   const api = { SOC_K, ACT_TRAIN, NEEDS, JOB_APPEAL, Population, STAT_NAMES, PERSONALITY, COGNITIVE, PHYSICAL, NSTAT, NP, NABIL, NJOB, NSKILL, JOBS, SI, ageFactor, growthExpected, mix, bell, YEAR, MONTH };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohNpc = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
-
 </script>
 <script id="arch-gen">
 'use strict';
@@ -8541,7 +8540,8 @@ class Ledger {
   snap(kg) { let r = 0; for (const a of ACCTS) { const actual = Ledger.kgToTicks(kg[a] || 0); r += Math.abs(actual - this.bal[a]); this.residNet += actual - this.bal[a]; this.bal[a] = actual; } this.resid = r; if (r > this.maxResid) this.maxResid = r; this.months++; return r; }
   total() { return this.bal.dur + this.bal.fresh + this.bal.dried; }
   pack() { return { b: [this.bal.dur, this.bal.fresh, this.bal.dried], c: Object.assign({}, this.carry), t: FLOWS.map(k => this.tot[k]), m: this.months, x: this.maxResid, o: this.opened ? 1 : 0, n: this.residNet, z: this.open0 }; }
-  static unpack(o) { const l = new Ledger(); if (!o) return l; l.bal = { dur: o.b[0], fresh: o.b[1], dried: o.b[2] }; l.carry = Object.assign({}, o.c); FLOWS.forEach((k, i) => { l.tot[k] = o.t[i] || 0; }); l.months = o.m || 0; l.maxResid = o.x || 0; l.opened = !!o.o; l.residNet = o.n || 0; l.open0 = o.z || 0; return l; }
+  static unpack(o) { if (o instanceof Ledger) return o; const l = new Ledger(); if (!o) return l;
+    if (o.bal) { l.bal = { dur: o.bal.dur, fresh: o.bal.fresh, dried: o.bal.dried }; l.carry = Object.assign({}, o.carry); for (const k of FLOWS) l.tot[k] = (o.tot && o.tot[k]) || 0; l.months = o.months || 0; l.maxResid = o.maxResid || 0; l.opened = !!o.opened; l.residNet = o.residNet || 0; l.open0 = o.open0 || 0; return l; } /* structuredClone で、インスタンスが普通の物になった場合（読み込みの検証が保存データを複製する） */ l.bal = { dur: o.b[0], fresh: o.b[1], dried: o.b[2] }; l.carry = Object.assign({}, o.c); FLOWS.forEach((k, i) => { l.tot[k] = o.t[i] || 0; }); l.months = o.m || 0; l.maxResid = o.x || 0; l.opened = !!o.o; l.residNet = o.n || 0; l.open0 = o.z || 0; return l; }
 }
 const api = { Ledger, KCAL_PER_TICK, TICKS_PER_KG, ACCTS, FLOWS };
 if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohLedger = api;
@@ -8600,7 +8600,8 @@ class Cohort {
   scale(k) { for (let i = 0; i < AM; i++) { this.f[i] *= k; this.m[i] *= k; } }
   // 保存：0でない区分だけ（区分の番号、人数を小数2桁に丸める）
   pack() { const f = [], m = []; for (let k = 0; k < AM; k++) { if (this.f[k] > 0.005) f.push(k, +this.f[k].toFixed(2)); if (this.m[k] > 0.005) m.push(k, +this.m[k].toFixed(2)); } return { f, m }; }
-  static unpack(o) { const c = new Cohort(); if (o) { for (let i = 0; i + 1 < o.f.length; i += 2) c.f[o.f[i]] = o.f[i + 1]; for (let i = 0; i + 1 < o.m.length; i += 2) c.m[o.m[i]] = o.m[i + 1]; } return c; }
+  static unpack(o) { if (o instanceof Cohort) return o; const c = new Cohort(); if (o && o.f && o.f.length === AM && !Array.isArray(o.f)) { c.f.set(o.f); c.m.set(o.m); return c; } /* structuredClone で、インスタンスが普通の物になった場合 */
+    if (o) { for (let i = 0; i + 1 < o.f.length; i += 2) c.f[o.f[i]] = o.f[i + 1]; for (let i = 0; i + 1 < o.m.length; i += 2) c.m[o.m[i]] = o.m[i + 1]; } return c; }
   // 個人へ展開するための年齢の見本（人数 n、乱数 rnd。性別・年齢（歳）の一覧）。集計の分布に従う
   sampleAges(n, rnd) { const out = [], tot = this.total(); if (tot <= 0) return out; const cum = new Float64Array(2 * AM); let s = 0; for (let k = 0; k < AM; k++) { s += this.f[k]; cum[k] = s; } for (let k = 0; k < AM; k++) { s += this.m[k]; cum[AM + k] = s; }
     for (let i = 0; i < n; i++) { const u = rnd() * tot; let lo = 0, hi = 2 * AM - 1; while (lo < hi) { const mid = (lo + hi) >> 1; if (cum[mid] < u) lo = mid + 1; else hi = mid; } const sex = lo >= AM ? 1 : 0, k = lo % AM; out.push({ sex, age: (k + rnd()) / 12 }); } return out; }

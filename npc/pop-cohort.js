@@ -36,7 +36,8 @@ class Cohort {
   scale(k) { for (let i = 0; i < AM; i++) { this.f[i] *= k; this.m[i] *= k; } }
   // 保存：0でない区分だけ（区分の番号、人数を小数2桁に丸める）
   pack() { const f = [], m = []; for (let k = 0; k < AM; k++) { if (this.f[k] > 0.005) f.push(k, +this.f[k].toFixed(2)); if (this.m[k] > 0.005) m.push(k, +this.m[k].toFixed(2)); } return { f, m }; }
-  static unpack(o) { const c = new Cohort(); if (o) { for (let i = 0; i + 1 < o.f.length; i += 2) c.f[o.f[i]] = o.f[i + 1]; for (let i = 0; i + 1 < o.m.length; i += 2) c.m[o.m[i]] = o.m[i + 1]; } return c; }
+  static unpack(o) { if (o instanceof Cohort) return o; const c = new Cohort(); if (o && o.f && o.f.length === AM && !Array.isArray(o.f)) { c.f.set(o.f); c.m.set(o.m); return c; } /* structuredClone で、インスタンスが普通の物になった場合 */
+    if (o) { for (let i = 0; i + 1 < o.f.length; i += 2) c.f[o.f[i]] = o.f[i + 1]; for (let i = 0; i + 1 < o.m.length; i += 2) c.m[o.m[i]] = o.m[i + 1]; } return c; }
   // 個人へ展開するための年齢の見本（人数 n、乱数 rnd。性別・年齢（歳）の一覧）。集計の分布に従う
   sampleAges(n, rnd) { const out = [], tot = this.total(); if (tot <= 0) return out; const cum = new Float64Array(2 * AM); let s = 0; for (let k = 0; k < AM; k++) { s += this.f[k]; cum[k] = s; } for (let k = 0; k < AM; k++) { s += this.m[k]; cum[AM + k] = s; }
     for (let i = 0; i < n; i++) { const u = rnd() * tot; let lo = 0, hi = 2 * AM - 1; while (lo < hi) { const mid = (lo + hi) >> 1; if (cum[mid] < u) lo = mid + 1; else hi = mid; } const sex = lo >= AM ? 1 : 0, k = lo % AM; out.push({ sex, age: (k + rnd()) / 12 }); } return out; }

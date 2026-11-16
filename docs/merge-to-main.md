@@ -3,6 +3,7 @@
 現状：作業は専用ブランチ `claude/small-world-v1` で行い、main は変更していない。公開（push）・マージは、約束により監督の承認が要る。
 
 ## 取り込む前の確認
+0. 埋め込みは `node tools/embed-modules.js`（構文を検査してからHTMLに入れる）。テスト実行中は、ファイルを編集しない。
 1. `node tests/run-all.js`（node・ブラウザ）が全て合格し、結果が `tests/last-run-*.json` に記録されている。
 2. 実機の診断結果（`docs/device-diagnosis.md`）が取れている（少なくとも S1・S3）。
 3. 通常のプレイ（`?autostart`）の確認テストが、現在のHTMLで合格している。

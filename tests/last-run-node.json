@@ -1,42 +1,28 @@
 {
- "at": "2026-11-16T05:59:47.982Z",
+ "at": "2026-11-16T07:00:50.486Z",
  "html": "World-of-History-v30-development.html",
- "pass": 4,
- "fail": 1,
+ "pass": 3,
+ "fail": 0,
  "results": [
-  {
-   "kind": "node",
-   "name": "test-activity",
-   "ok": true,
-   "sec": 275.9,
-   "detail": ""
-  },
   {
    "kind": "node",
    "name": "test-config",
    "ok": true,
-   "sec": 1.8,
+   "sec": 1.9,
    "detail": ""
-  },
-  {
-   "kind": "node",
-   "name": "test-culture",
-   "ok": false,
-   "sec": 24.6,
-   "detail": "exit 1"
   },
   {
    "kind": "node",
    "name": "test-layers",
    "ok": true,
-   "sec": 10.1,
+   "sec": 10.6,
    "detail": ""
   },
   {
    "kind": "node",
    "name": "test-ledger",
    "ok": true,
-   "sec": 11.5,
+   "sec": 13.2,
    "detail": ""
   }
  ]

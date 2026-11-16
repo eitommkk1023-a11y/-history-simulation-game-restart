@@ -22,7 +22,8 @@ class Ledger {
   snap(kg) { let r = 0; for (const a of ACCTS) { const actual = Ledger.kgToTicks(kg[a] || 0); r += Math.abs(actual - this.bal[a]); this.residNet += actual - this.bal[a]; this.bal[a] = actual; } this.resid = r; if (r > this.maxResid) this.maxResid = r; this.months++; return r; }
   total() { return this.bal.dur + this.bal.fresh + this.bal.dried; }
   pack() { return { b: [this.bal.dur, this.bal.fresh, this.bal.dried], c: Object.assign({}, this.carry), t: FLOWS.map(k => this.tot[k]), m: this.months, x: this.maxResid, o: this.opened ? 1 : 0, n: this.residNet, z: this.open0 }; }
-  static unpack(o) { const l = new Ledger(); if (!o) return l; l.bal = { dur: o.b[0], fresh: o.b[1], dried: o.b[2] }; l.carry = Object.assign({}, o.c); FLOWS.forEach((k, i) => { l.tot[k] = o.t[i] || 0; }); l.months = o.m || 0; l.maxResid = o.x || 0; l.opened = !!o.o; l.residNet = o.n || 0; l.open0 = o.z || 0; return l; }
+  static unpack(o) { if (o instanceof Ledger) return o; const l = new Ledger(); if (!o) return l;
+    if (o.bal) { l.bal = { dur: o.bal.dur, fresh: o.bal.fresh, dried: o.bal.dried }; l.carry = Object.assign({}, o.carry); for (const k of FLOWS) l.tot[k] = (o.tot && o.tot[k]) || 0; l.months = o.months || 0; l.maxResid = o.maxResid || 0; l.opened = !!o.opened; l.residNet = o.residNet || 0; l.open0 = o.open0 || 0; return l; } /* structuredClone で、インスタンスが普通の物になった場合（読み込みの検証が保存データを複製する） */ l.bal = { dur: o.b[0], fresh: o.b[1], dried: o.b[2] }; l.carry = Object.assign({}, o.c); FLOWS.forEach((k, i) => { l.tot[k] = o.t[i] || 0; }); l.months = o.m || 0; l.maxResid = o.x || 0; l.opened = !!o.o; l.residNet = o.n || 0; l.open0 = o.z || 0; return l; }
 }
 const api = { Ledger, KCAL_PER_TICK, TICKS_PER_KG, ACCTS, FLOWS };
 if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohLedger = api;
