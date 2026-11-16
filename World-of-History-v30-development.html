@@ -17645,7 +17645,7 @@ function npcCardUpdate(pe,V){
 function npcScan(pe,V){
   npcCamps.clear();
   for(const g of pe.groups){if(!g.alive)continue;const cc2=globalThis.WohPeople.peCampCenter(g),q=state.terrain.gridToMeters(cc2.x,cc2.y);if(Math.hypot(q.xM-markerPoint.xM,q.yM-markerPoint.yM)<npcGroupRange)npcCamps.set(g.id,q);}
-  npcCands=npcCamps.size?V.viewCandidates(pe,new Set(npcCamps.keys()),600):[];
+  npcCands=(npcCamps.size&&npcRangeNow>0)?V.viewCandidates(pe,new Set(npcCamps.keys()),600):[];
   if(window.__geo?.military){const ids=__geo.military.physicalPersons();npcCands=[...new Set([...npcCands,...ids])];}
   dwScan(pe,V);
   npcCardUpdate(pe,V);
@@ -18137,7 +18137,7 @@ function godTick(dt){
   // 村人の見え方：高いほど、大きく・広く・多く
   npcGodScale=Math.max(1,Math.min(14,c.h/18))*c.scaleMul;npcRangeNow=Math.min(1100,c.h*1.7+160);npcLimit=NPC_MAX;npcGroupRange=Math.min(1800,npcRangeNow*1.5+400);
   // 村人のLOD：高く引くほど人数を減らし、NPC_HIDE_H 以上では村人を描かない（探す・計算もしない）。軍の移動などの表示は、近づいたときに出る
-  { const H0=globalThis.__wohNpcHide||[300,450]; if(c.h>=H0[1]){npcLimit=0;npcRangeNow=0;npcGroupRange=0;}else if(c.h>H0[0]){npcLimit=Math.max(8,Math.round(NPC_MAX*(H0[1]-c.h)/(H0[1]-H0[0])));} }
+  { const H0=globalThis.__wohNpcHide||[300,450]; if(c.h>=H0[1]){npcLimit=0;npcRangeNow=0;/* 建物の描画は集落の範囲（npcGroupRange）を使うので、そちらは変えない */}else if(c.h>H0[0]){npcLimit=Math.max(8,Math.round(NPC_MAX*(H0[1]-c.h)/(H0[1]-H0[0])));} }
   godLabels(now);
   if(godBoundary&&state&&godBoundaryKey!==state.origin.xM+','+state.origin.yM)godBoundaryUpdate(true);   // 読み込みの中心が動いて原点が変わったら、線も作り直す
   if(ch)updateCamera();return ch;
