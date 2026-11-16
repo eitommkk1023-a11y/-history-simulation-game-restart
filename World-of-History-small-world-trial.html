@@ -8542,7 +8542,7 @@ function digest(st) {
     }
     if (ArrayBuffer.isView(v)) { mix(5); mix(v.length); const u = new Uint8Array(v.buffer, v.byteOffset, v.byteLength); if ((u.byteLength & 3) === 0 && (u.byteOffset & 3) === 0) { const w = new Uint32Array(u.buffer, u.byteOffset, u.byteLength >> 2); for (let i = 0; i < w.length; i++) mix(w[i]); } else for (let i = 0; i < u.length; i++) mix(u[i]); return; }
     if (Array.isArray(v)) { mix(6); mix(v.length); for (const x of v) walk(x, depth + 1); return; }
-    if (depth > 40) return; mix(7); const keys = Object.keys(v).filter(k => !(depth === 0 && (k === 'digest' || k === 'legacy')) && v[k] !== undefined && typeof v[k] !== 'function').sort(); mix(keys.length); for (const k of keys) { str(k); walk(v[k], depth + 1); }
+    if (depth > 40) return; mix(7); const keys = Object.keys(v).filter(k => !(depth === 0 && (k === 'digest' || k === 'legacy' || k === 'slot' || k === 'zpack')) && v[k] !== undefined && typeof v[k] !== 'function').sort(); mix(keys.length); for (const k of keys) { str(k); walk(v[k], depth + 1); }
   };
   walk(st, 0); return h.toString(16).padStart(8, '0');
 }

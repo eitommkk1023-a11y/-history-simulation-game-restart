@@ -11,6 +11,10 @@ const { chromium } = require('playwright');
   t('圧縮して戻しても、検査値が合う（NaN などで壊れない）', info.rawOk && info.zOk); t('検査値の計算が軽い（100ms未満）', info.ms < 100, info.ms + 'ms');
   const ex = await p.evaluate(() => { const st = __wohZ.serialize(), text = JSON.stringify(__geo.packTyped(st)), back = __geo.unpackTyped(JSON.parse(text)), v = WohSave.verify(back); return { ok: v.ok && v.checked, kb: Math.round(text.length / 1024) }; });
   t('ファイルへの書き出し→読み込み（packTyped/unpackTyped）でも、検査値が合う', ex.ok, ex.kb + 'KB');
+  // 実際の保存→読み込みの経路（IndexedDB：slot が付く。圧縮される）：保存した記録が、検査を通る
+  const dbOk = await p.evaluate(async () => { const st = __wohZ.serialize(); st.slot = 'slot3'; const z = await __wohZ.pack(st); await new Promise((res, rej) => { const rq = indexedDB.open('geo-world-saves'); rq.onsuccess = () => { const tx = rq.result.transaction('saves', 'readwrite'); tx.objectStore('saves').put(z, 'slot3'); tx.oncomplete = res; tx.onerror = rej; }; rq.onerror = rej; });
+    const rec = await new Promise(res => { const rq = indexedDB.open('geo-world-saves'); rq.onsuccess = () => { const g = rq.result.transaction('saves').objectStore('saves').get('slot3'); g.onsuccess = () => res(g.result); }; }); const u = await __wohZ.unpack(rec), v = WohSave.verify(u); return v.ok && v.checked && u.slot === 'slot3'; });
+  t('IndexedDB に保存した記録（slot つき・圧縮）が、検査を通る', dbOk);
   const state = () => p.evaluate(() => ({ day: __geo.people.npc.day, living: WohPeople.peopleLayerSummary(__geo.people).total, msg: (document.getElementById('menuMsg') || {}).textContent || '' }));
   const s0 = await state();
   const refuse = async (mut, re, label) => { const r = await p.evaluate(async (m) => { const st = __wohZ.serialize(), z = await __wohZ.pack(st), u = await __wohZ.unpack(z); (new Function('u', m))(u); const out = __geo.loadState(u); await new Promise(r => setTimeout(r, 1200)); return { ret: out === false, msg: (document.getElementById('menuMsg') || {}).textContent || '', loading: document.getElementById('loading').classList.contains('show') }; }, mut); const s1 = await state(); t(label, r.ret && re.test(r.msg) && !r.loading && s1.day === s0.day && s1.living === s0.living, r.msg); };

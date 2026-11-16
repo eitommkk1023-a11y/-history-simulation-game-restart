@@ -16,7 +16,7 @@ t('移行の途中で例外が出ても、安全に断る', (() => { const save 
   const c = sample(); c.fauna.species.deer.pops[0].cells[1] = 9; t('配列の1要素が変わると、検査値が変わる', S.digest(c) !== d1);
   const e = sample(); e.names.a = 'い'; t('文字が変わると、検査値が変わる', S.digest(e) !== d1);
   const k = sample(); const k2 = { names: k.names, fauna: k.fauna, people: k.people, clock: k.clock, savedAt: k.savedAt, seed: k.seed, format: k.format }; t('項目の並び順が違っても、同じ検査値', S.digest(k2) === d1);
-  const f = sample(); f.digest = 'x'; f.legacy = true; t('digest・legacy の項目は、検査値に入らない', S.digest(f) === d1); }
+  const f = sample(); f.digest = 'x'; f.legacy = true; f.slot = 'slot1'; f.zpack = 1; t('digest・legacy・slot（保存先）・zpack の項目は、検査値に入らない（保存の直前に slot が付くため）', S.digest(f) === d1); }
 { const a = sample(); a.digest = S.digest(a); t('検査値が合えば合格', S.verify(a).ok && S.verify(a).checked); a.clock.day = 5; t('内容が変わると「壊れている」', !S.verify(a).ok && /壊れている/.test(S.verify(a).error)); t('検査値がない古い保存は、検査しない（読み込める）', S.verify(sample()).ok && !S.verify(sample()).checked); }
 // 形の検査
 t('正しい形は、エラーなし', S.validate(sample()).length === 0);
