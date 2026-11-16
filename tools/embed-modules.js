@@ -3,7 +3,7 @@
 // 1つでも構文エラーがあれば、HTML は書き換えない。（行の途中の // コメントが、同じ行の後ろを消してしまう事故を、埋め込む前に見つけるため）
 const fs = require('fs'), path = require('path'), { spawnSync } = require('child_process');
 const ROOT = path.resolve(__dirname, '..'), HTML = path.resolve(process.argv[2] || path.join(ROOT, 'World-of-History-v30-development.html'));
-const MODS = { 'game-config': 'game-config.js', 'small-world': 'small-world.js', 'ledger': 'ledger.js', 'settlement-tier': 'settlement-tier.js', 'pop-cohort': 'pop-cohort.js', 'people-core': 'people-core.js', 'settle-layout': 'settle-layout.js', 'npc-core': 'npc-core.js', 'arch-gen': 'arch-gen.js', 'nation': 'nation.js', 'tech': 'tech.js' };
+const MODS = { 'game-config': 'game-config.js', 'small-world': 'small-world.js', 'ledger': 'ledger.js', 'settlement-tier': 'settlement-tier.js', 'pop-cohort': 'pop-cohort.js', 'people-core': 'people-core.js', 'settle-layout': 'settle-layout.js', 'npc-core': 'npc-core.js', 'arch-gen': 'arch-gen.js', 'nation': 'nation.js', 'tech': 'tech.js', 'save-schema': 'save-schema.js' };
 let html = fs.readFileSync(HTML, 'utf8'), changed = [], bad = [];
 for (const [id, f] of Object.entries(MODS)) {
   const file = path.join(ROOT, 'npc', f); if (!fs.existsSync(file)) continue;
