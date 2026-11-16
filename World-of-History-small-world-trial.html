@@ -13045,7 +13045,7 @@ document.getElementById('deathOk')?.addEventListener('click', () => document.get
     bar.innerHTML = '<div class="gb-top"><b id="godTitle">神モード</b><button id="godExit">出る</button></div><div class="gb-pop" id="godPop"></div><details open class="gb-sec"><summary>村へジャンプ</summary><div id="godJump" class="gb-jump"></div></details><details class="gb-sec"><summary>川の源流（理由つき）</summary><div id="godSrc" class="gb-jump"></div><div id="godSrcInfo" class="gb-pop"></div></details><div class="gb-time">' + [['pause', '⏸ 止める'], ['real', '標準'], ['d10', '日×10'], ['m1', '月/秒'], ['ymax', '最大速度']].map(([k, n]) => '<button data-gt="' + k + '">' + n + '</button>').join('') + '</div><div class="gb-pop" id="godRate"></div><div id="godFastMsg"></div>' +
       '<div class="gb-sec"><b style="font-size:12px">年数を指定して進める</b><div class="gb-adv">' + [['1', '1か月'], ['3', '3か月'], ['6', '半年'], ['12', '1年'], ['60', '5年'], ['120', '10年'], ['360', '30年'], ['1200', '100年']].map(([m, n]) => '<button data-am="' + m + '">' + n + '</button>').join('') + '</div><div class="gb-adv"><input id="godYears" type="number" min="1" max="12000" value="20" inputmode="numeric"><select id="godUnit"><option value="12">年</option><option value="1">か月</option></select><button id="godAdvGo">進める</button></div><div class="gb-pop">進行画面を出して、毎月の計算を省かずに進めます（待ち時間は端末しだい。途中で中止できます）。</div></div>' +
       '<details open class="gb-sec"><summary>人口の推移</summary><div class="gb-opts"><select id="godScope"><option value="world">世界全体</option><option value="region">地域</option><option value="group">選んだ集落</option></select><select id="godSpan"><option value="0">全期間</option><option value="18000">50年</option><option value="3600">10年</option></select><select id="godMetric"><option value="pop">人口</option><option value="bd">出生・死亡（年）</option><option value="vil">村の数</option><option value="fed">食料の充足（%）</option><option value="food">食料の蓄え</option></select></div><canvas id="godChart" width="480" height="200" style="width:100%;height:auto;background:#0b141e;border-radius:6px"></canvas><div class="gb-pop" id="godChartTxt"></div></details>' +
-      '<details class="gb-sec"><summary>最近の出来事</summary><div id="godEv" class="gb-pop"></div></details><details class="gb-sec"><summary>性能モニター</summary><div id="godPerf" class="gb-pop"></div><div class="gb-adv"><button id="godSaveMeasure">保存容量を測る</button><button id="godBench">実機の性能診断（約25秒）</button></div><div id="godSaveOut" class="gb-pop"></div><textarea id="godBenchOut" readonly rows="9" style="display:none;width:100%;font-size:11px;background:#0b1520;color:#cfe;border:1px solid #345;border-radius:6px"></textarea></details><details class="gb-sec"><summary>ランキング</summary><div class="gb-opts"><select id="godRankKind"><option value="pop">人口の多い順</option><option value="up">増えた順（50年）</option><option value="down">減った順（50年）</option><option value="dev">発展した集落（50年）</option></select></div><div id="godRank"></div></details>' +
+      '<details class="gb-sec"><summary>最近の出来事</summary><div id="godEv" class="gb-pop"></div></details><details class="gb-sec"><summary>性能モニター</summary><div id="godPerf" class="gb-pop"></div><div class="gb-adv"><button id="godSaveMeasure">保存容量を測る</button><button id="godBench">実機の性能診断（約25秒）</button><button id="godStress">大きな集落の描画テスト（約50秒）</button></div><div id="godSaveOut" class="gb-pop"></div><textarea id="godBenchOut" readonly rows="9" style="display:none;width:100%;font-size:11px;background:#0b1520;color:#cfe;border:1px solid #345;border-radius:6px"></textarea></details><details class="gb-sec"><summary>ランキング</summary><div class="gb-opts"><select id="godRankKind"><option value="pop">人口の多い順</option><option value="up">増えた順（50年）</option><option value="down">減った順（50年）</option><option value="dev">発展した集落（50年）</option></select></div><div id="godRank"></div></details>' +
       '<div id="godInfo"></div><details class="gb-sec"><summary>表示・操作</summary><div class="gb-opts"><label><input type="checkbox" id="godLbl" checked> 村の名前</label><label>村人の大きさ <select id="godSz"><option value="0.5">小</option><option value="1" selected>標準</option><option value="2">大</option></select></label></div><div class="gb-pop">ドラッグ：移動／2本指：拡大・回転／村の名前：そこへ飛ぶ／村人をタップ：詳細／キー：WASD・QE・RF</div></details>';
     document.body.appendChild(bar);
     bar.querySelector('#godExit').onclick = exit;
@@ -13055,6 +13055,7 @@ document.getElementById('deathOk')?.addEventListener('click', () => document.get
     bar.querySelector('#godJump').addEventListener('click', e => { const b = e.target.closest('[data-jg]'); if (!b) return; const gid = +b.dataset.jg; window.__wohGodView.flyTo(gid); sel = gid; info({ gid }); drawChart(); });
     bar.querySelector('#godSaveMeasure').onclick = measureSave;
     bar.querySelector('#godBench').onclick = runBench;
+    bar.querySelector('#godStress').onclick = runStress;
     bar.querySelector('.gb-time').addEventListener('click', e => { const b = e.target.closest('[data-gt]'); if (!b) return; setTime(b.dataset.gt); });
     for (const id of ['godScope', 'godSpan', 'godMetric', 'godRankKind']) bar.querySelector('#' + id).onchange = () => { drawChart(); rank(); };
     bar.querySelector('#godRank').addEventListener('click', e => { const b = e.target.closest('[data-rk]'); if (!b) return; const gid = +b.dataset.rk; window.__wohGodView.flyTo(gid); sel = gid; info({ gid }); drawChart(); });
@@ -13160,6 +13161,26 @@ document.getElementById('deathOk')?.addEventListener('click', () => document.get
       try { out.select(); if (navigator.clipboard) await navigator.clipboard.writeText(out.value); } catch (e) { }
     } catch (e) { log('診断でエラー：' + e); }
     finally { try { if (gv0) window.__wohGodView.setView({ h: gv0.h, pitch: gv0.pitch, xM: gv0.xM, yM: gv0.yM }); } catch (e) { } btn.disabled = false; benchBusy = false; }
+  }
+  // 大きな集落の描画テスト：近くの集落の建物を 500／2000／5000棟に増やして（複製）、近い視点・引いた視点で、FPS・三角形・描画の呼び出しを測る。終わると元に戻る
+  let stressBusy = false;
+  async function runStress() {
+    if (stressBusy) return; stressBusy = true; const out = bar.querySelector('#godBenchOut'), btn = bar.querySelector('#godStress'); out.style.display = 'block'; const lines = []; const log = (s) => { lines.push(s); out.value = lines.join('\n'); out.scrollTop = out.scrollHeight; };
+    const gv0 = window.__wohGodView.state, sleep = (ms) => new Promise(r => setTimeout(r, ms)); btn.disabled = true; const F = globalThis.__wohFrameStats;
+    try {
+      log('大きな集落の描画テスト ' + new Date().toLocaleString('ja-JP')); log('端末 ' + (navigator.userAgent.match(/\(([^)]+)\)/) || [, ''])[1].slice(0, 70) + '／画面 ' + screen.width + '×' + screen.height + '×' + (window.devicePixelRatio || 1));
+      // 配置のある、いちばん人口の多い集落へ飛ぶ
+      const gs = people.groups.filter(g => g.alive && g.layout && g.layout.items && g.layout.items.length).sort((a, b) => b.pop - a.pop); const g = gs[0] || people.groups.filter(g => g.alive).sort((a, b) => b.pop - a.pop)[0]; if (!g) throw new Error('集落がありません');
+      window.__wohGodView.flyTo(g.id, 150); await sleep(4500);
+      for (const n of [0, 500, 2000, 5000]) {
+        if (n) { const r = globalThis.__wohStress.make(n); if (!r.ok) { log('× ' + r.why); break; } } else globalThis.__wohStress.clear();
+        for (const [name, hh] of [['近い(150m)', 150], ['引いた(450m)', 450]]) { window.__wohGodView.setView({ h: hh, pitch: 0.9 }); await sleep(2500); const a = { fr: F.frames, dr: F.draws, t: performance.now() }; await sleep(3500); const b = { fr: F.frames, dr: F.draws, t: performance.now() }, sec = (b.t - a.t) / 1000, st = globalThis.__wohStress.stats;
+          log((n ? '建物 ' + n + '棟' : '今の建物') + '・' + name + '：描画 ' + ((b.dr - a.dr) / sec).toFixed(1) + ' FPS／三角形 ' + (F.tri != null ? Math.round(F.tri / 1000) + 'k' : '?') + '／呼び出し ' + (F.calls ?? '?') + '／描いた建物 ' + (st.items ?? '?') + (F.pixelRatio ? '／解像度 ' + F.pixelRatio : '')); }
+      }
+      log('描画テストおわり。この文章をそのまま貼り付けてください');
+      try { out.select(); if (navigator.clipboard) await navigator.clipboard.writeText(out.value); } catch (e) { }
+    } catch (e) { log('テストでエラー：' + e); }
+    finally { try { globalThis.__wohStress.clear(); if (gv0) window.__wohGodView.setView({ h: gv0.h, pitch: gv0.pitch, xM: gv0.xM, yM: gv0.yM }); } catch (e) { } btn.disabled = false; stressBusy = false; }
   }
   function measureSave() {
     const out = bar.querySelector('#godSaveOut'); out.textContent = '測っています…'; setTimeout(async () => {
@@ -15147,6 +15168,7 @@ function dbDo(mode, fn) {
   }));
 }
 function serializeState() {
+  if (globalThis.__wohStress) globalThis.__wohStress.clear();   // 負荷テスト中の配置は保存しない
   const st = {
     format: SAVE_FORMAT, genVersion: world.rocks ? 12 : SAVE_GEN_VERSION, rockGenerationVersion: world.rocks?.version || null, seed: currentSeed, savedAt: Date.now(),
     clock: { day: clock.day, mode: clock.mode, speed: clock.speed, acc:clock.acc, pending:clock.pending, playing:clock.playing },
@@ -17780,6 +17802,7 @@ function dwPaths(L,cx,cz,cElevLocal,terr){
 // 集団ごとの配置を用意する：近づいたとき一度作る。世帯が変わったら更新する。表示の中心（定住なら拠点、野営地は今の場所）が変わる・段階が変わったら作り直す
 let dwLayoutBudget=1,dwMonthBudget=1,dwAdvAt=0;
 function dwEnsure(pe,g,c){
+  if(g.layout&&g.layout.stress){const r0=dwSpecs.get(g.id);if(r0)return {layout:g.layout,cE:r0.cE};}   // 負荷テスト中の配置は、更新・作り直しをしない
   const Pm=globalThis.WohPeople,S=globalThis.WohSettle,A=globalThis.WohArch,cb=Pm.peCampCenter(g),level=g.settle||0;
   if(g.layout&&(!g.layout.at||g.layout.at.level!==level||g.layout.at.x!==cb.x||g.layout.at.y!==cb.y)){g.layout=null;dwSpecs.delete(g.id);dwIdx.delete(g.id);dwSig.delete(g.id);for(const it of dwFine.keys())if(Math.floor(it/100003)===g.id)dwFine.delete(it);}
   const cElev=groundAt(c.xM,c.yM),cE=cElev?cElev.elevationM:state.terrain.sampleBase(c.xM,c.yM).baseElevationM;
@@ -17797,6 +17820,20 @@ function dwEnsure(pe,g,c){
   if(!dwIdx.has(g.id)){const m=new Map();for(const it of g.layout.items)m.set(it.id,it);dwIdx.set(g.id,m);} else if(dwIdx.get(g.id).size!==g.layout.items.length){const m=new Map();for(const it of g.layout.items)m.set(it.id,it);dwIdx.set(g.id,m);}
   return rec?{layout:g.layout,cE:rec.cE}:null;
 }
+// 開発用の負荷テスト：いちばん近い（配置のある）集落の建物を、複製して n 棟に増やし、描画の重さを測る。配置は一時的に差し替え（保存しない：保存の前に解除する）。人は増やさない（描画する人数は上限がある）
+globalThis.__wohStress={
+  active:null,
+  make(n){
+    const pe=window.__geo&&window.__geo.people;if(!pe||!markerPoint)return {ok:false,why:'人々・視点がありません'};this.clear();
+    let best=null,bd=1e18;for(const g of pe.groups){if(!g.alive||!g.layout||!g.layout.items||!g.layout.items.length||g.layout.stress)continue;const q=state.terrain.gridToMeters(g.layout.at?g.layout.at.x:g.homeX,g.layout.at?g.layout.at.y:g.homeY),d=Math.hypot(q.xM-markerPoint.xM,q.yM-markerPoint.yM);if(d<bd){bd=d;best=g;}}
+    if(!best)return {ok:false,why:'近くに、配置のある集落がありません（村へ飛んでから）'};
+    const L0=best.layout,base=L0.items.filter(it=>it.state!=='removed'&&it.plan),items=[];
+    for(let k=0;k<n;k++){const it=base[k%base.length],r=Math.sqrt(k+1)*7.5,a=k*2.399963;items.push(k<base.length?it:Object.assign({},it,{id:best.id*100003+60000+k,x:Math.cos(a)*r,z:Math.sin(a)*r,state:'ok'}));}
+    best.layout=Object.assign({},L0,{items,stress:true,orig:L0});this.active={g:best,n:items.length};dwIdx.delete(best.id);return {ok:true,gid:best.id,n:items.length,real:base.length};
+  },
+  clear(){if(this.active){const g=this.active.g;if(g.layout&&g.layout.stress)g.layout=g.layout.orig;dwIdx.delete(g.id);this.active=null;return true;}return false;},
+  get stats(){return {...dwStats};}
+};
 // 世界マップの集落詳細用：既存の配置（g.layout）をそのまま使う。未生成の集落だけ、ゲームが近づいたときに作るのと同じ関数で作る（別の生成はしない）
 globalThis.__wohMapData={
   ensureLayout(gid){const pe=window.__geo&&window.__geo.people,g=pe&&pe.groups[gid-1];if(!g||!g.alive)return {ok:false,why:'集団がありません'};if(g.layout)return {ok:true,made:false};

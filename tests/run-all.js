@@ -8,7 +8,7 @@ const ROOT = path.resolve(__dirname, '..'), args = process.argv.slice(2), has = 
 const runNode = has('--node') || !has('--browser'), runBrowser = has('--browser') || !has('--node');
 // テストごとの追加の引数（世界データが要るもの：<生成器> <世界>、そのあとの引数）
 const EXTRA = { 'test-small-world': ['20', '42'], 'test-layers': ['12'], 'test-growth': ['20'] };
-const BROWSER = 'hudtest titletest devtest rocksmoke gotest avatartest proptest foragetest cooktest crafttest hometest fptest vitaltest deathtest tiestest survivaltest peopletest godtest stage uitog srcui drift layers saveschema smallfull bench'.split(' ');
+const BROWSER = 'hudtest titletest devtest rocksmoke gotest avatartest proptest foragetest cooktest crafttest hometest fptest vitaltest deathtest tiestest survivaltest peopletest godtest stage uitog srcui drift layers saveschema smallfull bench stress'.split(' ');
 const SLOW = new Set(['smallfull', 'stage', 'bench']);
 function judge(code, out) {
   const lines = out.split('\n'), bad = lines.filter(l => /^(NG|×|FAIL|不合格)/.test(l.trim()) || /^Error|TypeError|ReferenceError/.test(l.trim()));
