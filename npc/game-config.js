@@ -17,7 +17,7 @@ const DEFAULT = {
   // 人口：初期人口の調整（立地の良さの順位 q で min(1, siteMin + siteSlope×q) 倍）と、分裂の人口
   population: { initSiteMin: 0.45, initSiteSlope: 0.85, splitPop: 220, splitPopSettled: 800, splitFedMin: 0.85 },
   // 層（個人・集計）の方針（ctx.layers を与えたときの既定値）
-  layers: { cap: 300, nearCap: 2000, demoteRate: 0.25, promotePerMonth: 40, nearDist: 40 },
+  layers: { enabled: true, activateAbove: 3000, cap: 300, nearCap: 2000, demoteRate: 0.25, promotePerMonth: 40, nearDist: 40, focusM: 3000 },   // enabled：通常のプレイで層の方針を使う／activateAbove：個人の総数がこれを超えたときだけ働く／focusM：プレイヤー・カメラからこの距離（m）以内の集団は、個人にする
   // 規模の目標（目安。表示・検証用。ゲームの上限ではない）：世界全体と、最大の都市の人口
   targets: { worldPopulation: [100000, 300000], cityPopulation: [30000, 100000] },
   // 外との交易（地図の外の世界）：1か月に外から入る食料の量（0＝なし）。M2（輸送と外との交易）で使う。今は未使用
@@ -29,7 +29,7 @@ function validate(c) {
   const errs = [], num = (path, v, lo, hi) => { if (typeof v !== 'number' || !isFinite(v) || v < lo || v > hi) errs.push(path + ' は ' + lo + '〜' + hi + ' の数（今：' + v + '）'); };
   for (const n of [1, 2, 3]) { const s = (c.stages || {})[n]; if (!s) { errs.push('stages.' + n + ' がない'); continue; } num('stages.' + n + '.sizeM', s.sizeM, 5000, 100000); num('stages.' + n + '.villages', s.villages, 1, 200); num('stages.' + n + '.popMin', s.popMin, 5, 100000); num('stages.' + n + '.popMax', s.popMax, s.popMin, 1e6); num('stages.' + n + '.minDm', s.minDm, 200, 50000); num('stages.' + n + '.maxDm', s.maxDm, s.minDm, 100000); }
   const p = c.population || {}; num('population.initSiteMin', p.initSiteMin, 0.05, 1); num('population.initSiteSlope', p.initSiteSlope, 0, 2); num('population.splitPop', p.splitPop, 20, 1e6); num('population.splitPopSettled', p.splitPopSettled, p.splitPop, 1e6); num('population.splitFedMin', p.splitFedMin, 0, 1);
-  const l = c.layers || {}; num('layers.cap', l.cap, 10, 1e5); num('layers.nearCap', l.nearCap, l.cap, 1e6); num('layers.demoteRate', l.demoteRate, 0.01, 1); num('layers.promotePerMonth', l.promotePerMonth, 1, 1e5); num('layers.nearDist', l.nearDist, 1, 3000);
+  const l = c.layers || {}; num('layers.cap', l.cap, 10, 1e5); num('layers.nearCap', l.nearCap, l.cap, 1e6); num('layers.demoteRate', l.demoteRate, 0.01, 1); num('layers.promotePerMonth', l.promotePerMonth, 1, 1e5); num('layers.nearDist', l.nearDist, 1, 3000); num('layers.activateAbove', l.activateAbove, 0, 1e7); num('layers.focusM', l.focusM, 100, 100000);
   const t = c.targets || {}; if (!Array.isArray(t.worldPopulation) || !Array.isArray(t.cityPopulation)) errs.push('targets の形が違う');
   num('trade.externalFoodPerMonth', (c.trade || {}).externalFoodPerMonth, 0, 1e12);
   return errs;

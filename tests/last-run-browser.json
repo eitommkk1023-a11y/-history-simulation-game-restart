@@ -1,35 +1,63 @@
 {
- "at": "2026-11-15T23:31:02.914Z",
+ "at": "2026-11-16T00:30:50.331Z",
  "html": "World-of-History-v30-development.html",
- "pass": 4,
+ "pass": 8,
  "fail": 0,
  "results": [
   {
    "kind": "browser",
+   "name": "hudtest",
+   "ok": true,
+   "sec": 56.9,
+   "detail": ""
+  },
+  {
+   "kind": "browser",
    "name": "titletest",
    "ok": true,
-   "sec": 111.3,
+   "sec": 116.3,
+   "detail": ""
+  },
+  {
+   "kind": "browser",
+   "name": "gotest",
+   "ok": true,
+   "sec": 38.9,
+   "detail": ""
+  },
+  {
+   "kind": "browser",
+   "name": "peopletest",
+   "ok": true,
+   "sec": 67.3,
    "detail": ""
   },
   {
    "kind": "browser",
    "name": "godtest",
    "ok": true,
-   "sec": 65.1,
+   "sec": 70.5,
    "detail": ""
   },
   {
    "kind": "browser",
    "name": "stage",
    "ok": true,
-   "sec": 51.5,
+   "sec": 60.4,
    "detail": ""
   },
   {
    "kind": "browser",
    "name": "uitog",
    "ok": true,
-   "sec": 35.8,
+   "sec": 36.2,
+   "detail": ""
+  },
+  {
+   "kind": "browser",
+   "name": "layers",
+   "ok": true,
+   "sec": 82.6,
    "detail": ""
   }
  ]
