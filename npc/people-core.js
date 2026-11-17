@@ -1082,6 +1082,8 @@ function peopleMonthly(people, ctx) {
   const world = ctx.world, S = peWorld(world, ctx.plantFood), P = people.npc;
   const rng = ctx.rng || peRng(people.rngState);
   const ev = [], month = ctx.month;
+  const PR = ctx.prof || null, now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()); let pt = PR ? now() : 0;
+  const lap = PR ? (k) => { const t = now(); PR[k] = (PR[k] || 0) + t - pt; pt = t; } : () => {};   /* 計算時間の内訳（F4：重い所を探す） */
   if (ctx.populationAdvanced === true && P.day !== ctx.day) throw new TypeError('population/world day mismatch');
   if (ctx.day !== undefined) P.day = ctx.day;
   peNationEnsure(people, world); peTechFlags(people); ctx.nationYear = people.nation ? people.nation.year : 0;
@@ -1096,10 +1098,14 @@ function peopleMonthly(people, ctx) {
   for (const k in people.contacts) { const [a, b] = k.split('-'); if (+a === people.playerEth) contacted.add(+b); if (+b === people.playerEth) contacted.add(+a); }
   const rel = (eth) => eth === people.playerEth || contacted.has(eth);
   peNeighbors(people);   // 近くの集団（結婚・接触・文化の影響）
+  lap('setup');
   for (const g of alive) peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel);
+  lap('groups');
   if (ctx.populationAdvanced !== true) for (let d = 0; d < 30; d++) P.stepDay();   // 住民を30日進める（人ごとに月に1回判定。日付はずれている）
+  lap('persons');
   peAggMonth(people);   // 集計の層の住民を1か月進める（個人の層と同じ死亡・出生の率）
   if (ctx.layers) peLayersMonth(people, ctx.layers);   // 層の方針：近い集団は個人へ、遠くて大きい集団は集計へ
+  lap('layers');
   peStats(people);
   peopleSuccession(people, ev);   // プレイヤーの人物が亡くなっていれば、その文化の決まりで継承
   peApplyActivity(people);
@@ -1142,6 +1148,7 @@ function peopleMonthly(people, ctx) {
   }
   if (rng.state) people.rngState = rng.state();
   peStatRecord(people);
+  lap('rest');
   return ev;
 }
 function peStatsWomen(people, g) { return people.stat.women[g.id]; }
