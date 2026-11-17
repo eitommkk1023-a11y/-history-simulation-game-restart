@@ -1081,6 +1081,7 @@ function faunaMonthly(F, ctx) {
   const log = [];
   const fs = faFoodShareOf(env, cc), fsTick = ++fs.tick, fv = fs.v, fst = fs.st, slotOf = fs.slot;
   for (const sid in F.species) {
+    if (ctx.only && sid !== ctx.only) continue;   /* 種ごとに分けて計算するとき（F4）。種どうしは独立（乱数も種ごと）なので、順に呼べば一度に計算したのと同じ結果 */
     const S = F.species[sid], sp = ANIMAL_SPECIES[sid], M = sp.mortality, rng = faRng(S.rngState);
     faunaNextId = S.nextId;
     const pops = S.pops.filter(p => p.alive);
@@ -14180,7 +14181,9 @@ function faunaCtx(month) {
 // 1か月ごと（実験の時間経過から呼ぶ）
 function faunaMonthTick(month) {
   if (!fauna) return;
-  const logs = FA.faunaMonthly(fauna, faunaCtx(month));
+  faunaMonthPost(month, FA.faunaMonthly(fauna, faunaCtx(month)));
+}
+function faunaMonthPost(month, logs) {
   const cnt = {}; for (const l of logs) cnt[l.type] = (cnt[l.type] || 0) + 1;
   const parts = [];
   if (cnt.split) parts.push(`分裂 ${cnt.split}`);
@@ -15012,24 +15015,47 @@ function dailyTick() {
   faunaHuntDay(clockMonth());
 }
 globalThis.__wohPerfMonth = { n: 0, ms: 0, fauna: 0, people: 0, ema: 0, prof: {}, maxMs: 0 };   // 性能モニター：1か月の計算時間（移動平均）
-function monthlyTick() {
-  const m = clockMonth(), PM = globalThis.__wohPerfMonth, t0 = performance.now();
-  faunaMonthTick(m); const t1 = performance.now();
-  peopleMonthTick(m); const t2 = performance.now(); PM.fauna += t1 - t0; PM.people += t2 - t1;
-  const t3 = performance.now(); if(mainMilitary)mainMilitary.afterMonth();
-  if ((CLOCK_MODES[clock.mode].key === 'fast' || globalThis.__wohBatchSim) && window.__wohMapData && window.__wohMapData.advanceAll) { try { window.__wohMapData.advanceAll(0); } catch (e) { console.error('集落の月の更新：', e); } }   // 高速でも、建築・修理・老朽化・住居の需要を毎月進める
-  PM.prof.after = (PM.prof.after || 0) + performance.now() - t3;
-  { const d = performance.now() - t0; PM.maxMs = Math.max(PM.maxMs, d); PM.n++; PM.ms += d; PM.ema = PM.ema ? PM.ema + (d - PM.ema) * 0.1 : d; }
+// 月の初めの処理を「段階」に分ける（F4）：動物（種ごと）→ 動物の知らせ → 人々 → 集落など。順番は一度に計算するときと同じ
+function monthlyStages() {
+  const m = clockMonth(), PM = globalThis.__wohPerfMonth, st = [];
+  if (fauna) {
+    const fc = faunaCtx(m), logs = [];
+    for (const sid of Object.keys(fauna.species)) st.push(['fauna', () => { for (const l of FA.faunaMonthly(fauna, Object.assign({}, fc, { only: sid }))) logs.push(l); }]);
+    st.push(['fauna', () => faunaMonthPost(m, logs)]);
+  }
+  st.push(['people', () => peopleMonthTick(m)]);
+  st.push(['after', () => {
+    if(mainMilitary)mainMilitary.afterMonth();
+    if ((CLOCK_MODES[clock.mode].key === 'fast' || globalThis.__wohBatchSim) && window.__wohMapData && window.__wohMapData.advanceAll) { try { window.__wohMapData.advanceAll(0); } catch (e) { console.error('集落の月の更新：', e); } }   // 高速でも、建築・修理・老朽化・住居の需要を毎月進める
+  }]);
+  return { st, i: 0, ms: 0, PM };
 }
+// 段階を1つ実行（時間を記録）。全部終わったら true
+function monthJobStep(J) {
+  const [kind, fn] = J.st[J.i++], t = performance.now(); fn(); const d = performance.now() - t, PM = J.PM;
+  if (kind === 'fauna') PM.fauna += d; else if (kind === 'people') PM.people += d; else PM.prof.after = (PM.prof.after || 0) + d;
+  J.ms += d; PM.stageMax = Math.max(PM.stageMax || 0, d);
+  if (J.i < J.st.length) return false;
+  PM.maxMs = Math.max(PM.maxMs, J.ms); PM.n++; PM.ms += J.ms; PM.ema = PM.ema ? PM.ema + (J.ms - PM.ema) * 0.1 : J.ms; return true;
+}
+// 一度に全部（高速・月ごと・日を飛ばすとき）
+function monthlyTick() { const J = monthlyStages(); while (!monthJobStep(J)); }
+// 遊んでいる間（日ごとの進み）は、月の処理を複数のコマに分ける。途中の間は日を進めない。保存・日を飛ばす前には、残りを一度に済ませる
+let monthJob = null; const MONTH_SLICE_MS = 8;
+function monthJobFinish() { if (!monthJob) return; const J = monthJob; monthJob = null; while (!monthJobStep(J)); }
+function monthJobFrame() { if (!monthJob) return false; const t0 = performance.now(); do { if (monthJobStep(monthJob)) { monthJob = null; break; } } while (performance.now() - t0 < MONTH_SLICE_MS); return true; }
+globalThis.__wohMonthJob = { get pending() { return !!monthJob; }, finish: () => monthJobFinish(), get sliceOn() { return globalThis.__wohSliceMonth !== false; } };
 // 1日進める（天気も計算する）
 function clockStepDay() {
+  monthJobFinish();
   clock.day++;
   if (sim) labStep();
   dailyTick();
-  if (clock.day % LAB_DAYS_PER_MONTH === 0) monthlyTick();
+  if (clock.day % LAB_DAYS_PER_MONTH === 0) { if (globalThis.__wohSliceMonth !== false) monthJob = monthlyStages(); else monthlyTick(); }
 }
 // 天気を計算せずに n 日進める（月ごと・年ごとの進め方）
 function clockSkipDays(n) {
+  monthJobFinish();
   for (let k = 0; k < n; k++) {
     clock.day++;
     dailyTick();
@@ -15044,6 +15070,7 @@ function clockAfterStep() {
   timebarUpdate();
 }
 function clockFrame(dt) {
+  if (monthJobFrame()) { if (!monthJob) clockAfterStep(); return true; }   // 月の処理の途中：このコマはその続きだけ（日は進めない。止めていても最後まで進める）
   if (!clock.playing && clock.pending === 0) return false;
   if (!clock.playing) { let st = 0; for (let k = 0; k < 2 && clock.pending > 0; k++) { clockStepMonth(); clock.pending--; st++; } if (st) clockAfterStep(); return st > 0; }
   const M = CLOCK_MODES[clock.mode];
@@ -15059,7 +15086,7 @@ function clockFrame(dt) {
   let steps = 0;
   if (M.key === 'day' || M.key === 'real') {
     if (!sim && world) labReady();
-    while (clock.acc >= 1 && steps < 3) { clock.acc -= 1; clockStepDay(); steps++; }
+    while (clock.acc >= 1 && steps < 3) { clock.acc -= 1; clockStepDay(); steps++; if (monthJob) break; }
   } else {
     const per = M.key === 'month' ? 1 : 12;
     if (clock.acc >= 1 && clock.pending === 0) { clock.acc -= 1; clock.pending = per; }
@@ -15181,6 +15208,7 @@ function dbDo(mode, fn) {
   }));
 }
 function serializeState() {
+  monthJobFinish();   // 月の処理の途中なら、先に済ませる
   if (globalThis.__wohStress) globalThis.__wohStress.clear();   // 負荷テスト中の配置は保存しない
   const st = {
     format: SAVE_FORMAT, genVersion: world.rocks ? 12 : SAVE_GEN_VERSION, rockGenerationVersion: world.rocks?.version || null, seed: currentSeed, savedAt: Date.now(),
@@ -15549,7 +15577,7 @@ function loop(now) {
 }
 
 // テスト・将来の拡張用に現在の世界データを参照できるようにする
-window.__geo = { skipDays(n) { clockSkipDays(n); clockAfterStep(); }, get military(){return mainMilitary;}, stepMonth(){clockStepMonth();clockAfterStep();}, packTyped,unpackTyped,applyState, get people() { return people; }, get world() { return world; }, get seed() { return currentSeed; }, generate, seedToInt, cam, updateCamera, get sim() { return sim; }, clock, history, names, serializeState, loadState, saveTo };
+window.__geo = { skipDays(n) { clockSkipDays(n); clockAfterStep(); }, stepDayOnly() { clockStepDay(); }, stepDaysPlay(n) { for (let k = 0; k < n; k++) { clockStepDay(); let f = 0; while (monthJobFrame()) f++; if (f) (globalThis.__wohMonthFrames = globalThis.__wohMonthFrames || []).push(f); } clockAfterStep(); },   /* 遊ぶときと同じ「1日ずつ・月の処理は複数のコマ」で進める（テスト用） */ get military(){return mainMilitary;}, stepMonth(){clockStepMonth();clockAfterStep();}, packTyped,unpackTyped,applyState, get people() { return people; }, get world() { return world; }, get seed() { return currentSeed; }, generate, seedToInt, cam, updateCamera, get sim() { return sim; }, clock, history, names, serializeState, loadState, saveTo };
 
 const wohPositionMarker=new THREE.Mesh(new THREE.SphereGeometry(22,12,8),new THREE.MeshBasicMaterial({color:0xffcf30,depthTest:false}));wohPositionMarker.renderOrder=100;scene.add(wohPositionMarker);
 function wohMarkPlayer(p){if(!p||!world)return;const s=(world.geology?.kmPerBlock??3.33)*1000,X=toWorldX(p.xM/s),Z=toWorldZ(p.yM/s);wohPositionMarker.position.set(X,meshHeightAtWorld(X,Z)+5,Z);requestRender();}
