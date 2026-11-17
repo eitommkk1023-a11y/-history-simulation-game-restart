@@ -17714,7 +17714,7 @@ function treeUpdate0(now){
 }
 // ---- 集落の建築の描画：配置（settle-layout）と設計（arch-gen）のデータから、共有の形（箱・円柱・屋根の形など9種）を、色と大きさを変えて並べる（インスタンス）。描画は全体で9回ほど。
 // 配置は、集団が近くに来たときに一度作り、世帯の増減があったときだけ更新する。毎フレームは作り直さない（1秒に1回、近くの建物の行列を更新するだけ）。
-const DW_CAP={box:30000,cyl12:2500,cyl8:3500,cyl6:30000,gable:2500,hip:3500,cone12:2000,cone8:2500,cone6:3000,stone:200,flame:200},DW_RANGE=430,DW_RANGE_MAX=1000,DW_DETAIL=75,DW_MID=170;
+const DW_CAP={box:30000,cyl12:8000,cyl8:6000,cyl6:30000,gable:6000,hip:6000,cone12:6000,cone8:2500,cone6:3000,stone:200,flame:200},DW_RANGE=430,DW_RANGE_MAX=1000,DW_DETAIL=75,DW_MID=170;
 let dwRange=430,dwM=null,dwN={},dwFires=[],dwSpecs=new Map(),dwFine=new Map(),dwIdx=new Map(),dwSig=new Map(),dwStats={layouts:0,items:0,built:0};
 const dwT={m:new THREE.Matrix4(),b:new THREE.Matrix4(),l:new THREE.Matrix4(),q:new THREE.Quaternion(),e:new THREE.Euler(),p:new THREE.Vector3(),s:new THREE.Vector3(),c:new THREE.Color(),y:new THREE.Vector3(0,1,0)};
 function dwInit(){
