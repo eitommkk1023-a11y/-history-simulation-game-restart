@@ -17714,8 +17714,8 @@ function treeUpdate0(now){
 }
 // ---- 集落の建築の描画：配置（settle-layout）と設計（arch-gen）のデータから、共有の形（箱・円柱・屋根の形など9種）を、色と大きさを変えて並べる（インスタンス）。描画は全体で9回ほど。
 // 配置は、集団が近くに来たときに一度作り、世帯の増減があったときだけ更新する。毎フレームは作り直さない（1秒に1回、近くの建物の行列を更新するだけ）。
-const DW_CAP={box:24000,cyl12:1800,cyl8:1300,cyl6:9000,gable:1800,hip:1600,cone12:1800,cone8:1000,cone6:1000,stone:200,flame:200},DW_RANGE=430,DW_DETAIL=75,DW_MID=170;
-let dwM=null,dwN={},dwFires=[],dwSpecs=new Map(),dwFine=new Map(),dwIdx=new Map(),dwSig=new Map(),dwStats={layouts:0,items:0,built:0};
+const DW_CAP={box:30000,cyl12:2500,cyl8:3500,cyl6:30000,gable:2500,hip:3500,cone12:2000,cone8:2500,cone6:3000,stone:200,flame:200},DW_RANGE=430,DW_RANGE_MAX=1000,DW_DETAIL=75,DW_MID=170;
+let dwRange=430,dwM=null,dwN={},dwFires=[],dwSpecs=new Map(),dwFine=new Map(),dwIdx=new Map(),dwSig=new Map(),dwStats={layouts:0,items:0,built:0};
 const dwT={m:new THREE.Matrix4(),b:new THREE.Matrix4(),l:new THREE.Matrix4(),q:new THREE.Quaternion(),e:new THREE.Euler(),p:new THREE.Vector3(),s:new THREE.Vector3(),c:new THREE.Color(),y:new THREE.Vector3(0,1,0)};
 function dwInit(){
   const cyl=(n,rot)=>{const g=new THREE.CylinderGeometry(.5,.5,1,n).translate(0,.5,0);if(rot)g.rotateY(Math.PI/n);return g;};
@@ -17861,13 +17861,13 @@ function dwScan(pe,V){
     const rec=dwSpecs.get(g.id),terr=rec?rec.spec.terr:null;
     const near=(x,z)=>Math.hypot(c.xM+x-markerPoint.xM,c.yM+z-markerPoint.yM);
     // 焚き火：広場の中心
-    const fy=(terr?terr.height(L.center.x,L.center.z):0)+cElevLocal;if(near(L.center.x,L.center.z)<DW_RANGE&&dwFires.length<80)dwFires.push({x:cx+L.center.x,y:fy,z:cz+L.center.z,ph:gid*1.7});
-    for(const b of L.items){if(b.state==='removed')continue;const d=near(b.x,b.z);if(d>DW_RANGE)continue;items++;
+    const fy=(terr?terr.height(L.center.x,L.center.z):0)+cElevLocal;if(near(L.center.x,L.center.z)<dwRange&&dwFires.length<80)dwFires.push({x:cx+L.center.x,y:fy,z:cz+L.center.z,ph:gid*1.7});
+    for(const b of L.items){if(b.state==='removed')continue;const d=near(b.x,b.z);if(d>dwRange)continue;items++;
       const gr=dwGround(b,cx,cz,S,cElevLocal,budget);dwBuilding(b,cx,cz,d,gr,A,S,acc);}
-    if(terr&&near(0,0)<DW_RANGE+60)dwPaths(L,cx,cz,cElevLocal,terr);
+    if(terr&&near(0,0)<dwRange+60)dwPaths(L,cx,cz,cElevLocal,terr);
     try{vlGroup(pe,g,L,c,cx,cz,cElevLocal,terr,near);}catch(e){console.error('村の造形：',e);}
   }
-  dwStats.items=items;dwStats.layouts=npcCamps.size;dwEnd();dwFlame(performance.now());try{vlCommit();}catch(e){console.error('村の造形：',e);}
+  dwStats.items=items;dwStats.layouts=npcCamps.size;dwStats.kinds={...dwN};dwEnd();dwFlame(performance.now());try{vlCommit();}catch(e){console.error('村の造形：',e);}
   dwStats.scanMs=performance.now()-t0;dwStats.maxScanMs=Math.max(dwStats.maxScanMs||0,dwStats.scanMs);
   // 住民の位置：集落の配置ができた集団は、世帯の住居の入口の近く
   V.setHomeResolver((gid,hh)=>{const g=pe.groups[gid-1],L=g&&g.layout;if(!L)return null;const m=dwIdx.get(gid),id=L.byHouse[hh],b=m&&id?m.get(id):null;if(!b||b.state==='removed'||!b.entrance)return null;return {x:b.entrance.x+b.entrance.dx*1.1,z:b.entrance.z+b.entrance.dz*1.1,rot:b.rot};});
@@ -18084,7 +18084,7 @@ function godEnter(o){
 }
 function godExit(){
   const c=god;if(!c)return;god=null;globalThis.__wohGodOn=false;globalThis.__wohNative.animate('god',false);
-  npcGodScale=1;npcRangeNow=NPC_RANGE;npcLimit=60;npcGroupRange=NPC_GROUP_RANGE;
+  npcGodScale=1;npcRangeNow=NPC_RANGE;npcLimit=60;npcGroupRange=NPC_GROUP_RANGE;dwRange=DW_RANGE;
   document.body.classList.remove('god-on');godLabelBox(false);godBoundaryUpdate(false);
   camera.fov=c.fov;camera.updateProjectionMatrix();placeMarker(c.home.xM,c.home.yM,false);marker.visible=true;if(c.fp)setFirstPerson(true);
   npcScanAt=0;updateCamera();
@@ -18139,6 +18139,7 @@ function godTick(dt){
   if(now-c.lastStream.t>250&&Math.hypot(gx-c.lastStream.x,gy-c.lastStream.y)>Math.max(20,c.h*.25)){c.lastStream={x:gx,y:gy,t:now};placeMarker(gx,gy,false);marker.visible=false;npcScanAt=0;if(globalThis.__wohLayersFocusNow)globalThis.__wohLayersFocusNow();}
   // 村人の見え方：高いほど、大きく・広く・多く
   npcGodScale=Math.max(1,Math.min(14,c.h/18))*c.scaleMul;npcRangeNow=Math.min(1100,c.h*1.7+160);npcLimit=NPC_MAX;npcGroupRange=Math.min(1800,npcRangeNow*1.5+400);
+  dwRange=Math.max(DW_RANGE,Math.min(DW_RANGE_MAX,c.h*1.5+100));   /* 建物を描く距離：引くほど広げる。実機（iPhone 17）で 58万三角形・約60FPS */
   // 村人のLOD：高く引くほど人数を減らし、NPC_HIDE_H 以上では村人を描かない（探す・計算もしない）。軍の移動などの表示は、近づいたときに出る
   { const H0=globalThis.__wohNpcHide||[300,450]; if(c.h>=H0[1]){npcLimit=0;npcRangeNow=0;/* 建物の描画は集落の範囲（npcGroupRange）を使うので、そちらは変えない */}else if(c.h>H0[0]){npcLimit=Math.max(8,Math.round(NPC_MAX*(H0[1]-c.h)/(H0[1]-H0[0])));} }
   godLabels(now);
@@ -18231,7 +18232,7 @@ globalThis.__wohSettle={get stats(){return {...dwStats,counts:{...dwN}};},get la
   // 配置（地図の詳細と同じ g.layout）の建物が、3Dの描画に同じ位置であるかを数える（検証用）
   matchReport(gid){const pe=window.__geo&&window.__geo.people,g=pe&&pe.groups[gid-1],c=npcCamps.get(gid);if(!g||!g.layout||!c)return null;const cx=c.xM-state.origin.xM,cz=c.yM-state.origin.yM,pts=[];
     for(const k of Object.keys(DW_CAP)){const m=dwM[k],a=m.instanceMatrix.array;for(let i=0;i<dwN[k];i++)pts.push([a[i*16+12],a[i*16+14]]);}
-    let tot=0,ok=0;const miss=[];for(const b of g.layout.items){if(b.state==='removed')continue;if(Math.hypot(c.xM+b.x-markerPoint.xM,c.yM+b.z-markerPoint.yM)>DW_RANGE)continue;tot++;const X=cx+b.x,Z=cz+b.z;if(pts.some(p=>Math.abs(p[0]-X)<0.8&&Math.abs(p[1]-Z)<0.8))ok++;else miss.push(b.id);}return {tot,ok,miss:miss.slice(0,10)};}};
+    let tot=0,ok=0;const miss=[];for(const b of g.layout.items){if(b.state==='removed')continue;if(Math.hypot(c.xM+b.x-markerPoint.xM,c.yM+b.z-markerPoint.yM)>dwRange)continue;tot++;const X=cx+b.x,Z=cz+b.z;if(pts.some(p=>Math.abs(p[0]-X)<0.8&&Math.abs(p[1]-Z)<0.8))ok++;else miss.push(b.id);}return {tot,ok,miss:miss.slice(0,10)};}};
 globalThis.__wohNpcView={get count(){return npcList.length;},get selected(){return npcSel;},screens:npcScreens,tapAt:npcTapAt,positions(){return npcList.map(e=>({i:e.i,xM:e.x+state.origin.xM,yM:e.z+state.origin.yM}));},nearest(maxM,skip){let b=null;for(const e of npcList){if(e.i===skip)continue;const d=Math.hypot(e.x-marker.position.x,e.z-marker.position.z);if(d<=maxM&&(!b||d<b.d))b={i:e.i,d};}return b;}};
 globalThis.__wohAvatar={get moveState(){return {sprinting:sprintOn,moving:wasMoving,crouched,air:jumpHeight>0||jumpVelocity!==0};},setSprint,setFirstPerson,get firstPerson(){return firstPerson;},setView(y,p,d){yaw=y;pitch=p;globalThis.__wohCamDist=d||4;updateCamera();},toBlock(bx,by,dx,dz){if(!state)return false;const q=state.terrain.gridToMeters(bx,by);placeMarker(q.xM+(dx||0),q.yM+(dz||0));return true;},toPlayer(){const pe=window.__geo?.people,y=pe&&globalThis.WohPeople?.peopleYou(pe);if(!y?.camp||!state)return false;const q=state.terrain.gridToMeters(y.camp.x,y.camp.y);placeMarker(q.xM,q.yM);return true;},get point(){return markerPoint;},block(){if(!state||!markerPoint)return null;const q=state.terrain.metersToGrid(markerPoint.xM,markerPoint.yM);return {x:q.x,y:q.y};}};
 window.__wohPlayerSave=()=>playerToSource(globalThis.__wohDev?.savedPlayer()??(markerPoint?{xM:markerPoint.xM,yM:markerPoint.yM,yaw}:null));

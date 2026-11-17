@@ -14,7 +14,7 @@ const { chromium } = require('playwright');
   const r2 = await p.evaluate(() => { __wohStress.make(800); const ok = __wohStress.clear(); return { ok, real: __geo.people.groups.filter(g => g.layout && g.layout.stress).length }; }); t('解除で、元の配置に戻る', r2.ok && r2.real === 0);
   await p.evaluate(() => { document.getElementById('godStress').closest('details').open = true; document.getElementById('godStress').click(); });
   await p.waitForFunction(() => /描画テストおわり|エラー/.test(document.getElementById('godBenchOut').value), null, { timeout: 300000 });
-  const txt = await p.evaluate(() => document.getElementById('godBenchOut').value); console.log(txt); t('ボタンで一通り動く（建物 0/500/2000/5000 の結果が出る）', /建物 5000棟・引いた.*描いた建物 [1-9]/.test(txt) && /建物 500棟・近い/.test(txt) && !/テストでエラー/.test(txt));
+  const txt = await p.evaluate(() => document.getElementById('godBenchOut').value); console.log(txt); t('ボタンで一通り動く（建物 0/500/2000/5000 の結果が出る）', /建物 5000棟・引いた.*描いた建物 5000/.test(txt) && /建物 500棟・近い/.test(txt) && !/テストでエラー/.test(txt));
   const after = await p.evaluate(() => ({ active: !!__wohStress.active, stress: __geo.people.groups.filter(g => g.layout && g.layout.stress).length })); t('テスト後は、元に戻っている', !after.active && after.stress === 0);
   console.log('errors', JSON.stringify(errs.slice(0, 3))); console.log(bad || errs.length ? 'NG あり' : 'ALL OK'); await b.close(); process.exit(bad || errs.length ? 1 : 0);
 })();
