@@ -13148,8 +13148,8 @@ document.getElementById('deathOk')?.addEventListener('click', () => document.get
       const nav = navigator, scr = screen; log('診断 ' + new Date().toLocaleString('ja-JP')); log('端末 ' + (nav.userAgent.match(/\(([^)]+)\)/) || [, ''])[1].slice(0, 70) + '／画面 ' + scr.width + '×' + scr.height + '×' + (window.devicePixelRatio || 1) + '／CPU ' + (nav.hardwareConcurrency || '?') + '／メモリ ' + (nav.deviceMemory || '?') + 'GB');
       const F = globalThis.__wohFrameStats; const pf = () => ({ fr: F.frames, dr: F.draws, t: performance.now() });
       for (const [name, hh] of [['近い(120m)', 120], ['中(600m)', 600], ['遠い(1500m)', 1500]]) {
-        window.__wohGodView.setView({ h: hh, pitch: 0.9 }); log(name + '…読み込み待ち'); await sleep(3500); const a = pf(); await sleep(4000); const b = pf(); const sec = (b.t - a.t) / 1000;
-        log(name + '：描画 ' + ((b.dr - a.dr) / sec).toFixed(1) + ' FPS／更新 ' + ((b.fr - a.fr) / sec).toFixed(1) + '回/秒／三角形 ' + (F.tri != null ? Math.round(F.tri / 1000) + 'k' : '?') + '／呼び出し ' + (F.calls ?? '?') + '／木 ' + (globalThis.__wohTrees ? globalThis.__wohTrees.count : '?') + '本');
+        window.__wohGodView.setView({ h: hh, pitch: 0.9 }); log(name + '…読み込み待ち'); await sleep(3500); const m = await measureFrames(4000);
+        log(name + '：' + fmtFrames(m) + '／三角形 ' + (F.tri != null ? Math.round(F.tri / 1000) + 'k' : '?') + '／呼び出し ' + (F.calls ?? '?') + '／木 ' + (globalThis.__wohTrees ? globalThis.__wohTrees.count : '?') + '本');
       }
       // 1か月の計算
       const t0 = performance.now(); window.__geo.skipDays(90); const tm = (performance.now() - t0) / 3; log('1か月の計算：' + tm.toFixed(1) + 'ms（目標 1年/秒＝83ms未満）');
@@ -13163,6 +13163,9 @@ document.getElementById('deathOk')?.addEventListener('click', () => document.get
     finally { try { if (gv0) window.__wohGodView.setView({ h: gv0.h, pitch: gv0.pitch, xM: gv0.xM, yM: gv0.yM }); } catch (e) { } btn.disabled = false; benchBusy = false; }
   }
   // 大きな集落の描画テスト：近くの集落の建物を 500／2000／5000棟に増やして（複製）、近い視点・引いた視点で、FPS・三角形・描画の呼び出しを測る。終わると元に戻る
+  // 実際の画面の更新を数える（requestAnimationFrame）。FPS・いちばん長いフレーム・カクつき（33ms超）の回数・描画命令にかかったCPU時間（1フレーム平均）
+  function measureFrames(ms) { return new Promise(res => { const F = globalThis.__wohFrameStats, r0 = F.renderMs || 0, d0 = F.draws; let n = 0, last = null, worst = 0, jank = 0; const t0 = performance.now(); const step = (t) => { if (last != null) { const d = t - last; worst = Math.max(worst, d); if (d > 33.4) jank++; } last = t; n++; if (t - t0 < ms) requestAnimationFrame(step); else { const sec = (t - t0) / 1000, dr = Math.max(1, F.draws - d0); res({ fps: (n - 1) / sec, worst, jank, rms: ((F.renderMs || 0) - r0) / dr }); } }; requestAnimationFrame(step); }); }
+  const fmtFrames = (m) => m.fps.toFixed(1) + ' FPS／最長 ' + m.worst.toFixed(0) + 'ms／カクつき ' + m.jank + '回／描画命令 ' + m.rms.toFixed(1) + 'ms';
   let stressBusy = false;
   async function runStress() {
     if (stressBusy) return; stressBusy = true; const out = bar.querySelector('#godBenchOut'), btn = bar.querySelector('#godStress'); out.style.display = 'block'; const lines = []; const log = (s) => { lines.push(s); out.value = lines.join('\n'); out.scrollTop = out.scrollHeight; };
@@ -13174,8 +13177,8 @@ document.getElementById('deathOk')?.addEventListener('click', () => document.get
       window.__wohGodView.flyTo(g.id, 150); await sleep(4500);
       for (const n of [0, 500, 2000, 5000]) {
         if (n) { const r = globalThis.__wohStress.make(n); if (!r.ok) { log('× ' + r.why); break; } } else globalThis.__wohStress.clear();
-        for (const [name, hh] of [['近い(150m)', 150], ['引いた(450m)', 450]]) { window.__wohGodView.setView({ h: hh, pitch: 0.9 }); await sleep(2500); const a = { fr: F.frames, dr: F.draws, t: performance.now() }; await sleep(3500); const b = { fr: F.frames, dr: F.draws, t: performance.now() }, sec = (b.t - a.t) / 1000, st = globalThis.__wohStress.stats;
-          log((n ? '建物 ' + n + '棟' : '今の建物') + '・' + name + '：描画 ' + ((b.dr - a.dr) / sec).toFixed(1) + ' FPS／三角形 ' + (F.tri != null ? Math.round(F.tri / 1000) + 'k' : '?') + '／呼び出し ' + (F.calls ?? '?') + '／描いた建物 ' + (st.items ?? '?') + (F.pixelRatio ? '／解像度 ' + F.pixelRatio : '')); }
+        for (const [name, hh] of [['近い(150m)', 150], ['引いた(450m)', 450]]) { window.__wohGodView.setView({ h: hh, pitch: 0.9 }); await sleep(2500); const m = await measureFrames(3500), st = globalThis.__wohStress.stats;
+          log((n ? '建物 ' + n + '棟' : '今の建物') + '・' + name + '：' + fmtFrames(m) + '／三角形 ' + (F.tri != null ? Math.round(F.tri / 1000) + 'k' : '?') + '／呼び出し ' + (F.calls ?? '?') + '／描いた建物 ' + (st.items ?? '?') + (st.capHit ? '（上限:' + st.capHit + '）' : '') + (F.pixelRatio ? '／解像度 ' + F.pixelRatio : '')); }
       }
       log('描画テストおわり。この文章をそのまま貼り付けてください');
       try { out.select(); if (navigator.clipboard) await navigator.clipboard.writeText(out.value); } catch (e) { }
@@ -16949,7 +16952,7 @@ let markerPoint=null,overview=false;
 let jumpHeight=0,jumpVelocity=0;
 
 globalThis.__wohFrameStats={draws:0,frames:0};
-function draw(){if(globalThis.__wohFastSim)return;globalThis.__wohFrameStats.draws++;const map=overview?state?.map:null;renderer.render(map?.scene||scene,map?.camera||camera);const ri=renderer.info.render;globalThis.__wohFrameStats.tri=ri.triangles;globalThis.__wohFrameStats.calls=ri.calls;}
+function draw(){if(globalThis.__wohFastSim)return;globalThis.__wohFrameStats.draws++;const map=overview?state?.map:null;const _rt=performance.now();renderer.render(map?.scene||scene,map?.camera||camera);globalThis.__wohFrameStats.renderMs=(globalThis.__wohFrameStats.renderMs||0)+performance.now()-_rt;const ri=renderer.info.render;globalThis.__wohFrameStats.tri=ri.triangles;globalThis.__wohFrameStats.calls=ri.calls;}
 // ---- 1人称視点（切り替え式。標準は3人称）：目の高さにカメラを置き、自分の体は隠す
 let bvw=null;   // 見下ろしの建設（施設の置き場所を選ぶ）の状態。null＝ふだんの視点
 let firstPerson=false;const BASE_FOV=55,FP_FOV=72;
@@ -17711,7 +17714,7 @@ function treeUpdate0(now){
 }
 // ---- 集落の建築の描画：配置（settle-layout）と設計（arch-gen）のデータから、共有の形（箱・円柱・屋根の形など9種）を、色と大きさを変えて並べる（インスタンス）。描画は全体で9回ほど。
 // 配置は、集団が近くに来たときに一度作り、世帯の増減があったときだけ更新する。毎フレームは作り直さない（1秒に1回、近くの建物の行列を更新するだけ）。
-const DW_CAP={box:9000,cyl12:700,cyl8:500,cyl6:3500,gable:700,hip:600,cone12:700,cone8:400,cone6:400,stone:80,flame:80},DW_RANGE=430,DW_DETAIL=75,DW_MID=170;
+const DW_CAP={box:24000,cyl12:1800,cyl8:1300,cyl6:9000,gable:1800,hip:1600,cone12:1800,cone8:1000,cone6:1000,stone:200,flame:200},DW_RANGE=430,DW_DETAIL=75,DW_MID=170;
 let dwM=null,dwN={},dwFires=[],dwSpecs=new Map(),dwFine=new Map(),dwIdx=new Map(),dwSig=new Map(),dwStats={layouts:0,items:0,built:0};
 const dwT={m:new THREE.Matrix4(),b:new THREE.Matrix4(),l:new THREE.Matrix4(),q:new THREE.Quaternion(),e:new THREE.Euler(),p:new THREE.Vector3(),s:new THREE.Vector3(),c:new THREE.Color(),y:new THREE.Vector3(0,1,0)};
 function dwInit(){
@@ -17726,7 +17729,7 @@ function dwHide(){if(dwM)for(const m of Object.values(dwM))m.visible=false;}
 function dwBegin(){for(const k of Object.keys(DW_CAP))dwN[k]=0;}
 function dwBase(x,y,z,rot){dwT.b.compose(dwT.p.set(x,y,z),dwT.q.setFromAxisAngle(dwT.y,rot),dwT.s.set(1,1,1));}
 function dwPut(kind,lx,ly,lz,sx,sy,sz,col,ry,rx,rz){
-  const k=dwN[kind];if(k>=DW_CAP[kind])return;const t=dwT;
+  const k=dwN[kind];if(k>=DW_CAP[kind]){dwStats.capHit=kind;return;}const t=dwT;
   t.l.compose(t.p.set(lx,ly,lz),t.q.setFromEuler(t.e.set(rx||0,ry||0,rz||0)),t.s.set(sx,sy,sz));t.m.multiplyMatrices(t.b,t.l);
   dwM[kind].setMatrixAt(k,t.m);dwM[kind].setColorAt(k,t.c.setRGB(col[0],col[1],col[2]));dwN[kind]=k+1;
 }
@@ -17851,7 +17854,7 @@ globalThis.__wohMapData={
 function dwScan(pe,V){
   const t0=performance.now();
   if(!dwM)dwInit();const S=globalThis.WohSettle,A=globalThis.WohArch;if(!S||!A)return;
-  dwBegin();dwFires=[];vlBegin();let items=0;const budget={n:30};dwLayoutBudget=1;dwMonthBudget=1;   // 1回の更新で新しく作る配置は1つまで（一瞬の重さを避ける）
+  dwStats.capHit='';dwBegin();dwFires=[];vlBegin();let items=0;const budget={n:30};dwLayoutBudget=1;dwMonthBudget=1;   // 1回の更新で新しく作る配置は1つまで（一瞬の重さを避ける）
   for(const [gid,c] of npcCamps){
     const g=pe.groups[gid-1];if(!g||!g.alive)continue;let r=null;try{r=dwEnsure(pe,g,c);}catch(e){console.error('集落の配置：',e);}if(!r)continue;
     const L=r.layout,cx=c.xM-state.origin.xM,cz=c.yM-state.origin.yM,cElevLocal=r.cE-state.origin.elevationM,eth=pe.ethnicities[g.ethId-1],ec=eth&&eth.color?eth.color:[160,140,110],acc=[Math.min(1,ec[0]/255*.8+.15),Math.min(1,ec[1]/255*.8+.15),Math.min(1,ec[2]/255*.8+.15)];
