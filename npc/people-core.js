@@ -113,6 +113,8 @@ const PE = {
   SPLIT_POP_SETTLED: CFG.population.splitPopSettled, SPLIT_FED_MIN: CFG.population.splitFedMin,                         // 定住した村（settle=2）で、食料が足りている（充足0.85以上）ときは、この人口まで分かれない（大きな村・町が育つ）［仮］
   LAYER_CAP: CFG.layers.cap, LAYER_NEAR_CAP: CFG.layers.nearCap,           // 層の方針（ctx.layers を与えたときだけ働く）：遠い集団の個人の上限／近い集団の個人の上限［仮］
   LAYER_DEMOTE_RATE: CFG.layers.demoteRate, LAYER_PROMOTE_PER_MONTH: CFG.layers.promotePerMonth, LAYER_NEAR_DIST: CFG.layers.nearDist,   // 1か月に降格する割合の上限／1か月に昇格する人数／近いとみなす距離（ブロック）［仮］
+  FARM_PER_KM2: CFG.population.farmPerKm2, FARM_RADIUS_KM: CFG.population.farmRadiusKm,
+  SURPLUS_FERT: CFG.population.surplusFert, SURPLUS_DIS: CFG.population.surplusDis, SURPLUS_FROM: CFG.population.surplusFrom, SURPLUS_FULL: CFG.population.surplusFull,   /* 余剰の効き（M1） */
   SPLIT_P: 0.08,                                  // 分かれる確率（1か月）
   SPLIT_SHARE: [0.3, 0.45],                       // 分かれて出ていく割合
   SPLIT_RANGE: [12, 45],                          // 新しい集団の行き先の距離（ブロック）
@@ -1000,8 +1002,11 @@ function peGroupPlan(people, g, ctx, S, sc, workers, knowG, knowF, knowH) {
   // 農耕・牧畜：民族が技術を持つときだけ。農耕は成長期（気温）に収穫が出る。割り振りは年平均で見て、実際の収穫は月ごと
   const tech = peTechOf(people, g.ethId), fq = peFarmEnv(S, world, ctx, g, month, tsSum > 0 ? grassSum / tsSum : 0, tech.farmSince);
   const fMult = tech.mult * (1 + 0.12 * peFacil(g).field);
-  const yFarm = tech.farm ? (h) => h * days * PE.FARM_RATE * fq.know * fq.q * fq.sf * fMult : () => 0;
-  const farmAvg = tech.farm ? (h) => h * days * PE.FARM_RATE * fq.know * fq.q * fq.sfAvg * fMult : () => 0;
+  let landKm2 = 0; for (let i = 0; i < nc; i++) landKm2 += PE_TS[i] * S.cellKm2;
+  landKm2 = Math.min(landKm2, Math.PI * PE.FARM_RADIUS_KM * PE.FARM_RADIUS_KM);   /* 畑にできるのは、歩いて通える範囲まで */
+  const farmCap = Math.max(0.5, landKm2 * PE.FARM_PER_KM2 * fq.q), landH = (h) => h > 0 ? farmCap * (1 - Math.exp(-h / farmCap)) : 0;   /* 土地の限り：農民が増えても、生活圏の広さで収穫の伸びが鈍る */
+  const yFarm = tech.farm ? (h) => landH(h) * days * PE.FARM_RATE * fq.know * fq.q * fq.sf * fMult : () => 0;
+  const farmAvg = tech.farm ? (h) => landH(h) * days * PE.FARM_RATE * fq.know * fq.q * fq.sfAvg * fMult : () => 0;
   const herdN = tech.herd ? (g.herdN || 0) : 0, herdQ = 0.5 + 0.5 * peClamp01(fq.grass * 2.5) * (fq.T < 0 ? 0.6 : 1);
   const yHerd = (h) => herdN > 0 ? Math.min(herdN, PE.HERD_PER * h + 3) * PE.HERD_KG * herdQ : 0;
   const L = { hunt: 0, gather: 0, fish: 0, farm: 0, herd: 0 }, fn = { hunt: (h) => yH(h) * PE.MEAT_VALUE, gather: yG, fish: yF };
@@ -1590,7 +1595,8 @@ function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
   } else g.hunger = 0;
   // ---- 状況を表に書く：住民は毎日の判定でこの表を使う（出生・飢え・寒さ・病気）
   const agri = peClamp01((g.farmFrac || 0) / 0.6);   // 農耕・牧畜が食料に占める割合の効き
-  hz.fert[id] = peClamp01((g.fed - PE.FERT_FOOD[0]) / (PE.FERT_FOOD[1] - PE.FERT_FOOD[0])) * (1 + PE.AGRI_FERT * agri);
+  const sur = peClamp01(((g.food || 0) / Math.max(1, need) - PE.SURPLUS_FROM) / (PE.SURPLUS_FULL - PE.SURPLUS_FROM));   /* 蓄えの月数 → 余剰の効き（0〜1） */
+  hz.fert[id] = peClamp01((g.fed - PE.FERT_FOOD[0]) / (PE.FERT_FOOD[1] - PE.FERT_FOOD[0])) * (1 + PE.AGRI_FERT * agri) * (1 + PE.SURPLUS_FERT * sur);
   if (g.epi > 0) g.epi--;
   else if (rng() < PE.EPI_P * pop / 200 * (1 - 0.25 * peFacil(g).well)) {
     g.epi = PE.EPI_MONTHS[0] + Math.floor(rng() * (PE.EPI_MONTHS[1] - PE.EPI_MONTHS[0] + 1));
@@ -1601,7 +1607,7 @@ function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
   const harsh = peClamp01((PE.COLD_T[0] - T) / PE.COLD_T[1]) + peClamp01((snow - 50) / 100) * 0.3;
   hz.cold[id] = PE.COLD_H * harsh * (1 - PE.COLD_KNOW * kH) * (1 + (1 - ratio));
   hz.dis[id] = (g.epi > 0 ? PE.EPI_H : 0) + Math.max(0, pop / PE.CROWD_POP - 1) * PE.CROWD_H;
-  hz.hungerDis[id] = (1 + (1 - ratio)) * (1 - PE.AGRI_DIS * agri);
+  hz.hungerDis[id] = (1 + (1 - ratio)) * (1 - PE.AGRI_DIS * agri) * (1 - PE.SURPLUS_DIS * sur);
   // ---- 移動
   g.radius = peRadius(pop);
   peSettleStep(people, g, S, world, ev, rel, home, people.ethSpeed || 1);

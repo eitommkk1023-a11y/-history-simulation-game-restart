@@ -1,5 +1,5 @@
 {
- "at": "2026-11-18T03:41:43.075Z",
+ "at": "2026-11-18T14:40:28.802Z",
  "html": "World-of-History-v30-development.html",
  "pass": 33,
  "fail": 0,
@@ -8,7 +8,7 @@
    "kind": "node",
    "name": "test-activity",
    "ok": true,
-   "sec": 220.9,
+   "sec": 224.3,
    "detail": ""
   },
   {
@@ -29,35 +29,35 @@
    "kind": "node",
    "name": "test-battle",
    "ok": true,
-   "sec": 51.8,
+   "sec": 55,
    "detail": ""
   },
   {
    "kind": "node",
    "name": "test-cohort",
    "ok": true,
-   "sec": 1,
+   "sec": 1.1,
    "detail": ""
   },
   {
    "kind": "node",
    "name": "test-config",
    "ok": true,
-   "sec": 1.4,
+   "sec": 1.6,
    "detail": ""
   },
   {
    "kind": "node",
    "name": "test-culture",
    "ok": true,
-   "sec": 40.3,
+   "sec": 48.5,
    "detail": ""
   },
   {
    "kind": "node",
    "name": "test-demand",
    "ok": true,
-   "sec": 1.5,
+   "sec": 1.7,
    "detail": ""
   },
   {
@@ -71,7 +71,7 @@
    "kind": "node",
    "name": "test-ethno",
    "ok": true,
-   "sec": 34,
+   "sec": 40.8,
    "detail": ""
   },
   {
@@ -85,42 +85,42 @@
    "kind": "node",
    "name": "test-growth",
    "ok": true,
-   "sec": 16.9,
+   "sec": 19.6,
    "detail": ""
   },
   {
    "kind": "node",
    "name": "test-layers",
    "ok": true,
-   "sec": 8.2,
+   "sec": 10,
    "detail": ""
   },
   {
    "kind": "node",
    "name": "test-layout-history",
    "ok": true,
-   "sec": 0.3,
+   "sec": 0.4,
    "detail": ""
   },
   {
    "kind": "node",
    "name": "test-layout-natural",
    "ok": true,
-   "sec": 1.6,
+   "sec": 1.7,
    "detail": ""
   },
   {
    "kind": "node",
    "name": "test-layout",
    "ok": true,
-   "sec": 0.8,
+   "sec": 1.1,
    "detail": ""
   },
   {
    "kind": "node",
    "name": "test-ledger",
    "ok": true,
-   "sec": 9.5,
+   "sec": 13.8,
    "detail": ""
   },
   {
@@ -134,35 +134,35 @@
    "kind": "node",
    "name": "test-nation",
    "ok": true,
-   "sec": 4.6,
+   "sec": 5.3,
    "detail": ""
   },
   {
    "kind": "node",
    "name": "test-people",
    "ok": true,
-   "sec": 15.1,
+   "sec": 18.7,
    "detail": ""
   },
   {
    "kind": "node",
    "name": "test-player",
    "ok": true,
-   "sec": 51.6,
+   "sec": 72.5,
    "detail": ""
   },
   {
    "kind": "node",
    "name": "test-proposal",
    "ok": true,
-   "sec": 1.7,
+   "sec": 1.8,
    "detail": ""
   },
   {
    "kind": "node",
    "name": "test-save-schema",
    "ok": true,
-   "sec": 0.8,
+   "sec": 0.9,
    "detail": ""
   },
   {
@@ -176,35 +176,35 @@
    "kind": "node",
    "name": "test-settle",
    "ok": true,
-   "sec": 29.5,
+   "sec": 38.9,
    "detail": ""
   },
   {
    "kind": "node",
    "name": "test-sites",
    "ok": true,
-   "sec": 34.3,
+   "sec": 41.8,
    "detail": ""
   },
   {
    "kind": "node",
    "name": "test-small-world",
    "ok": true,
-   "sec": 6,
+   "sec": 6.5,
    "detail": ""
   },
   {
    "kind": "node",
    "name": "test-social",
    "ok": true,
-   "sec": 6.2,
+   "sec": 7.7,
    "detail": ""
   },
   {
    "kind": "node",
    "name": "test-stats",
    "ok": true,
-   "sec": 16.1,
+   "sec": 18.7,
    "detail": ""
   },
   {
@@ -225,14 +225,14 @@
    "kind": "node",
    "name": "test-techview",
    "ok": true,
-   "sec": 1.7,
+   "sec": 1.9,
    "detail": ""
   },
   {
    "kind": "node",
    "name": "test-view",
    "ok": true,
-   "sec": 0.6,
+   "sec": 0.7,
    "detail": ""
   }
  ]
