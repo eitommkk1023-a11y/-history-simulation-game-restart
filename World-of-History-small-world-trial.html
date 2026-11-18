@@ -13169,7 +13169,7 @@ document.getElementById('deathOk')?.addEventListener('click', () => document.get
       }
       // 1か月の計算
       const PM = globalThis.__wohPerfMonth, f0 = PM.fauna, p0 = PM.people, pr0 = { ...PM.prof }; const t0 = performance.now(); window.__geo.skipDays(90); const tm = (performance.now() - t0) / 3; log('1か月の計算：' + tm.toFixed(1) + 'ms（目標 1年/秒＝83ms未満）');
-      { const d = (k) => (((PM.prof[k] || 0) - (pr0[k] || 0)) / 3).toFixed(1); log('　内訳：動物 ' + ((PM.fauna - f0) / 3).toFixed(1) + '／人々 ' + ((PM.people - p0) / 3).toFixed(1) + '（準備 ' + d('setup') + '・集団 ' + d('groups') + '・個人 ' + d('persons') + '・層 ' + d('layers') + '・その他 ' + d('rest') + '・画面側 ' + d('hostSync') + '）／集落など ' + d('after') + ' ms'); log('　遊ぶときに1コマで計算する最大：' + (PM.stageMax || 0).toFixed(1) + 'ms（' + ({ fauna: '動物', people: '人々', after: '集落など' }[PM.stageMaxKind] || '?') + '。目標 16ms 未満）'); log('　日ごとの処理（30日分）：' + (tm - (PM.fauna - f0) / 3 - (PM.people - p0) / 3 - +d('after')).toFixed(1) + 'ms'); }
+      { const d = (k) => (((PM.prof[k] || 0) - (pr0[k] || 0)) / 3).toFixed(1); log('　内訳：動物 ' + ((PM.fauna - f0) / 3).toFixed(1) + '／人々 ' + ((PM.people - p0) / 3).toFixed(1) + '（準備 ' + d('setup') + '・集団 ' + d('groups') + '・個人 ' + d('persons') + '・層 ' + d('layers') + '・その他 ' + d('rest') + '・画面側 ' + d('hostSync') + '）／集落など ' + d('after') + ' ms'); log('　遊ぶときに1コマで計算する最大：' + (PM.stageMax || 0).toFixed(1) + 'ms（' + ({ fauna: '動物', people: '人々', after: '集落など' }[PM.stageMaxKind] || '?') + (PM.stageMaxSp ? '・' + PM.stageMaxSp : '') + '。目標 16ms 未満）'); log('　日ごとの処理（30日分）：' + (tm - (PM.fauna - f0) / 3 - (PM.people - p0) / 3 - +d('after')).toFixed(1) + 'ms'); }
       // 保存の圧縮
       const t1 = performance.now(); const st = serializeState(); const t2 = performance.now(); const z = await zPack(st); const t3 = performance.now(); let zb = 0; const sz = (v) => { if (v == null) return; if (ArrayBuffer.isView(v)) { zb += v.byteLength; return; } if (typeof v === 'object') for (const k of Object.keys(v)) sz(v[k]); else if (typeof v === 'string') zb += v.length; }; sz(z);
       log('保存：組み立て ' + (t2 - t1).toFixed(0) + 'ms／圧縮 ' + (t3 - t2).toFixed(0) + 'ms／圧縮後 約' + Math.round(zb / 1024) + 'KB');
@@ -15037,7 +15037,7 @@ function monthlyStages() {
   const m = clockMonth(), PM = globalThis.__wohPerfMonth, st = [];
   if (fauna) {
     const fc = faunaCtx(m), logs = [];
-    for (const sid of Object.keys(fauna.species)) st.push(['fauna', () => { for (const l of FA.faunaMonthly(fauna, Object.assign({}, fc, { only: sid }))) logs.push(l); }]);
+    for (const sid of Object.keys(fauna.species)) st.push(['fauna', () => { for (const l of FA.faunaMonthly(fauna, Object.assign({}, fc, { only: sid }))) logs.push(l); }, (FA.ANIMAL_SPECIES[sid] ? FA.ANIMAL_SPECIES[sid].name.replace(/（.*）/, '') : sid) + '（' + fauna.species[sid].pops.filter(p => p.alive).length + '群）']);
     st.push(['fauna', () => faunaMonthPost(m, logs)]);
   }
   { const step = peopleMonthStepper(m); st.push(['people', step]); }   // 人々は何回かに分けて（集団16ずつ）
@@ -15051,7 +15051,7 @@ function monthlyStages() {
 function monthJobStep(J) {
   const [kind, fn] = J.st[J.i], t = performance.now(); const fin = fn(); if (fin !== false) J.i++; const d = performance.now() - t, PM = J.PM;   // false を返す段階は、次の呼び出しで続き
   if (kind === 'fauna') PM.fauna += d; else if (kind === 'people') PM.people += d; else PM.prof.after = (PM.prof.after || 0) + d;
-  J.ms += d; if (d > (PM.stageMax || 0)) { PM.stageMax = d; PM.stageMaxKind = kind; }
+  J.ms += d; if (d > (PM.stageMax || 0)) { PM.stageMax = d; PM.stageMaxKind = kind; PM.stageMaxSp = J.st[J.i - (fin === false ? 0 : 1)][2] || ''; }
   if (J.i < J.st.length) return false;
   PM.maxMs = Math.max(PM.maxMs, J.ms); PM.n++; PM.ms += J.ms; PM.ema = PM.ema ? PM.ema + (J.ms - PM.ema) * 0.1 : J.ms; return true;
 }
