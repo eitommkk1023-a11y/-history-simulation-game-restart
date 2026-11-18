@@ -28,7 +28,7 @@ const DEFAULT = {
     { id: 'metropolis', label: '大都市', minSettle: 2, minPop: 50000 },
   ],
   // 台帳（食料を整数の刻みで記録）：enabled＝影の台帳を動かす（食料の本体は、まだ従来のモデル）
-  ledger: { enabled: true },
+  ledger: { enabled: true, authority: true },   /* authority：食料の蓄えを、台帳の整数（1刻み＝100kcal）で持つ（M1）。false なら従来の小数のまま */
   // 規模の目標（目安。表示・検証用。ゲームの上限ではない）：世界全体と、最大の都市の人口
   targets: { worldPopulation: [100000, 300000], cityPopulation: [30000, 100000] },
   // 外との交易（地図の外の世界）：1か月に外から入る食料の量（0＝なし）。M2（輸送と外との交易）で使う。今は未使用

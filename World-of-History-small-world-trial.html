@@ -8459,7 +8459,7 @@ const DEFAULT = {
     { id: 'metropolis', label: '大都市', minSettle: 2, minPop: 50000 },
   ],
   // 台帳（食料を整数の刻みで記録）：enabled＝影の台帳を動かす（食料の本体は、まだ従来のモデル）
-  ledger: { enabled: true },
+  ledger: { enabled: true, authority: true },   /* authority：食料の蓄えを、台帳の整数（1刻み＝100kcal）で持つ（M1）。false なら従来の小数のまま */
   // 規模の目標（目安。表示・検証用。ゲームの上限ではない）：世界全体と、最大の都市の人口
   targets: { worldPopulation: [100000, 300000], cityPopulation: [30000, 100000] },
   // 外との交易（地図の外の世界）：1か月に外から入る食料の量（0＝なし）。M2（輸送と外との交易）で使う。今は未使用
@@ -8698,7 +8698,7 @@ const Arch = typeof require !== 'undefined' ? require('./arch-gen.js') : root.Wo
 const Nation = typeof require !== 'undefined' ? require('./nation.js') : root.WohNation, Tech = typeof require !== 'undefined' ? require('./tech.js') : root.WohTech;
 const Cohort = (typeof require !== 'undefined' ? require('./pop-cohort.js') : root.WohCohort).Cohort;
 const CFG = (typeof require !== 'undefined' ? require('./game-config.js') : root.WohConfig).CONFIG;
-const { Ledger } = typeof require !== 'undefined' ? require('./ledger.js') : root.WohLedger, Tier = typeof require !== 'undefined' ? require('./settlement-tier.js') : root.WohTier;   // 台帳（食料を整数で記録）・集落の階層（F5）   // 設定値は game-config.js   // 人口の集計の層（docs/population-layers-v1.md）
+const { Ledger, TICKS_PER_KG } = typeof require !== 'undefined' ? require('./ledger.js') : root.WohLedger, Tier = typeof require !== 'undefined' ? require('./settlement-tier.js') : root.WohTier;   // 台帳（食料を整数で記録）・集落の階層（F5）   // 設定値は game-config.js   // 人口の集計の層（docs/population-layers-v1.md）
 const { Population, NJOB, NSKILL, SI, mix, SOC_K } = Npc, NONE = 0xffffffff, ALIVE = 0x7fffffff;
 
 // ---------------------------------------------------------------- 設定値
@@ -10211,6 +10211,7 @@ function peLedgerMonth(g, R, fresh, dried, dur) {
   L.debit('fresh', spF); L.debit('dur', spD); L.debit('dried', spH); L.record('spoil', spF + spD + spH);
   L.debit('fresh', lF); L.debit('dur', lD); L.debit('dried', lH); L.record('lost', lF + lD + lH);
   L.snap({ dur, fresh, dried });
+  if (CFG.ledger.authority) { const K = TICKS_PER_KG; g.fresh = L.bal.fresh / K; g.dried = L.bal.dried / K; g.food = L.total() / K; }   /* M1：蓄えは台帳の整数が本体。kg は表示・計算用の換算（刻み÷18） */
 }
 function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
   const P = people.npc, hz = peEnsureGroups(people), world = ctx.world, cc = S.cc, n = S.n, month = ctx.month, id = g.id;

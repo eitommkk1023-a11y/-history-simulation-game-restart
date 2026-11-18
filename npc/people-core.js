@@ -10,7 +10,7 @@ const Arch = typeof require !== 'undefined' ? require('./arch-gen.js') : root.Wo
 const Nation = typeof require !== 'undefined' ? require('./nation.js') : root.WohNation, Tech = typeof require !== 'undefined' ? require('./tech.js') : root.WohTech;
 const Cohort = (typeof require !== 'undefined' ? require('./pop-cohort.js') : root.WohCohort).Cohort;
 const CFG = (typeof require !== 'undefined' ? require('./game-config.js') : root.WohConfig).CONFIG;
-const { Ledger } = typeof require !== 'undefined' ? require('./ledger.js') : root.WohLedger, Tier = typeof require !== 'undefined' ? require('./settlement-tier.js') : root.WohTier;   // 台帳（食料を整数で記録）・集落の階層（F5）   // 設定値は game-config.js   // 人口の集計の層（docs/population-layers-v1.md）
+const { Ledger, TICKS_PER_KG } = typeof require !== 'undefined' ? require('./ledger.js') : root.WohLedger, Tier = typeof require !== 'undefined' ? require('./settlement-tier.js') : root.WohTier;   // 台帳（食料を整数で記録）・集落の階層（F5）   // 設定値は game-config.js   // 人口の集計の層（docs/population-layers-v1.md）
 const { Population, NJOB, NSKILL, SI, mix, SOC_K } = Npc, NONE = 0xffffffff, ALIVE = 0x7fffffff;
 
 // ---------------------------------------------------------------- 設定値
@@ -1523,6 +1523,7 @@ function peLedgerMonth(g, R, fresh, dried, dur) {
   L.debit('fresh', spF); L.debit('dur', spD); L.debit('dried', spH); L.record('spoil', spF + spD + spH);
   L.debit('fresh', lF); L.debit('dur', lD); L.debit('dried', lH); L.record('lost', lF + lD + lH);
   L.snap({ dur, fresh, dried });
+  if (CFG.ledger.authority) { const K = TICKS_PER_KG; g.fresh = L.bal.fresh / K; g.dried = L.bal.dried / K; g.food = L.total() / K; }   /* M1：蓄えは台帳の整数が本体。kg は表示・計算用の換算（刻み÷18） */
 }
 function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
   const P = people.npc, hz = peEnsureGroups(people), world = ctx.world, cc = S.cc, n = S.n, month = ctx.month, id = g.id;
