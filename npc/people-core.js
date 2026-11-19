@@ -113,6 +113,7 @@ const PE = {
   SPLIT_POP_SETTLED: CFG.population.splitPopSettled, SPLIT_FED_MIN: CFG.population.splitFedMin,                         // 定住した村（settle=2）で、食料が足りている（充足0.85以上）ときは、この人口まで分かれない（大きな村・町が育つ）［仮］
   LAYER_CAP: CFG.layers.cap, LAYER_NEAR_CAP: CFG.layers.nearCap,           // 層の方針（ctx.layers を与えたときだけ働く）：遠い集団の個人の上限／近い集団の個人の上限［仮］
   LAYER_DEMOTE_RATE: CFG.layers.demoteRate, LAYER_PROMOTE_PER_MONTH: CFG.layers.promotePerMonth, LAYER_NEAR_DIST: CFG.layers.nearDist,   // 1か月に降格する割合の上限／1か月に昇格する人数／近いとみなす距離（ブロック）［仮］
+  FARM_FEEDS: CFG.population.farmFeeds, CAP_BASE: CFG.population.capBase, OVERCAP_DIS: CFG.population.overcapDis,
   FARM_PER_KM2: CFG.population.farmPerKm2, FARM_RADIUS_KM: CFG.population.farmRadiusKm,
   SURPLUS_FERT: CFG.population.surplusFert, SURPLUS_DIS: CFG.population.surplusDis, SURPLUS_FROM: CFG.population.surplusFrom, SURPLUS_FULL: CFG.population.surplusFull,   /* 余剰の効き（M1） */
   SPLIT_P: 0.08,                                  // 分かれる確率（1か月）
@@ -701,8 +702,9 @@ function peHazards(people) {
   return people.haz;
 }
 function peInstall(people) {
-  const P = people.npc, hz = peHazards(people), last = new Float64Array(4);
+  const P = people.npc, last = new Float64Array(4); peHazards(people);
   P.hazardFn = (a, g, i) => {
+    const hz = people.haz;   /* 集団が増えて表が作り直されても、最新の表を使う（以前は作り直し前の古い表を握ったままで、集団が約160を超えると、新しい集団の死亡・出生が正しく働かなかった） */
     const ai = a >= 80 ? 80 : a < 0 ? 0 : Math.floor(a), h0 = PE_H0[ai], ds = PE_DS[ai];
     const ext = people.serviceNutrition && people.serviceNutrition.get(i), ratio = ext ? Math.max(0, Math.min(1, ext.ratio)) : null;
     const starv = ext ? PE.STARV_H * Math.pow(1 - ratio, 1.5) : hz.starv[g], hungerDis = ext ? 1 + (1 - ratio) : hz.hungerDis[g];
@@ -711,7 +713,7 @@ function peInstall(people) {
     const care = i !== undefined && P.actKind === 'family' && a < 5 && P.house[i] !== NONE && P.house[i] === P.house[P.actId] ? 0.7 : 1;   // 家族の時間：同じ世帯の幼い子は死ににくい
     return (hn + hd + hs + hc) * care;
   };
-  P.fertFn = (a, g, i) => { const ai = Math.floor(a); return ai >= 15 && ai < 50 ? PE_ASFR[ai] * hz.fert[g] * PE.FERT_ADJ * (i !== undefined && P.actKind === 'family' && P.spouse[i] === P.actId ? 1.4 : 1) : 0; };   // 家族の時間：配偶者の出産が増える
+  P.fertFn = (a, g, i) => { const hz = people.haz, ai = Math.floor(a); return ai >= 15 && ai < 50 ? PE_ASFR[ai] * hz.fert[g] * PE.FERT_ADJ * (i !== undefined && P.actKind === 'family' && P.spouse[i] === P.actId ? 1.4 : 1) : 0; };   // 家族の時間：配偶者の出産が増える
   P.onBirth = (g) => { people.groups[g - 1].born++; };
   // 集団をまたぐ結婚：外婚性の高い文化ほど、隣の集団の男性を選ぶ。夫が妻の集団へ移るのは、母系性の高い集団［仮］
   P.crossFn = (g, i) => {
@@ -1021,7 +1023,7 @@ function peGroupPlan(people, g, ctx, S, sc, workers, knowG, knowF, knowH) {
     for (const k in fn) { const v = fn[k](L[k] + d) - fn[k](L[k]); if (v > bv) { bv = v; bk = k; } }
     L[bk] += d; rest -= d;
   }
-  return { L, yH, yG, yF, yFarm, yHerd, tech, fq, herdN, availG, availF, nc, kH, bestSpecies, travel };
+  return { L, yH, yG, yF, yFarm, yHerd, tech, fq, herdN, availG, availF, nc, kH, bestSpecies, travel, farmCap };
 }
 // 仕事の必要度：食料を得る仕事は、最適な割り振りに合わせる（残りの 15% は道具・建築・運搬・治療・警備）
 function peSetDemand(people, g, pl) {
@@ -1595,7 +1597,9 @@ function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
   } else g.hunger = 0;
   // ---- 状況を表に書く：住民は毎日の判定でこの表を使う（出生・飢え・寒さ・病気）
   const agri = peClamp01((g.farmFrac || 0) / 0.6);   // 農耕・牧畜が食料に占める割合の効き
-  const sur = peClamp01(((g.food || 0) / Math.max(1, need) - PE.SURPLUS_FROM) / (PE.SURPLUS_FULL - PE.SURPLUS_FROM));   /* 蓄えの月数 → 余剰の効き（0〜1） */
+  let sur = peClamp01(((g.food || 0) / Math.max(1, need) - PE.SURPLUS_FROM) / (PE.SURPLUS_FULL - PE.SURPLUS_FROM));   /* 蓄えの月数 → 余剰の効き（0〜1） */
+  let over = 0;
+  if (pl.tech.farm) { const capPop = pl.farmCap * PE.FARM_FEEDS + PE.CAP_BASE, rr = pop / capPop; g.capPop = Math.round(capPop); sur *= peClamp01((1.2 - rr) / 0.5); over = Math.max(0, rr - 1); }   /* 土地の限り：養える人数に近づくと余剰の効きが減り、超えると病気が増える（行き過ぎを防ぐ） */
   hz.fert[id] = peClamp01((g.fed - PE.FERT_FOOD[0]) / (PE.FERT_FOOD[1] - PE.FERT_FOOD[0])) * (1 + PE.AGRI_FERT * agri) * (1 + PE.SURPLUS_FERT * sur);
   if (g.epi > 0) g.epi--;
   else if (rng() < PE.EPI_P * pop / 200 * (1 - 0.25 * peFacil(g).well)) {
@@ -1606,7 +1610,7 @@ function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
   let snow = 0; if (ctx.snow) snow = ctx.snow[home] || 0;
   const harsh = peClamp01((PE.COLD_T[0] - T) / PE.COLD_T[1]) + peClamp01((snow - 50) / 100) * 0.3;
   hz.cold[id] = PE.COLD_H * harsh * (1 - PE.COLD_KNOW * kH) * (1 + (1 - ratio));
-  hz.dis[id] = (g.epi > 0 ? PE.EPI_H : 0) + Math.max(0, pop / PE.CROWD_POP - 1) * PE.CROWD_H;
+  hz.dis[id] = (g.epi > 0 ? PE.EPI_H : 0) + Math.max(0, pop / PE.CROWD_POP - 1) * PE.CROWD_H + over * PE.OVERCAP_DIS;
   hz.hungerDis[id] = (1 + (1 - ratio)) * (1 - PE.AGRI_DIS * agri) * (1 - PE.SURPLUS_DIS * sur);
   // ---- 移動
   g.radius = peRadius(pop);
