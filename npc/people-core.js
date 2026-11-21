@@ -1521,6 +1521,36 @@ function peBuildStep(people, g, ev, rel) {
 // 影の台帳：その月の流れ（収穫・消費・干すときの目減り・傷み・あふれ）を整数の刻みで写し、月の終わりに実際の蓄えへ合わせる。食料の計算は変えない
 // 食料の表示：1単位＝1,000kcal（0.1単位＝台帳の1刻み＝100kcal）。kg から換算（1kg＝18刻み＝1.8単位）。大きい量は整数、小さい量は小数1桁
 function peFoodUnits(kg) { const u = kg * TICKS_PER_KG / 10; return (Math.abs(u) >= 100 ? Math.round(u) : u.toFixed(1)) + '単位'; }
+// ---------------------------------------------------------------- 集落どうしの関係値（M1：余剰を「誰に分けるか」を決める材料。M2 の輸送・交易で使う。今は記録と計算だけで、人口・食料の動きは変えない）
+// 材料：分裂の親子・兄弟（g.parent）、他の集落にいる配偶者・親子の数（人の記録）、同じ民族、近さ、過去の贈り合い（g.fav）。点数は整数。a→b と b→a は、贈り合いの分だけ違う
+function peKinTies(people) {
+  const P = people.npc, m = new Map(), add = (a, b, k) => { if (!a || !b || a === b) return; const key = Math.min(a, b) + '-' + Math.max(a, b); let o = m.get(key); if (!o) m.set(key, o = { marr: 0, pc: 0 }); o[k]++; };
+  for (let i = 0; i < P.n; i++) {
+    if (P.death[i] !== ALIVE) continue; const gi = P.group[i];
+    const sp = P.spouse[i]; if (sp !== NONE && sp > i && P.death[sp] === ALIVE) add(gi, P.group[sp], 'marr');
+    for (const par of [P.mother[i], P.father[i]]) if (par !== NONE && P.death[par] === ALIVE) add(gi, P.group[par], 'pc');
+  }
+  return m;
+}
+const PE_REL = { PARENT: 40, SIBLING: 20, MARR: 6, MARR_MAX: 30, PC: 3, PC_MAX: 15, ETH: 10, NEAR: 10, FAVOR_TICKS: 5000, FAVOR_MAX: 30 };
+function peRelation(people, a, b, kin) {
+  const ga = people.groups[a - 1], gb = people.groups[b - 1]; if (!ga || !gb || a === b) return { score: 0, parts: {} };
+  const parts = {};
+  if (ga.parent === b || gb.parent === a) parts.lineage = PE_REL.PARENT; else if (ga.parent && ga.parent === gb.parent) parts.lineage = PE_REL.SIBLING;
+  const k = (kin || peKinTies(people)).get(Math.min(a, b) + '-' + Math.max(a, b));
+  if (k) { if (k.marr) parts.marriage = Math.min(PE_REL.MARR_MAX, k.marr * PE_REL.MARR); if (k.pc) parts.kin = Math.min(PE_REL.PC_MAX, k.pc * PE_REL.PC); }
+  if (ga.ethId === gb.ethId) parts.ethnic = PE_REL.ETH;
+  if (people.nbr && people.nbr[a] && people.nbr[a].includes(b)) parts.near = PE_REL.NEAR;
+  const fav = ga.fav && ga.fav[b]; if (fav && fav.got > 0) parts.favor = Math.min(PE_REL.FAVOR_MAX, Math.floor(fav.got / PE_REL.FAVOR_TICKS));   // b から受けた恩（刻み）。恩を返す方向へ
+  let score = 0; for (const v in parts) score += parts[v]; return { score, parts };
+}
+// 贈り合いの記録（from が to へ ticks 刻みを分けた）。M2 の輸送で使う。台帳の残高は動かさない（実際の移動は台帳の transfer で別に行う）
+function peGiftRecord(people, from, to, ticks) {
+  if (!Number.isInteger(ticks) || ticks <= 0) throw new TypeError('贈り合いは正の整数の刻みだけ：' + ticks);
+  const a = people.groups[from - 1], b = people.groups[to - 1]; if (!a || !b) return false;
+  (a.fav || (a.fav = {}))[to] = a.fav[to] || { gave: 0, got: 0 }; a.fav[to].gave += ticks;
+  (b.fav || (b.fav = {}))[from] = b.fav[from] || { gave: 0, got: 0 }; b.fav[from].got += ticks; return true;
+}
 function peLedgerMonth(g, R, fresh, dried, dur) {
   const L = g.ledger || (g.ledger = new Ledger()); if (!L.opened) L.open({ dur: R.oD, fresh: R.oF, dried: R.oH });
   L.startMonth(); const tk = (k, kg) => L.take(k, kg || 0);
@@ -1655,7 +1685,7 @@ function peSplit(people, g, S, world, rng, ev, rel) {
   const d = peFindSite(people, g, S, world, rng, PE.SPLIT_RANGE, 0);
   if (!d) return null;
   const P = people.npc, share = PE.SPLIT_SHARE[0] + (PE.SPLIT_SHARE[1] - PE.SPLIT_SHARE[0]) * rng();
-  const c = peNewGroup(people, g.ethId, g.x, g.y); if (g.arch) c.arch = JSON.parse(JSON.stringify(g.arch));
+  const c = peNewGroup(people, g.ethId, g.x, g.y); c.parent = g.id; if (g.arch) c.arch = JSON.parse(JSON.stringify(g.arch));
   const fam = (i) => { let r = i; if (P.age(i) < 16 && P.mother[i] !== NONE) r = P.mother[i]; const s = P.spouse[r]; return s !== NONE && s < r ? s : r; };
   let moved = 0, all = 0;
   for (let i = 0; i < P.n; i++) {
@@ -1753,6 +1783,6 @@ function peopleEthCounts(people) {
   const P = people.npc, o = {}; for (let i = 0; i < P.n; i++) { if (P.death[i] !== ALIVE) continue; const e = P.eth[i] || P.groupEth[P.group[i]]; o[e] = (o[e] || 0) + 1; } return o;
 }
 
-if (typeof module !== 'undefined' && module.exports) module.exports = { peFoodUnits, peopleMonthlySteps, peLedgerSummary, peopleLayerDemote, peopleLayerPromote, peopleLayerFocusNow, peopleLayerSummary, peAggTotal, peopleDaily, peopleDailyFoodNeed, peopleStorageStrides, PE, resetSiteCache() { peCache = null; }, peSites, peSiteScore, peNearestSite, peopleSiteInfo, SITE_KINDS, SITE_LABEL, peNationEnsure, peChron, peArchInit, peArchYear, ARCH, peStatRecord, peopleStatSeries, peopleStatChange, FACIL_SERVES, peCover, TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, peCultureRules, PROPOSALS, peopleProposal, LEADERSHIP, peLeaders, ACTIVITIES, peopleSetActivity, peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
-else root.WohPeople = { peFoodUnits, peopleMonthlySteps, peLedgerSummary, peTierLabel: (g) => Tier.tierLabel(g), peopleLayerDemote, peopleLayerPromote, peopleLayerFocusNow, peopleLayerSummary, peAggTotal, peopleDaily, peopleDailyFoodNeed, peopleStorageStrides, peStats, peSites, peSiteScore, peNearestSite, peopleSiteInfo, SITE_KINDS, SITE_LABEL, peNationEnsure, peChron, peArchInit, peArchYear, ARCH, peStatRecord, peopleStatSeries, peopleStatChange, FACIL_SERVES, peCover, TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peopleSuccession, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, PROPOSALS, peopleProposal, LEADERSHIP, ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+if (typeof module !== 'undefined' && module.exports) module.exports = { peKinTies, peRelation, peGiftRecord, PE_REL, peFoodUnits, peopleMonthlySteps, peLedgerSummary, peopleLayerDemote, peopleLayerPromote, peopleLayerFocusNow, peopleLayerSummary, peAggTotal, peopleDaily, peopleDailyFoodNeed, peopleStorageStrides, PE, resetSiteCache() { peCache = null; }, peSites, peSiteScore, peNearestSite, peopleSiteInfo, SITE_KINDS, SITE_LABEL, peNationEnsure, peChron, peArchInit, peArchYear, ARCH, peStatRecord, peopleStatSeries, peopleStatChange, FACIL_SERVES, peCover, TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, peCultureRules, PROPOSALS, peopleProposal, LEADERSHIP, peLeaders, ACTIVITIES, peopleSetActivity, peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+else root.WohPeople = { peKinTies, peRelation, peGiftRecord, PE_REL, peFoodUnits, peopleMonthlySteps, peLedgerSummary, peTierLabel: (g) => Tier.tierLabel(g), peopleLayerDemote, peopleLayerPromote, peopleLayerFocusNow, peopleLayerSummary, peAggTotal, peopleDaily, peopleDailyFoodNeed, peopleStorageStrides, peStats, peSites, peSiteScore, peNearestSite, peopleSiteInfo, SITE_KINDS, SITE_LABEL, peNationEnsure, peChron, peArchInit, peArchYear, ARCH, peStatRecord, peopleStatSeries, peopleStatChange, FACIL_SERVES, peCover, TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peopleSuccession, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, PROPOSALS, peopleProposal, LEADERSHIP, ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
