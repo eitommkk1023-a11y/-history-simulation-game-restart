@@ -91,6 +91,7 @@ const PE = {
   COLD_KNOW: 0.5,                                 // 狩猟の知識（毛皮の衣服）で寒さの害を減らす割合
   EPI_P: 0.0025,                                  // 疫病が始まる確率（1か月、人口 200 人あたり。接触した民族があると 1.5 倍）［仮］
   EPI_H: 1.0, EPI_MONTHS: [1, 3],                 // 疫病のあいだ加わるハザード、続く月数［仮］
+  SAN_EPI: 0.7, SAN_EPI_H: 0.5, SAN_CROWD: 0.8,   /* 水と衛生（M3）：受け持つ割合 1 のとき、疫病の起こりやすさ −70%、疫病の重さ −50%、密集による病気 −80% */
   CROWD_POP: 200, CROWD_H: 0.03,                  // 人口がこれを超えると病気が増える（超えた割合×CROWD_H）［仮］
   HUNGER_FOOD: 0.9,                               // 充足率がこれ未満の月を「食料不足」と数える［仮］
   // ---- 知識（1か月あたり）［仮］
@@ -1352,9 +1353,9 @@ function peNationYear(people, ev, rel) {
 }
 // 民族が持っている農耕・牧畜の技術と、収穫への効き（乗数）
 function peTechOf(people, ethId) {
-  const S = people.nation, o = { farm: false, herd: false, kiln: false, dugout: false, draft: false, cart: false, mult: 1, farmSince: -1 }; if (!S) return o;
+  const S = people.nation, o = { farm: false, herd: false, kiln: false, chiefdom: false, dugout: false, draft: false, cart: false, mult: 1, farmSince: -1 }; if (!S) return o;
   const h = (n) => Nation.hasNode(S, ethId, n);
-  o.farm = h('cultivate'); o.herd = h('herd'); o.kiln = h('kiln'); o.dugout = h('dugout'); o.draft = h('draft'); o.cart = h('cart');
+  o.farm = h('cultivate'); o.herd = h('herd'); o.kiln = h('kiln'); o.chiefdom = h('chiefdom'); o.dugout = h('dugout'); o.draft = h('draft'); o.cart = h('cart');
   if (o.farm) { o.farmSince = Nation.sinceNode(S, ethId, 'cultivate'); o.mult = 1 + (h('irrigate') ? 0.35 : 0) + (h('rotation') ? 0.2 : 0) + (h('draft') ? 0.15 : 0) + (h('iron') ? 0.1 : 0); }
   return o;
 }
@@ -1452,7 +1453,7 @@ function peFacilPreview(people, g) {
   { const sp = Math.min(fresh, FACIL.rack.max * 0); const room = Math.max(0, fresh), conv = Math.min(room, PE.RACK_KG * (T < 0 ? 0.5 : 1)), L = ['保存日数：生鮮 ' + half(r0.fresh) + ' → 干物 ' + half(r0.dried) + '（干した分は、傷みがごくわずか）', '1つで、生鮮の余りを月に最大' + kg(PE.RACK_KG * (T < 0 ? 0.5 : 1)) + '（干物になるのは' + Math.round(PE.RACK_YIELD * 100) + '%）', (fresh >= 1 ? 'いまの生鮮の蓄え ' + kg(fresh) + '（→ 干物 ' + kg(conv * PE.RACK_YIELD) + '）' : 'いまは生鮮の蓄えがありません（余りが出たときに干します）')]; add('rack', L, fresh < 20 && freshIn < need * 0.3 ? '生鮮の余りがほとんどないので、いまは効果が小さい（魚・肉が余る村向き）' : null, freshShare >= 0.4 ? '生鮮が多い村向き' : null); }
   { const L = lifeLine('granary').concat(spoilLine('granary')); L.push('蓄えの上限 ' + kg(peStoreCap(g, need, fa)) + ' → ' + kg(peStoreCap(g, need, withF('granary', 1)))); L.unshift('受け持つ人数 ' + Math.min(Math.round(g.pop || 0), fa.granary * FACIL_SERVES.granary) + '人 → ' + Math.min(Math.round(g.pop || 0), (fa.granary + 1) * FACIL_SERVES.granary) + '人（村の人口 ' + Math.round(g.pop || 0) + '人）'); L.push('不作で食料が足りないとき、飢えて亡くなる人が最大35%減る（受け持つ分。いま' + Math.round(100 * 0.35 * peCover('granary', fa.granary, g.pop)) + '% → ' + Math.round(100 * 0.35 * peCover('granary', fa.granary + 1, g.pop)) + '%）'); add('granary', L, null, durIn >= freshIn ? '穀物・根が主な村向き' : null); }
   { const L = lifeLine('hearth').concat(spoilLine('hearth')); L.unshift('受け持つ人数 ' + Math.min(Math.round(g.pop || 0), FACIL_SERVES.hearth) + '人（村の人口 ' + Math.round(g.pop || 0) + '人）'); L.push('食料が足りないとき、飢えて亡くなる人が約15%減る（受け持つ分）'); add('hearth', L, null, freshShare >= 0.4 ? '生鮮が多い村向き' : null); }
-  add('well', ['疫病の起こりやすさ（井戸なしを100%として）' + Math.round(100 * (1 - 0.25 * Math.min(2, fa.well))) + '% → ' + Math.round(100 * (1 - 0.25 * Math.min(2, fa.well + 1))) + '%']);
+  { const sn = (n) => peClamp01((n * FACIL_SERVES.well + fa.drain * FACIL_SERVES.drain) / Math.max(1, g.pop || 1)); add('well', ['疫病の起こりやすさ（なしを100%として）' + Math.round(100 * (1 - PE.SAN_EPI * sn(fa.well))) + '% → ' + Math.round(100 * (1 - PE.SAN_EPI * sn(fa.well + 1))) + '%（受け持つ ' + Math.min(g.pop || 0, (fa.well + 1) * FACIL_SERVES.well + fa.drain * FACIL_SERVES.drain) + '人）']); }
   { const cap0 = PE.HERD_CAP[0] + PE.HERD_CAP[1] * 0.5; add('pen', ['養える家畜が約+40%（いま' + Math.round(g.herdN || 0) + '頭）', '家畜の食料（月）：乳・肉が増える']); }
   { const gain = (lf.farm || 0) * (0.12 / (1 + 0.12 * fa.field)); add('field', ['農耕の収穫が +12%（いまの農産物は月' + kg(lf.farm || 0) + ' → 約+' + kg(gain) + '）']); }
   add('kiln', ['高温焼成の窯。土器の品質に効く（品質の仕組みは次の段階）']);
@@ -1474,7 +1475,8 @@ const FACIL = {
   pit: { name: '貯蔵穴', cost: { stone: 3, fiber: 4 }, months: 2, max: 4, role: 'storage_pit', info: '1つで25人ぶんの蓄えを受け持つ。受け持つ分は、穀物・根・木の実が腐りにくい（×0.7）。生鮮は逆に傷みやすい（×1.3）。蓄えられる量+25%（受け持つ分）', lock: '半定住以上（動かない集団）', when: (g) => (g.settle || 0) >= 1 },
   rack: { name: '干し棚', cost: { firewood: 6, fiber: 6, rope: 1 }, months: 1, max: 4, role: 'drying_rack', info: '生鮮の肉・魚・果実を、1つで月に約360単位（1単位＝1,000kcal）ぶん干物に変える（寒い月は半分）。野営地でも建てられる（分解できる）', lock: '集団が移動中でないこと', when: (g) => true },
   granary: { name: '倉庫', cost: { firewood: 8, fiber: 10, rope: 2 }, months: 3, max: 4, role: 'raised_storehouse', info: '1つで40人ぶんの蓄えを受け持つ。受け持つ分は、穀物・根・木の実が腐りにくく（×0.6）、干物も少し（×0.8）、蓄えられる量+50%。不作で食料が足りないとき、飢えて亡くなる人が最大35%減る（受け持つ分）', lock: '村で、栽培を持つか、農産物が食料の3割以上', when: (g, t) => g.settle === 2 && (t.farm || (g.farmFrac || 0) >= 0.3) },
-  well: { name: '井戸', cost: { stone: 6, rope: 2, firewood: 3 }, months: 2, max: 2, role: 'well', info: '疫病が広がりにくくなる（1つにつき-25%）', lock: '半定住以上', when: (g) => (g.settle || 0) >= 1 },
+  well: { name: '井戸', cost: { stone: 6, rope: 2, firewood: 3 }, months: 2, max: 8, role: 'well', info: '1つで150人ぶんの水を受け持つ。受け持つ分は、疫病が起こりにくく、密集による病気も減る', lock: '半定住以上', when: (g) => (g.settle || 0) >= 1 },
+  drain: { name: '排水路', cost: { stone: 8, clay: 4, firewood: 2 }, months: 3, max: 8, role: 'drain', info: '1つで300人ぶんの汚れた水を流す。受け持つ分は、疫病が起こりにくく、密集による病気も減る（井戸と合わせた受け持ちで決まる）', lock: '定住した村（人口150以上）', when: (g) => (g.settle || 0) >= 2 && (g.pop || 0) >= 150 },
   pen: { name: '家畜の囲い', cost: { firewood: 10, fiber: 6, rope: 2 }, months: 2, max: 3, role: 'livestock_pen', info: '養える家畜が増える（1つにつき+40%）', lock: '牧畜を持ち、半定住以上で、家畜が8頭以上', when: (g, t) => t.herd && (g.settle || 0) >= 1 && (g.herdN || 0) >= 8 },
   hearth: { name: '共同の炉', cost: { stone: 8, firewood: 4 }, months: 2, max: 1, role: 'communal_hearth', info: '80人ぶんを受け持つ。受け持つ分は、生鮮が傷みにくい（×0.7）。食料が足りないとき、飢える人が約15%減る', lock: '村で、人口60人以上', when: (g) => g.settle === 2 && (g.pop || 0) >= 60 },
   field: { name: '畑の拡張', cost: { stone: 4, fiber: 6 }, months: 4, max: 3, role: 'field', info: '農耕の収穫が増える（1つにつき+12%）', lock: '栽培を持ち、半定住以上', when: (g, t) => t.farm && (g.settle || 0) >= 1 },
@@ -1482,7 +1484,9 @@ const FACIL = {
 };
 // 蓄えの傷み方（1か月の割合）と上限。月の計算と、画面の「建てた後の見込み」で同じ式を使う
 // 施設は「何人ぶんの蓄えを受け持つか」で効く：貯蔵穴1つ＝25人、倉庫1つ＝40人、共同の炉＝80人。受け持ちの割合（受け持つ人数÷村の人口、最大1）だけ、傷み方の効果が出る。大きな村は、増設しないと全部は賄えない
-const FACIL_SERVES = { pit: 25, granary: 40, hearth: 80 };
+const FACIL_SERVES = { pit: 25, granary: 40, hearth: 80, well: 150, drain: 300 };
+// 水と衛生（M3）：井戸・排水路が受け持つ人数の割合（0〜1）。疫病の起こりやすさ・重さ・密集による病気が、これで減る
+function peSanitation(g) { const f = peFacil(g); return peClamp01((f.well * FACIL_SERVES.well + f.drain * FACIL_SERVES.drain) / Math.max(1, g.pop || 1)); }
 function peCover(k, n, pop) { return Math.min(1, n * FACIL_SERVES[k] / Math.max(1, pop || 1)); }
 function peSpoilRates(T, fa, pop) {
   const t25 = peClamp01(T / 25), sp = (c) => c[0] + c[1] * t25, cp = peCover('pit', fa.pit, pop), cg = peCover('granary', fa.granary, pop), ch = peCover('hearth', fa.hearth, pop);
@@ -1512,7 +1516,17 @@ function peopleBuildStart(people, kind, spot) {
   const sp = spot && Number.isFinite(spot.x) && Number.isFinite(spot.z) ? { x: spot.x, z: spot.z, rot: Number.isFinite(spot.rot) ? spot.rot : 0 } : null;
   r.group.build = { kind, left: FACIL[kind].months, spot: sp }; return { ok: true, kind, months: FACIL[kind].months, group: r.group.id, spot: sp };
 }
+// 水と衛生：指導者がいない集落（プレイヤー以外）は、人口が増えると、自分たちで井戸・排水路を少しずつ作る（材料は集落の共同のもの。月数と人手はかかる）。受け持つ割合が 0.7 に届くまで
+function peAiSanitation(people, g) {
+  if (g.build || g.moveTo || g.settle !== 2 || g.fed < 0.7 || (g.pop || 0) < 100) return;
+  const pl = people.player; if (pl && pl.id >= 0 && people.npc.group[pl.id] === g.id) return;
+  const f = peFacil(g), served = f.well * FACIL_SERVES.well + f.drain * FACIL_SERVES.drain; if (served >= 0.7 * g.pop) return;
+  const t = peTechOf(people, g.ethId);
+  if (t.chiefdom && g.pop >= 300 && f.drain < FACIL.drain.max && f.well >= 1) g.build = { kind: 'drain', left: FACIL.drain.months, spot: null };
+  else if (f.well < FACIL.well.max) g.build = { kind: 'well', left: FACIL.well.months, spot: null };
+}
 function peBuildStep(people, g, ev, rel) {
+  if (!g.build) peAiSanitation(people, g);
   const b = g.build; if (!b) return; if (g.moveTo) return;
   if ((g.pop || 0) >= 15 && g.fed > 0.5) b.left -= 1;
   if (b.left > 0) return;
@@ -1708,10 +1722,10 @@ function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
   const agri = peClamp01((g.farmFrac || 0) / 0.6);   // 農耕・牧畜が食料に占める割合の効き
   let sur = peClamp01(((g.food || 0) / Math.max(1, need) - PE.SURPLUS_FROM) / (PE.SURPLUS_FULL - PE.SURPLUS_FROM));   /* 蓄えの月数 → 余剰の効き（0〜1） */
   let over = 0;
-  if (pl.tech.farm) { const capPop = pl.farmCap * PE.FARM_FEEDS + PE.CAP_BASE + (g.impKg || 0) / Math.max(1, need / Math.max(1, pop)) * 0.9, rr = pop / capPop;   /* 外から買い入れる食料ぶん、養える人数が増える */ g.capPop = Math.round(capPop); sur *= peClamp01((1.2 - rr) / 0.5); over = Math.max(0, rr - 1); }   /* 土地の限り：養える人数に近づくと余剰の効きが減り、超えると病気が増える（行き過ぎを防ぐ） */
+  if (pl.tech.farm) { const capPop = pl.farmCap * PE.FARM_FEEDS + PE.CAP_BASE + Math.max(g.impKg || 0, P.gcount[g.id * NJOB + 11] * CFG.aid.traderKg * CFG.aid.tradeShare) / Math.max(1, need / Math.max(1, pop)), rr = pop / capPop;   /* 外から買い入れる食料ぶん、養える人数が増える */ g.capPop = Math.round(capPop); sur *= peClamp01((1.2 - rr) / 0.5); over = Math.max(0, rr - 1); }   /* 土地の限り：養える人数に近づくと余剰の効きが減り、超えると病気が増える（行き過ぎを防ぐ） */
   hz.fert[id] = peClamp01((g.fed - PE.FERT_FOOD[0]) / (PE.FERT_FOOD[1] - PE.FERT_FOOD[0])) * (1 + PE.AGRI_FERT * agri) * (1 + PE.SURPLUS_FERT * sur);
   if (g.epi > 0) g.epi--;
-  else if (rng() < PE.EPI_P * pop / 200 * (1 - 0.25 * peFacil(g).well)) {
+  else if (rng() < PE.EPI_P * pop / 200 * (1 - PE.SAN_EPI * peSanitation(g))) {
     g.epi = PE.EPI_MONTHS[0] + Math.floor(rng() * (PE.EPI_MONTHS[1] - PE.EPI_MONTHS[0] + 1));
     ev.push({ type: 'epidemic', imp: 1, relevant: rel(g.ethId), group: g.id, eth: g.ethId, x: g.x, y: g.y });
   }
@@ -1719,7 +1733,8 @@ function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
   let snow = 0; if (ctx.snow) snow = ctx.snow[home] || 0;
   const harsh = peClamp01((PE.COLD_T[0] - T) / PE.COLD_T[1]) + peClamp01((snow - 50) / 100) * 0.3;
   hz.cold[id] = PE.COLD_H * harsh * (1 - PE.COLD_KNOW * kH) * (1 + (1 - ratio));
-  hz.dis[id] = (g.epi > 0 ? PE.EPI_H : 0) + Math.max(0, pop / PE.CROWD_POP - 1) * PE.CROWD_H + over * PE.OVERCAP_DIS;
+  const san = peSanitation(g);   /* 水と衛生：井戸・排水路が受け持つ割合 */
+  hz.dis[id] = (g.epi > 0 ? PE.EPI_H * (1 - PE.SAN_EPI_H * san) : 0) + Math.max(0, pop / PE.CROWD_POP - 1) * PE.CROWD_H * (1 - PE.SAN_CROWD * san) + over * PE.OVERCAP_DIS;
   hz.hungerDis[id] = (1 + (1 - ratio)) * (1 - PE.AGRI_DIS * agri) * (1 - PE.SURPLUS_DIS * sur);
   // ---- 移動
   g.radius = peRadius(pop);
@@ -1861,6 +1876,6 @@ function peopleEthCounts(people) {
   const P = people.npc, o = {}; for (let i = 0; i < P.n; i++) { if (P.death[i] !== ALIVE) continue; const e = P.eth[i] || P.groupEth[P.group[i]]; o[e] = (o[e] || 0) + 1; } return o;
 }
 
-if (typeof module !== 'undefined' && module.exports) module.exports = { peAidMode, peAidState, peAidMonth, peKinTies, peRelation, peGiftRecord, PE_REL, peFoodUnits, peopleMonthlySteps, peLedgerSummary, peopleLayerDemote, peopleLayerPromote, peopleLayerFocusNow, peopleLayerSummary, peAggTotal, peopleDaily, peopleDailyFoodNeed, peopleStorageStrides, PE, resetSiteCache() { peCache = null; }, peSites, peSiteScore, peNearestSite, peopleSiteInfo, SITE_KINDS, SITE_LABEL, peNationEnsure, peChron, peArchInit, peArchYear, ARCH, peStatRecord, peopleStatSeries, peopleStatChange, FACIL_SERVES, peCover, TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, peCultureRules, PROPOSALS, peopleProposal, LEADERSHIP, peLeaders, ACTIVITIES, peopleSetActivity, peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
-else root.WohPeople = { peAidMode, peAidState, peAidMonth, peKinTies, peRelation, peGiftRecord, PE_REL, peFoodUnits, peopleMonthlySteps, peLedgerSummary, peTierLabel: (g) => Tier.tierLabel(g), peopleLayerDemote, peopleLayerPromote, peopleLayerFocusNow, peopleLayerSummary, peAggTotal, peopleDaily, peopleDailyFoodNeed, peopleStorageStrides, peStats, peSites, peSiteScore, peNearestSite, peopleSiteInfo, SITE_KINDS, SITE_LABEL, peNationEnsure, peChron, peArchInit, peArchYear, ARCH, peStatRecord, peopleStatSeries, peopleStatChange, FACIL_SERVES, peCover, TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peopleSuccession, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, PROPOSALS, peopleProposal, LEADERSHIP, ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+if (typeof module !== 'undefined' && module.exports) module.exports = { peSanitation, peAidMode, peAidState, peAidMonth, peKinTies, peRelation, peGiftRecord, PE_REL, peFoodUnits, peopleMonthlySteps, peLedgerSummary, peopleLayerDemote, peopleLayerPromote, peopleLayerFocusNow, peopleLayerSummary, peAggTotal, peopleDaily, peopleDailyFoodNeed, peopleStorageStrides, PE, resetSiteCache() { peCache = null; }, peSites, peSiteScore, peNearestSite, peopleSiteInfo, SITE_KINDS, SITE_LABEL, peNationEnsure, peChron, peArchInit, peArchYear, ARCH, peStatRecord, peopleStatSeries, peopleStatChange, FACIL_SERVES, peCover, TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, peCultureRules, PROPOSALS, peopleProposal, LEADERSHIP, peLeaders, ACTIVITIES, peopleSetActivity, peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+else root.WohPeople = { peSanitation, peAidMode, peAidState, peAidMonth, peKinTies, peRelation, peGiftRecord, PE_REL, peFoodUnits, peopleMonthlySteps, peLedgerSummary, peTierLabel: (g) => Tier.tierLabel(g), peopleLayerDemote, peopleLayerPromote, peopleLayerFocusNow, peopleLayerSummary, peAggTotal, peopleDaily, peopleDailyFoodNeed, peopleStorageStrides, peStats, peSites, peSiteScore, peNearestSite, peopleSiteInfo, SITE_KINDS, SITE_LABEL, peNationEnsure, peChron, peArchInit, peArchYear, ARCH, peStatRecord, peopleStatSeries, peopleStatChange, FACIL_SERVES, peCover, TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peopleSuccession, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, PROPOSALS, peopleProposal, LEADERSHIP, ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
