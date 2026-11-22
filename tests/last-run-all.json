@@ -1,14 +1,14 @@
 {
- "at": "2026-11-18T14:41:34.304Z",
+ "at": "2026-11-22T17:17:29.184Z",
  "html": "World-of-History-v30-development.html",
  "pass": 1,
  "fail": 0,
  "results": [
   {
-   "kind": "node",
-   "name": "test-surplus",
+   "kind": "browser",
+   "name": "visual",
    "ok": true,
-   "sec": 41.1,
+   "sec": 34.1,
    "detail": ""
   }
  ]
