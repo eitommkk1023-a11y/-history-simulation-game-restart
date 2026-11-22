@@ -8454,9 +8454,9 @@ const DEFAULT = {
     { id: 'camp', label: '野営', minSettle: 0, minPop: 0 },
     { id: 'semi', label: '半定住', minSettle: 1, minPop: 0 },
     { id: 'village', label: '村', minSettle: 2, minPop: 0 },
-    { id: 'town', label: '町', minSettle: 2, minPop: 1000 },
-    { id: 'city', label: '都市', minSettle: 2, minPop: 10000 },
-    { id: 'metropolis', label: '大都市', minSettle: 2, minPop: 50000 },
+    { id: 'town', label: '町', minSettle: 2, minPop: 1000, minSan: 0.5, gov: 'chiefdom' },
+    { id: 'city', label: '都市', minSettle: 2, minPop: 10000, minSan: 0.7, gov: 'state' },
+    { id: 'metropolis', label: '大都市', minSettle: 2, minPop: 50000, minSan: 0.8, gov: 'state' },
   ],
   // 台帳（食料を整数の刻みで記録）：enabled＝影の台帳を動かす（食料の本体は、まだ従来のモデル）
   ledger: { enabled: true, authority: true },   /* authority：食料の蓄えを、台帳の整数（1刻み＝100kcal）で持つ（M1）。false なら従来の小数のまま */
@@ -8475,7 +8475,7 @@ function validate(c) {
   const p = c.population || {}; num('population.initSiteMin', p.initSiteMin, 0.05, 1); num('population.initSiteSlope', p.initSiteSlope, 0, 2); num('population.splitPop', p.splitPop, 20, 1e6); num('population.splitPopSettled', p.splitPopSettled, p.splitPop, 1e6); num('population.splitPopTown', p.splitPopTown, p.splitPopSettled, 1e7); num('population.sanitationTarget', p.sanitationTarget, 0, 1); num('population.splitFedMin', p.splitFedMin, 0, 1); num('population.surplusFert', p.surplusFert, 0, 5); num('population.surplusDis', p.surplusDis, 0, 0.95); num('population.farmFeeds', p.farmFeeds, 1, 50); num('population.capBase', p.capBase, 0, 5000); num('population.overcapDis', p.overcapDis, 0, 5); num('population.farmPerKm2', p.farmPerKm2, 1, 1000); num('population.farmRadiusKm', p.farmRadiusKm, 0.2, 30); num('population.surplusFrom', p.surplusFrom, 0, 36); num('population.surplusFull', p.surplusFull, (p.surplusFrom || 0) + 0.5, 60);
   const a = c.aid || {}; num('aid.packKg', a.packKg, 1, 1000); num('aid.cartKg', a.cartKg, 1, 10000); num('aid.boatKg', a.boatKg, 1, 100000); num('aid.traderKg', a.traderKg, 0, 100000); num('aid.tradeShare', a.tradeShare, 0, 0.95); num('aid.importBelowMonths', a.importBelowMonths, 0, 12); num('aid.importMinPop', a.importMinPop, 0, 1e6); num('aid.maxPerMonth', a.maxPerMonth, 0, 1000); num('aid.porterKg', a.porterKg, 1, 500); num('aid.walkKmH', a.walkKmH, 0.5, 20); num('aid.walkHoursPerDay', a.walkHoursPerDay, 1, 24); num('aid.detour', a.detour, 1, 5); num('aid.maxDays', a.maxDays, 0.5, 30); num('aid.minRelation', a.minRelation, 0, 1000); num('aid.keepMonths', a.keepMonths, 0, 60); num('aid.needBelowMonths', a.needBelowMonths, 0, 12); num('aid.wantMonths', a.wantMonths, 0.5, 24); num('aid.lossPerDay', a.lossPerDay, 0, 0.5); num('aid.maxPorters', a.maxPorters, 1, 10000);
   const l = c.layers || {}; num('layers.cap', l.cap, 10, 1e5); num('layers.nearCap', l.nearCap, l.cap, 1e6); num('layers.demoteRate', l.demoteRate, 0.01, 1); num('layers.promotePerMonth', l.promotePerMonth, 1, 1e5); num('layers.nearDist', l.nearDist, 1, 3000); num('layers.activateAbove', l.activateAbove, 0, 1e7); num('layers.focusM', l.focusM, 100, 100000);
-  const tr = c.tiers; if (!Array.isArray(tr) || tr.length < 3) errs.push('tiers は3つ以上の配列'); else tr.forEach((x, i) => { if (!x.id || !x.label || !(x.minSettle >= 0) || !(x.minPop >= 0)) errs.push('tiers.' + i + ' の形が違う'); if (i && (x.minSettle < tr[i - 1].minSettle || (x.minSettle === tr[i - 1].minSettle && x.minPop < tr[i - 1].minPop))) errs.push('tiers は、段階・人口が下から上へ並ぶ（' + i + '番目）'); });
+  const tr = c.tiers; if (!Array.isArray(tr) || tr.length < 3) errs.push('tiers は3つ以上の配列'); else tr.forEach((x, i) => { if (!x.id || !x.label || !(x.minSettle >= 0) || !(x.minPop >= 0)) errs.push('tiers.' + i + ' の形が違う'); if ((x.minSan !== undefined && !(x.minSan >= 0 && x.minSan <= 1)) || (x.gov !== undefined && x.gov !== 'chiefdom' && x.gov !== 'state')) errs.push('tiers.' + i + ' の minSan（0〜1）か gov（chiefdom／state）が違う'); if (i && (x.minSettle < tr[i - 1].minSettle || (x.minSettle === tr[i - 1].minSettle && x.minPop < tr[i - 1].minPop))) errs.push('tiers は、段階・人口が下から上へ並ぶ（' + i + '番目）'); });
   const t = c.targets || {}; if (!Array.isArray(t.worldPopulation) || !Array.isArray(t.cityPopulation)) errs.push('targets の形が違う');
   num('trade.externalFoodPerMonth', (c.trade || {}).externalFoodPerMonth, 0, 1e12);
   return errs;
@@ -8628,14 +8628,17 @@ if (typeof module !== 'undefined' && module.exports) module.exports = api; else 
 <script id="settlement-tier">
 'use strict';
 // 集落の階層（F5）：野営・半定住・村・町・都市・大都市。定住の段階（settle 0/1/2）と人口から決める。
-// 町以上の条件は、今は人口だけ（M4 で、水・衛生・統治・市場などの条件を足す）。閾値は game-config.js の tiers。
+// 町以上は、人口に加えて、水と衛生（g.san＝井戸・排水路の受け持つ割合）と統治（g.gov＝民族の持つ首長制・国家）も要る（M4）。市場などの条件は M5 で足す。閾値は game-config.js の tiers（minSan・gov）。
 (function (root) {
 const CFG = (typeof require !== 'undefined' ? require('./game-config.js') : root.WohConfig).CONFIG;
 // 定住の段階（settle）が minSettle 以上で、人口が minPop 以上のうち、最も上の階層
-function tierIndex(g, tiers) { tiers = tiers || CFG.tiers; let best = 0; for (let i = 0; i < tiers.length; i++) { const t = tiers[i]; if ((g.settle || 0) >= t.minSettle && (g.pop || 0) >= t.minPop) best = i; } return best; }
+function meets(g, t) { return (g.settle || 0) >= t.minSettle && (g.pop || 0) >= t.minPop && (g.san || 0) >= (t.minSan || 0) && (!t.gov || !!(g.gov && g.gov[t.gov])); }
+function tierIndex(g, tiers) { tiers = tiers || CFG.tiers; let best = 0; for (let i = 0; i < tiers.length; i++) if (meets(g, tiers[i])) best = i; return best; }
+// 次の階層に足りないもの（表示用）：人口・水と衛生・統治
+function tierMissing(g, tiers) { tiers = tiers || CFG.tiers; const i = tierIndex(g, tiers); if (i >= tiers.length - 1) return []; const t = tiers[i + 1], out = []; if ((g.settle || 0) < t.minSettle) out.push('定住'); if ((g.pop || 0) < t.minPop) out.push('人口 ' + t.minPop + ' 以上'); if ((g.san || 0) < (t.minSan || 0)) out.push('水と衛生（井戸・排水路で人口の ' + Math.round((t.minSan || 0) * 100) + '% 以上を受け持つ）'); if (t.gov && !(g.gov && g.gov[t.gov])) out.push(t.gov === 'state' ? '国家（統治の技術）' : '首長制（統治の技術）'); return out; }
 const tierOf = (g, tiers) => (tiers || CFG.tiers)[tierIndex(g, tiers)];
 const tierLabel = (g) => tierOf(g).label;
-const api = { tierIndex, tierOf, tierLabel };
+const api = { tierIndex, tierOf, tierLabel, tierMissing };
 if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.WohTier = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
@@ -10044,9 +10047,9 @@ function peNationYear(people, ev, rel) {
 }
 // 民族が持っている農耕・牧畜の技術と、収穫への効き（乗数）
 function peTechOf(people, ethId) {
-  const S = people.nation, o = { farm: false, herd: false, kiln: false, chiefdom: false, dugout: false, draft: false, cart: false, mult: 1, farmSince: -1 }; if (!S) return o;
+  const S = people.nation, o = { farm: false, herd: false, kiln: false, chiefdom: false, state: false, dugout: false, draft: false, cart: false, mult: 1, farmSince: -1 }; if (!S) return o;
   const h = (n) => Nation.hasNode(S, ethId, n);
-  o.farm = h('cultivate'); o.herd = h('herd'); o.kiln = h('kiln'); o.chiefdom = h('chiefdom'); o.dugout = h('dugout'); o.draft = h('draft'); o.cart = h('cart');
+  o.farm = h('cultivate'); o.herd = h('herd'); o.kiln = h('kiln'); o.chiefdom = h('chiefdom'); o.state = h('state'); o.dugout = h('dugout'); o.draft = h('draft'); o.cart = h('cart');
   if (o.farm) { o.farmSince = Nation.sinceNode(S, ethId, 'cultivate'); o.mult = 1 + (h('irrigate') ? 0.35 : 0) + (h('rotation') ? 0.2 : 0) + (h('draft') ? 0.15 : 0) + (h('iron') ? 0.1 : 0); }
   return o;
 }
@@ -10145,6 +10148,7 @@ function peFacilPreview(people, g) {
   { const L = lifeLine('granary').concat(spoilLine('granary')); L.push('蓄えの上限 ' + kg(peStoreCap(g, need, fa)) + ' → ' + kg(peStoreCap(g, need, withF('granary', 1)))); L.unshift('受け持つ人数 ' + Math.min(Math.round(g.pop || 0), fa.granary * FACIL_SERVES.granary) + '人 → ' + Math.min(Math.round(g.pop || 0), (fa.granary + 1) * FACIL_SERVES.granary) + '人（村の人口 ' + Math.round(g.pop || 0) + '人）'); L.push('不作で食料が足りないとき、飢えて亡くなる人が最大35%減る（受け持つ分。いま' + Math.round(100 * 0.35 * peCover('granary', fa.granary, g.pop)) + '% → ' + Math.round(100 * 0.35 * peCover('granary', fa.granary + 1, g.pop)) + '%）'); add('granary', L, null, durIn >= freshIn ? '穀物・根が主な村向き' : null); }
   { const L = lifeLine('hearth').concat(spoilLine('hearth')); L.unshift('受け持つ人数 ' + Math.min(Math.round(g.pop || 0), FACIL_SERVES.hearth) + '人（村の人口 ' + Math.round(g.pop || 0) + '人）'); L.push('食料が足りないとき、飢えて亡くなる人が約15%減る（受け持つ分）'); add('hearth', L, null, freshShare >= 0.4 ? '生鮮が多い村向き' : null); }
   { const sn = (n) => peClamp01((n * FACIL_SERVES.well + fa.drain * FACIL_SERVES.drain) / Math.max(1, g.pop || 1)); add('well', ['疫病の起こりやすさ（なしを100%として）' + Math.round(100 * (1 - PE.SAN_EPI * sn(fa.well))) + '% → ' + Math.round(100 * (1 - PE.SAN_EPI * sn(fa.well + 1))) + '%（受け持つ ' + Math.min(g.pop || 0, (fa.well + 1) * FACIL_SERVES.well + fa.drain * FACIL_SERVES.drain) + '人）']); }
+  { const sd = (n) => peClamp01((fa.well * FACIL_SERVES.well + n * FACIL_SERVES.drain) / Math.max(1, g.pop || 1)); add('drain', ['疫病の起こりやすさ（なしを100%として）' + Math.round(100 * (1 - PE.SAN_EPI * sd(fa.drain))) + '% → ' + Math.round(100 * (1 - PE.SAN_EPI * sd(fa.drain + 1))) + '%（受け持つ ' + Math.min(g.pop || 0, fa.well * FACIL_SERVES.well + (fa.drain + 1) * FACIL_SERVES.drain) + '人）']); }
   { const cap0 = PE.HERD_CAP[0] + PE.HERD_CAP[1] * 0.5; add('pen', ['養える家畜が約+40%（いま' + Math.round(g.herdN || 0) + '頭）', '家畜の食料（月）：乳・肉が増える']); }
   { const gain = (lf.farm || 0) * (0.12 / (1 + 0.12 * fa.field)); add('field', ['農耕の収穫が +12%（いまの農産物は月' + kg(lf.farm || 0) + ' → 約+' + kg(gain) + '）']); }
   add('kiln', ['高温焼成の窯。土器の品質に効く（品質の仕組みは次の段階）']);
@@ -10157,7 +10161,7 @@ function peopleGrantTech(people, ethId, node) { const S = people.nation; if (!S 
 // 技術に合わせて、集団に農民・牧人の職が開く
 function peTechFlags(people) {
   const P = people.npc, memo = new Map();
-  for (const g of people.groups) { if (!g.alive) continue; let t = memo.get(g.ethId); if (!t) memo.set(g.ethId, t = peTechOf(people, g.ethId)); const A = CFG.aid, port = g.site && (g.site.kind === 'river' || g.site.kind === 'coast' || g.site.kind === 'lake'), trader = A && g.settle === 2 && g.pop >= A.importMinPop && g.pop >= 0.7 * (g.landCap || 1e9) && ((t.dugout && port) || t.cart); P.gflags[g.id] = (trader ? 4 : 0) | (t.farm ? 1 : 0) | (t.herd ? 2 : 0); }   /* 商人（仕事11）：舟のある川・海・湖の村、または車のある村で、人口が一定以上、かつ土地で養える人数の7割に近づいた村（外の食料が要る村）だけ */
+  for (const g of people.groups) { if (!g.alive) continue; let t = memo.get(g.ethId); if (!t) memo.set(g.ethId, t = peTechOf(people, g.ethId)); const A = CFG.aid, port = g.site && (g.site.kind === 'river' || g.site.kind === 'coast' || g.site.kind === 'lake'), trader = A && g.settle === 2 && g.pop >= A.importMinPop && g.pop >= 0.7 * (g.landCap || 1e9) && ((t.dugout && port) || t.cart); P.gflags[g.id] = (trader ? 4 : 0) | (t.farm ? 1 : 0) | (t.herd ? 2 : 0); g.gov = { chiefdom: !!t.chiefdom, state: !!t.state }; g.san = Math.round(peSanitation(g) * 1000) / 1000; }   /* 商人（仕事11）：舟のある川・海・湖の村、または車のある村で、人口が一定以上、かつ土地で養える人数の7割に近づいた村（外の食料が要る村）だけ */
 }
 
 // ---------------------------------------------------------------- 村の施設（指導者が建てる）
@@ -13826,7 +13830,7 @@ globalThis.__wohForage = { context: forageContext, fauna: () => fauna, FA: () =>
     const isLeader = g.leader === pl.id;
     host.innerHTML = '<div class="rv-head"><div><div class="rpg-kicker">' + peEthName(g.ethId) + '</div><h2>' + peGrpName(g.id) + '</h2></div><div class="rv-stage">' + gr.label + '</div>' + (gr.site ? '<div class="rv-site" title="食料 ' + gr.site.parts.food + '・水 ' + gr.site.parts.water + '・地形 ' + gr.site.parts.terrain + '・資源 ' + gr.site.parts.resource + '・交通 ' + gr.site.parts.transport + '・洪水 ' + gr.site.parts.flood + '・暮らし方 ' + gr.site.parts.tech + '">立地：' + gr.site.label + '</div>' : '') + '<div class="rv-hidden"></div><div class="rv-nums"><span>人口 <b>' + Math.round(gr.pop) + '</b></span><span>世帯 <b>' + (hs ? hs.size : '-') + '</b></span><span>蓄え <b>' + gr.storeDays + '</b>日分</span>' + (isLeader ? '<span class="rv-lead">あなたが首長</span>' : '') + '</div></div>' +
       '<div class="rv-grid"><section><h3>食料の入り（先月）</h3><div class="rv-bar">' + INCOME.map(k => { const v = (inc[k[0]] || 0) / tot * 100; return v > 0.5 ? '<i style="width:' + v + '%;background:' + k[2] + '" title="' + k[1] + '"></i>' : ''; }).join('') + '</div><div class="rv-legend">' + INCOME.filter(k => (inc[k[0]] || 0) > 0).map(k => '<span><u style="background:' + k[2] + '"></u>' + k[1] + ' ' + Math.round((inc[k[0]] || 0) / tot * 100) + '%</span>').join('') + '</div>' +
-      '<div class="rv-row"><span>農民</span><b>' + gr.farmers + '人</b></div><div class="rv-row"><span>牧人／家畜</span><b>' + gr.herders + '人／' + gr.herdN + '頭</b></div><div class="rv-row"><span>いまの方針</span><b>' + polName[gr.policy] + '</b></div><div class="rv-row"><span>分配</span><b>' + shareName[gr.share] + '</b></div><div class="rv-row"><span title="1単位＝1,000kcal（0.1単位＝台帳の1刻み）">蓄えの内訳</span><b>穀物・根 ' + WohPeople.peFoodUnits(gr.stock.dur) + '／生鮮 ' + WohPeople.peFoodUnits(gr.stock.fresh) + '／干物 ' + WohPeople.peFoodUnits(gr.stock.dried) + '</b></div>' +
+      '<div class="rv-row"><span>農民</span><b>' + gr.farmers + '人</b></div><div class="rv-row"><span>牧人／家畜</span><b>' + gr.herders + '人／' + gr.herdN + '頭</b></div><div class="rv-row"><span>いまの方針</span><b>' + polName[gr.policy] + '</b></div><div class="rv-row"><span>分配</span><b>' + shareName[gr.share] + '</b></div><div class="rv-row"><span>階層</span><b>' + (globalThis.WohTier ? WohTier.tierLabel(g) + (WohTier.tierMissing(g).length ? '（次へ：' + WohTier.tierMissing(g).join('、') + '）' : '') : '-') + '</b></div><div class="rv-row"><span title="1単位＝1,000kcal（0.1単位＝台帳の1刻み）">蓄えの内訳</span><b>穀物・根 ' + WohPeople.peFoodUnits(gr.stock.dur) + '／生鮮 ' + WohPeople.peFoodUnits(gr.stock.fresh) + '／干物 ' + WohPeople.peFoodUnits(gr.stock.dried) + '</b></div>' +
       '<h3>持っている技術</h3><div class="rv-chips">' + (techs.length ? techs.map(t => '<span>' + t + '</span>').join('') : '<span>なし</span>') + '</div>' +
       '<h3>集落の建物</h3><div class="rv-chips">' + (Object.keys(roles).length ? Object.keys(roles).map(r => '<span>' + (ROLE_NAME[r] || r) + ' ' + roles[r] + '</span>').join('') : '<span>近くへ行くと表示されます</span>') + '</div></section>' +
       '<section><h3>提案する（集団の投票）</h3>' + PROP_ROWS.map(row => '<div class="rv-prow"><span>' + row[0] + '</span>' + row[1].map(o => { const cur = (row[0] === '方針' ? gr.policy === o[0] : (W.SHARE_OF[o[0]] === gr.share)); const noTech = (o[0] === 'farm' && !gr.farm) || (o[0] === 'herd' && !gr.herd); return '<button class="rpg-sys' + (cur ? ' on' : '') + '" data-prop="' + o[0] + '"' + (noTech ? ' disabled title="その技術をまだ持っていない"' : '') + '>' + o[1] + '</button>'; }).join('') + '</div>').join('') +

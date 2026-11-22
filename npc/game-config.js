@@ -23,9 +23,9 @@ const DEFAULT = {
     { id: 'camp', label: '野営', minSettle: 0, minPop: 0 },
     { id: 'semi', label: '半定住', minSettle: 1, minPop: 0 },
     { id: 'village', label: '村', minSettle: 2, minPop: 0 },
-    { id: 'town', label: '町', minSettle: 2, minPop: 1000 },
-    { id: 'city', label: '都市', minSettle: 2, minPop: 10000 },
-    { id: 'metropolis', label: '大都市', minSettle: 2, minPop: 50000 },
+    { id: 'town', label: '町', minSettle: 2, minPop: 1000, minSan: 0.5, gov: 'chiefdom' },
+    { id: 'city', label: '都市', minSettle: 2, minPop: 10000, minSan: 0.7, gov: 'state' },
+    { id: 'metropolis', label: '大都市', minSettle: 2, minPop: 50000, minSan: 0.8, gov: 'state' },
   ],
   // 台帳（食料を整数の刻みで記録）：enabled＝影の台帳を動かす（食料の本体は、まだ従来のモデル）
   ledger: { enabled: true, authority: true },   /* authority：食料の蓄えを、台帳の整数（1刻み＝100kcal）で持つ（M1）。false なら従来の小数のまま */
@@ -44,7 +44,7 @@ function validate(c) {
   const p = c.population || {}; num('population.initSiteMin', p.initSiteMin, 0.05, 1); num('population.initSiteSlope', p.initSiteSlope, 0, 2); num('population.splitPop', p.splitPop, 20, 1e6); num('population.splitPopSettled', p.splitPopSettled, p.splitPop, 1e6); num('population.splitPopTown', p.splitPopTown, p.splitPopSettled, 1e7); num('population.sanitationTarget', p.sanitationTarget, 0, 1); num('population.splitFedMin', p.splitFedMin, 0, 1); num('population.surplusFert', p.surplusFert, 0, 5); num('population.surplusDis', p.surplusDis, 0, 0.95); num('population.farmFeeds', p.farmFeeds, 1, 50); num('population.capBase', p.capBase, 0, 5000); num('population.overcapDis', p.overcapDis, 0, 5); num('population.farmPerKm2', p.farmPerKm2, 1, 1000); num('population.farmRadiusKm', p.farmRadiusKm, 0.2, 30); num('population.surplusFrom', p.surplusFrom, 0, 36); num('population.surplusFull', p.surplusFull, (p.surplusFrom || 0) + 0.5, 60);
   const a = c.aid || {}; num('aid.packKg', a.packKg, 1, 1000); num('aid.cartKg', a.cartKg, 1, 10000); num('aid.boatKg', a.boatKg, 1, 100000); num('aid.traderKg', a.traderKg, 0, 100000); num('aid.tradeShare', a.tradeShare, 0, 0.95); num('aid.importBelowMonths', a.importBelowMonths, 0, 12); num('aid.importMinPop', a.importMinPop, 0, 1e6); num('aid.maxPerMonth', a.maxPerMonth, 0, 1000); num('aid.porterKg', a.porterKg, 1, 500); num('aid.walkKmH', a.walkKmH, 0.5, 20); num('aid.walkHoursPerDay', a.walkHoursPerDay, 1, 24); num('aid.detour', a.detour, 1, 5); num('aid.maxDays', a.maxDays, 0.5, 30); num('aid.minRelation', a.minRelation, 0, 1000); num('aid.keepMonths', a.keepMonths, 0, 60); num('aid.needBelowMonths', a.needBelowMonths, 0, 12); num('aid.wantMonths', a.wantMonths, 0.5, 24); num('aid.lossPerDay', a.lossPerDay, 0, 0.5); num('aid.maxPorters', a.maxPorters, 1, 10000);
   const l = c.layers || {}; num('layers.cap', l.cap, 10, 1e5); num('layers.nearCap', l.nearCap, l.cap, 1e6); num('layers.demoteRate', l.demoteRate, 0.01, 1); num('layers.promotePerMonth', l.promotePerMonth, 1, 1e5); num('layers.nearDist', l.nearDist, 1, 3000); num('layers.activateAbove', l.activateAbove, 0, 1e7); num('layers.focusM', l.focusM, 100, 100000);
-  const tr = c.tiers; if (!Array.isArray(tr) || tr.length < 3) errs.push('tiers は3つ以上の配列'); else tr.forEach((x, i) => { if (!x.id || !x.label || !(x.minSettle >= 0) || !(x.minPop >= 0)) errs.push('tiers.' + i + ' の形が違う'); if (i && (x.minSettle < tr[i - 1].minSettle || (x.minSettle === tr[i - 1].minSettle && x.minPop < tr[i - 1].minPop))) errs.push('tiers は、段階・人口が下から上へ並ぶ（' + i + '番目）'); });
+  const tr = c.tiers; if (!Array.isArray(tr) || tr.length < 3) errs.push('tiers は3つ以上の配列'); else tr.forEach((x, i) => { if (!x.id || !x.label || !(x.minSettle >= 0) || !(x.minPop >= 0)) errs.push('tiers.' + i + ' の形が違う'); if ((x.minSan !== undefined && !(x.minSan >= 0 && x.minSan <= 1)) || (x.gov !== undefined && x.gov !== 'chiefdom' && x.gov !== 'state')) errs.push('tiers.' + i + ' の minSan（0〜1）か gov（chiefdom／state）が違う'); if (i && (x.minSettle < tr[i - 1].minSettle || (x.minSettle === tr[i - 1].minSettle && x.minPop < tr[i - 1].minPop))) errs.push('tiers は、段階・人口が下から上へ並ぶ（' + i + '番目）'); });
   const t = c.targets || {}; if (!Array.isArray(t.worldPopulation) || !Array.isArray(t.cityPopulation)) errs.push('targets の形が違う');
   num('trade.externalFoodPerMonth', (c.trade || {}).externalFoodPerMonth, 0, 1e12);
   return errs;

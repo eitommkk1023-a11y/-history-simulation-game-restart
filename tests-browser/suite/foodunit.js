@@ -10,6 +10,7 @@ const { chromium } = require('playwright');
   const line = (txt.split('\n').join(' ').match(/蓄えの内訳.{0,80}/) || [''])[0];
   console.log('panel:', JSON.stringify(txt.slice(0, 200)));
   t('村の画面に「蓄えの内訳」が出る', /蓄えの内訳/.test(txt), line);
+  t('村の画面に、階層と次に足りないものが出る', /階層\s*(野営|半定住|村|町|都市|大都市)/.test(txt.replace(/\n/g, ' ')), (txt.replace(/\n/g, ' ').match(/階層.{0,60}/) || [''])[0]);
   t('内訳が「単位」で、kg ではない', /単位/.test(line) && !/kg/.test(line), line);
   console.log('errors', JSON.stringify(errs.slice(0, 3))); console.log(bad || errs.length ? 'NG あり' : 'ALL OK'); await b.close(); process.exit(bad || errs.length ? 1 : 0);
 })();

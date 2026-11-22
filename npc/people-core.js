@@ -1353,9 +1353,9 @@ function peNationYear(people, ev, rel) {
 }
 // 民族が持っている農耕・牧畜の技術と、収穫への効き（乗数）
 function peTechOf(people, ethId) {
-  const S = people.nation, o = { farm: false, herd: false, kiln: false, chiefdom: false, dugout: false, draft: false, cart: false, mult: 1, farmSince: -1 }; if (!S) return o;
+  const S = people.nation, o = { farm: false, herd: false, kiln: false, chiefdom: false, state: false, dugout: false, draft: false, cart: false, mult: 1, farmSince: -1 }; if (!S) return o;
   const h = (n) => Nation.hasNode(S, ethId, n);
-  o.farm = h('cultivate'); o.herd = h('herd'); o.kiln = h('kiln'); o.chiefdom = h('chiefdom'); o.dugout = h('dugout'); o.draft = h('draft'); o.cart = h('cart');
+  o.farm = h('cultivate'); o.herd = h('herd'); o.kiln = h('kiln'); o.chiefdom = h('chiefdom'); o.state = h('state'); o.dugout = h('dugout'); o.draft = h('draft'); o.cart = h('cart');
   if (o.farm) { o.farmSince = Nation.sinceNode(S, ethId, 'cultivate'); o.mult = 1 + (h('irrigate') ? 0.35 : 0) + (h('rotation') ? 0.2 : 0) + (h('draft') ? 0.15 : 0) + (h('iron') ? 0.1 : 0); }
   return o;
 }
@@ -1454,6 +1454,7 @@ function peFacilPreview(people, g) {
   { const L = lifeLine('granary').concat(spoilLine('granary')); L.push('蓄えの上限 ' + kg(peStoreCap(g, need, fa)) + ' → ' + kg(peStoreCap(g, need, withF('granary', 1)))); L.unshift('受け持つ人数 ' + Math.min(Math.round(g.pop || 0), fa.granary * FACIL_SERVES.granary) + '人 → ' + Math.min(Math.round(g.pop || 0), (fa.granary + 1) * FACIL_SERVES.granary) + '人（村の人口 ' + Math.round(g.pop || 0) + '人）'); L.push('不作で食料が足りないとき、飢えて亡くなる人が最大35%減る（受け持つ分。いま' + Math.round(100 * 0.35 * peCover('granary', fa.granary, g.pop)) + '% → ' + Math.round(100 * 0.35 * peCover('granary', fa.granary + 1, g.pop)) + '%）'); add('granary', L, null, durIn >= freshIn ? '穀物・根が主な村向き' : null); }
   { const L = lifeLine('hearth').concat(spoilLine('hearth')); L.unshift('受け持つ人数 ' + Math.min(Math.round(g.pop || 0), FACIL_SERVES.hearth) + '人（村の人口 ' + Math.round(g.pop || 0) + '人）'); L.push('食料が足りないとき、飢えて亡くなる人が約15%減る（受け持つ分）'); add('hearth', L, null, freshShare >= 0.4 ? '生鮮が多い村向き' : null); }
   { const sn = (n) => peClamp01((n * FACIL_SERVES.well + fa.drain * FACIL_SERVES.drain) / Math.max(1, g.pop || 1)); add('well', ['疫病の起こりやすさ（なしを100%として）' + Math.round(100 * (1 - PE.SAN_EPI * sn(fa.well))) + '% → ' + Math.round(100 * (1 - PE.SAN_EPI * sn(fa.well + 1))) + '%（受け持つ ' + Math.min(g.pop || 0, (fa.well + 1) * FACIL_SERVES.well + fa.drain * FACIL_SERVES.drain) + '人）']); }
+  { const sd = (n) => peClamp01((fa.well * FACIL_SERVES.well + n * FACIL_SERVES.drain) / Math.max(1, g.pop || 1)); add('drain', ['疫病の起こりやすさ（なしを100%として）' + Math.round(100 * (1 - PE.SAN_EPI * sd(fa.drain))) + '% → ' + Math.round(100 * (1 - PE.SAN_EPI * sd(fa.drain + 1))) + '%（受け持つ ' + Math.min(g.pop || 0, fa.well * FACIL_SERVES.well + (fa.drain + 1) * FACIL_SERVES.drain) + '人）']); }
   { const cap0 = PE.HERD_CAP[0] + PE.HERD_CAP[1] * 0.5; add('pen', ['養える家畜が約+40%（いま' + Math.round(g.herdN || 0) + '頭）', '家畜の食料（月）：乳・肉が増える']); }
   { const gain = (lf.farm || 0) * (0.12 / (1 + 0.12 * fa.field)); add('field', ['農耕の収穫が +12%（いまの農産物は月' + kg(lf.farm || 0) + ' → 約+' + kg(gain) + '）']); }
   add('kiln', ['高温焼成の窯。土器の品質に効く（品質の仕組みは次の段階）']);
@@ -1466,7 +1467,7 @@ function peopleGrantTech(people, ethId, node) { const S = people.nation; if (!S 
 // 技術に合わせて、集団に農民・牧人の職が開く
 function peTechFlags(people) {
   const P = people.npc, memo = new Map();
-  for (const g of people.groups) { if (!g.alive) continue; let t = memo.get(g.ethId); if (!t) memo.set(g.ethId, t = peTechOf(people, g.ethId)); const A = CFG.aid, port = g.site && (g.site.kind === 'river' || g.site.kind === 'coast' || g.site.kind === 'lake'), trader = A && g.settle === 2 && g.pop >= A.importMinPop && g.pop >= 0.7 * (g.landCap || 1e9) && ((t.dugout && port) || t.cart); P.gflags[g.id] = (trader ? 4 : 0) | (t.farm ? 1 : 0) | (t.herd ? 2 : 0); }   /* 商人（仕事11）：舟のある川・海・湖の村、または車のある村で、人口が一定以上、かつ土地で養える人数の7割に近づいた村（外の食料が要る村）だけ */
+  for (const g of people.groups) { if (!g.alive) continue; let t = memo.get(g.ethId); if (!t) memo.set(g.ethId, t = peTechOf(people, g.ethId)); const A = CFG.aid, port = g.site && (g.site.kind === 'river' || g.site.kind === 'coast' || g.site.kind === 'lake'), trader = A && g.settle === 2 && g.pop >= A.importMinPop && g.pop >= 0.7 * (g.landCap || 1e9) && ((t.dugout && port) || t.cart); P.gflags[g.id] = (trader ? 4 : 0) | (t.farm ? 1 : 0) | (t.herd ? 2 : 0); g.gov = { chiefdom: !!t.chiefdom, state: !!t.state }; g.san = Math.round(peSanitation(g) * 1000) / 1000; }   /* 商人（仕事11）：舟のある川・海・湖の村、または車のある村で、人口が一定以上、かつ土地で養える人数の7割に近づいた村（外の食料が要る村）だけ */
 }
 
 // ---------------------------------------------------------------- 村の施設（指導者が建てる）
