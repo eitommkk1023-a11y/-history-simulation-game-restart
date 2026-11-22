@@ -25,3 +25,4 @@ export { createVisibility, VIS_PARAMS } from './visibility.mjs';
 export { addBellonaModel } from './bellona-render.mjs';
 export { buildBellonaDesign, BELLONA_PARAMS } from './bellona-design.mjs';
 export { createBellonaInterior } from './bellona-interior.mjs';
+export { addRowboatDetails } from './rowboat-render.mjs';

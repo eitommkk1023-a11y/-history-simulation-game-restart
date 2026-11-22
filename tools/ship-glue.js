@@ -13,7 +13,7 @@
   const boot = setInterval(() => { cp = globalThis.__chunkPreview; nat = globalThis.__wohNative; THREE_ = globalThis.THREE; if (cp && nat?.scene && THREE_ && typeof Ship !== 'undefined') { clearInterval(boot); nat.renderer.localClippingEnabled = true; installSaveBridge(); buildHud(); patchRender(); patchWalker(); requestAnimationFrame(frame); } }, 500);
 
   // Read-only handles for tests and debugging.
-  globalThis.__wohShips = { dbg, streaksObj: () => streaks, windInfo: (X, Y) => windField?.info(X, Y, 0), setSimT: (t) => { simT = t; }, get renderError() { return renderError && String(renderError.stack || renderError).slice(0, 400); }, mesh: (id) => meshes.get(id), Ship, get lastSeed() { return lastSeed; }, get fleet() { return fleet; }, get env() { return env; }, get ref() { return ref; }, get boarded() { return boarded; }, spawn: (d) => spawn(d), board: (id) => board(id), disembark: () => disembark() };
+  globalThis.__wohShips = { dbg, shipPos: (id) => { const st = fleet.get(id).vessel.state; return { xM: ref.xM + st.X, yM: ref.yM - st.Y, speed: st.u }; }, streaksObj: () => streaks, windInfo: (X, Y) => windField?.info(X, Y, 0), setSimT: (t) => { simT = t; }, get renderError() { return renderError && String(renderError.stack || renderError).slice(0, 400); }, mesh: (id) => meshes.get(id), Ship, get lastSeed() { return lastSeed; }, get fleet() { return fleet; }, get env() { return env; }, get ref() { return ref; }, get boarded() { return boarded; }, spawn: (d) => spawn(d), board: (id) => board(id), disembark: () => disembark() };
 
   /** The game renders inside its own frame, so ship meshes and the boarded player are placed right before each render. */
   function patchRender() {
@@ -192,6 +192,7 @@
     const o = Ship.buildShipObject(THREE_, { hull: dd.hull, vessel: rec.vessel, visual: { ...dd.visual, customRig: isPinta || isBellona } });
     if (isPinta) Ship.addPintaStructure(THREE_, o, dd, rec.vessel);
     if (isBellona) Ship.addBellonaModel(THREE_, o, dd, globalThis.__BELLONA_ASSETS);
+    if (dd.kind === 'rowboat') Ship.addRowboatDetails(THREE_, o, rec.vessel);
     if (rec.crew) Ship.addCrewFigures(THREE_, o, rec.crew);
     o.interior = rec.crew?.interior ?? Ship.createInterior(dd.interior ?? Ship.sampleInteriors[dd.interiorId], { hull: Ship.createHull(dd.hull) });
     if (isBellona) { o.setView(o.interior.startPosition()); } else { Ship.addInterior(THREE_, o, o.interior); Ship.setViewDeck(o, o.weatherDeck); }
@@ -255,19 +256,21 @@
   // ---------- actions ----------
   function spawn(designId) {
     const mp = cp.markerPoint; if (!mp) { toast('先にプレイヤーを置いてください'); return; }
-    const spot = scan(mp.xM, mp.yM, (e, x, y) => e < -12 && [[60, 0], [-60, 0], [0, 60], [0, -60]].every(([dx, dy]) => (elevAt(x + dx, y + dy) ?? 0) < -10), 30000, 50);
-    if (!spot) { toast('近くに十分深い海がない'); return; }
+    const small = Ship.sampleDesigns[designId].kind === 'rowboat'; // a small boat lies in shallow water at the shore, where the player can walk up to it
+    const spot = small ? scan(mp.xM, mp.yM, (e, x, y) => e < -0.6 && e > -1.4 && [[8, 0], [-8, 0], [0, 8], [0, -8]].every(([dx, dy]) => (elevAt(x + dx, y + dy) ?? 0) < -0.3), 8000, 8)
+      : scan(mp.xM, mp.yM, (e, x, y) => e < -12 && [[60, 0], [-60, 0], [0, 60], [0, -60]].every(([dx, dy]) => (elevAt(x + dx, y + dy) ?? 0) < -10), 30000, 50);
+    if (!spot) { toast(small ? '近く(8km以内)に浅い水辺がない' : '近くに十分深い海がない'); return; }
     if (!ref) { ref = { xM: spot.xM, yM: spot.yM }; makeEnv(); }
     const heading = openWaterHeading(spot.xM, spot.yM);
     const id = fleet.addShip({ designId, X: spot.xM - ref.xM, Y: ref.yM - spot.yM, headingDeg: heading, crew: Ship.sampleDesigns[designId].evidence ? 'empty' : false });
     if (fleet.get(id).crew) crewVillagers(id, Ship.sampleDesigns[designId].crewSize ?? 5);
-    fleet.get(id).vessel.state.u = 1.5; // already under way, so the rudder bites
-    ctl[id] = { heading, held: 0, auto: true, oar: 0.8 };
+    if (!small) fleet.get(id).vessel.state.u = 1.5; // already under way, so the rudder bites
+    ctl[id] = { heading, held: 0, auto: true, oar: small ? 0 : 0.8 };
     { const dx = spot.xM - mp.xM, dy = spot.yM - mp.yM, km = Math.hypot(dx, dy) / 1000, dir = ['東', '南東', '南', '南西', '西', '北西', '北', '北東'][Math.round(Math.atan2(dy, dx) / (Math.PI / 4) + 8) % 8]; toast(`${id}（${Ship.sampleDesigns[designId].label}）を海に出した：${dir}へ約${km.toFixed(1)}km`); } refreshList(); save();
   }
   function board(id) {
     const rec = fleet.get(id), m = meshes.get(id); if (!m) return;
-    boarded = id; lastPlaced = null; if (m.interior) m.pos = m.interior.startPosition(); document.getElementById('rpgClose')?.click(); document.getElementById('standardMode')?.dispatchEvent(new Event('pointerdown')); /* close the game's menu */ refreshList(); toast(`${id} に乗った（移動で甲板を歩けます）`);
+    boarded = id; lastPlaced = null; if (m.interior) m.pos = m.interior.startPosition(); if (!rec.vessel.sails.length && rec.vessel.oars.length) shipTab = 'sail'; document.getElementById('rpgClose')?.click(); document.getElementById('standardMode')?.dispatchEvent(new Event('pointerdown')); /* close the game's menu */ refreshList(); toast(`${id} に乗った（移動で甲板を歩けます）`);
   }
   /** Step off without moving the player (they were moved by the game). */
   function leaveShip(msg) {
@@ -331,7 +334,7 @@
       if (captainActive(rec)) { c.heading = v.snapshot().headingDeg; continue; }
       c.heading = (c.heading + c.held * 25 * dt * speedX + 360) % 360;
       v.setHeadingTarget(c.heading);
-      if (v.oars.length) v.setAllOarEffort(c.oar);
+      if (v.oars.length) v.setAllOarEffort(c.oarHold ?? c.oar);
     }
     trimAcc += dt; if (trimAcc > 1) { trimAcc = 0; for (const rec of fleet.list()) if (ctl[rec.id]?.auto && !captainActive(rec)) rec.vessel.autoTrim(env); }
     if (dt > 0) { simT += dt * speedX; fleet.step(dt * speedX, env, focus); }
@@ -470,8 +473,8 @@ html.shipUiHidden #shipEye{opacity:.5}
     // controls (bottom bar)
     ui.tabs = $('div', { id: 'shipTabs' }); ui.ctrl = $('div', { id: 'shipBody' });
     ui.bar = $('div', { id: 'shipBar', className: 'shipui shipcard onboard' }, [ui.tabs, ui.ctrl]);
-    ui.ladders = $('div', { id: 'shipLadders', className: 'shipui onboard' }); ui.toast = $('div', { id: 'shipToast', className: 'shipui' });
-    document.body.append(css, ui.inst, ui.eye, ui.bar, ui.ladders, ui.toast);
+    ui.ladders = $('div', { id: 'shipLadders', className: 'shipui onboard' }); ui.board = $('button', { id: 'shipBoard', className: 'shipui shipbtn on', textContent: '小舟に乗る', onclick: () => { if (ui.board.dataset.ship) board(ui.board.dataset.ship); } }); ui.board.style.cssText = 'position:fixed;z-index:121;display:none;min-width:120px;font-weight:700'; ui.toast = $('div', { id: 'shipToast', className: 'shipui' });
+    document.body.append(css, ui.inst, ui.eye, ui.bar, ui.ladders, ui.board, ui.toast);
     ui.info = { set textContent(_) { /* legacy text readout replaced by the gauges */ } };
     try { setUiHidden(localStorage.getItem('woh-ship-ui-hidden') === '1'); } catch (_) { /* storage unavailable */ }
     // developer frame: the game's own "開発者" panel hosts the ship system section (dev mode only)
@@ -493,8 +496,8 @@ html.shipUiHidden #shipEye{opacity:.5}
       }
       const dp = document.getElementById('developerPane') ?? document.getElementById('developerPanel'); if (dp) dp.append(ui.dev);
     };
-    mount(); setInterval(() => { mount(); { const bm = boarded && meshes.get(boarded); ui.diag.textContent = bm?.diag ? '表示診断: ' + bm.diag() + (() => { try { const gl = nat.renderer.getContext(); return ` 深度${gl.getParameter(gl.DEPTH_BITS)}bit ステンシル${gl.getParameter(gl.STENCIL_BITS)}bit ${nat.renderer.capabilities.isWebGL2 ? 'WebGL2' : 'WebGL1'} 精度${nat.renderer.capabilities.precision} near${cp.camera.near} far${cp.camera.far}`; } catch (_) { return ''; } })() + (() => { const wy = (w) => (w && w.geometry.attributes.position.count ? (w.geometry.attributes.position.getY(0) + w.position.y).toFixed(2) : '—'); return ` 海面y(近/遠)=${wy(S?.waterMesh)}/${wy(S?.farWaterMesh)} 船の喫水線y=${bm.group.position.y.toFixed(2)} 補正=${bm.waterDelta === null || bm.waterDelta === undefined ? '無' : bm.waterDelta.toFixed(2)}m`; })() : ''; } document.body.classList.toggle('woh-ship-on', devOn() && !!boarded && !!fleet?.has(boarded)); if (!devOn() && boarded) disembark(); }, 500);
-    ui.spawn.append($('div', { className: 'sub', textContent: '船を出す(近くの海へ)' }), ...Object.entries({ 'pinta-1492': 'ピンタ1492 横帆', 'pinta-1492-lateen': 'ピンタ1492 ラテン', 'bellona-1760': 'ベローナ1760 74門艦', galleon: 'ガレオン', galley: 'ガレー' }).map(([d, n]) => $('button', { className: 'shipbtn', textContent: n, onclick: () => { spawn(d); } })));
+    mount(); setInterval(() => { mount(); updateBoardButton(); { const bm = boarded && meshes.get(boarded); ui.diag.textContent = bm?.diag ? '表示診断: ' + bm.diag() + (() => { try { const gl = nat.renderer.getContext(); return ` 深度${gl.getParameter(gl.DEPTH_BITS)}bit ステンシル${gl.getParameter(gl.STENCIL_BITS)}bit ${nat.renderer.capabilities.isWebGL2 ? 'WebGL2' : 'WebGL1'} 精度${nat.renderer.capabilities.precision} near${cp.camera.near} far${cp.camera.far}`; } catch (_) { return ''; } })() + (() => { const wy = (w) => (w && w.geometry.attributes.position.count ? (w.geometry.attributes.position.getY(0) + w.position.y).toFixed(2) : '—'); return ` 海面y(近/遠)=${wy(S?.waterMesh)}/${wy(S?.farWaterMesh)} 船の喫水線y=${bm.group.position.y.toFixed(2)} 補正=${bm.waterDelta === null || bm.waterDelta === undefined ? '無' : bm.waterDelta.toFixed(2)}m`; })() : ''; } document.body.classList.toggle('woh-ship-on', devOn() && !!boarded && !!fleet?.has(boarded)); if (!devOn() && boarded) disembark(); }, 500);
+    ui.spawn.append($('div', { className: 'sub', textContent: '船を出す(近くの海へ)' }), ...Object.entries({ 'pinta-1492': 'ピンタ1492 横帆', 'pinta-1492-lateen': 'ピンタ1492 ラテン', 'bellona-1760': 'ベローナ1760 74門艦', rowboat: '小舟(手漕ぎ)', galleon: 'ガレオン', galley: 'ガレー' }).map(([d, n]) => $('button', { className: 'shipbtn', textContent: n, onclick: () => { spawn(d); } })));
     layoutShipUi(); setInterval(layoutShipUi, 400); addEventListener('resize', layoutShipUi);
     let down = null; const cv = nat.renderer.domElement;
     cv.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; }, true);
@@ -519,6 +522,7 @@ html.shipUiHidden #shipEye{opacity:.5}
     // controls: bottom edge, above the hotbar, between the joystick/status and the action buttons
     const barBottom = hot ? innerHeight - hot.top + 5 : 8, bL = Math.max(joy ? joy.right + 8 : 128, stat ? stat.right + 8 : 0), bR = ch.length ? innerWidth - Math.min(...ch.map((b) => b.left)) + 6 : 226;
     Object.assign(ui.bar.style, { bottom: barBottom + 'px', left: bL + 'px', right: bR + 'px' });
+    Object.assign(ui.board.style, { left: bL + 'px', bottom: (barBottom + 6) + 'px' });
     Object.assign(ui.ladders.style, { left: bL + 'px', bottom: (barBottom + (ui.bar.offsetHeight || 80) + 6) + 'px' });
     Object.assign(ui.toast.style, { top: topY + 'px', left: iL0 + 'px', transform: 'none', maxWidth: Math.max(160, Math.min(300, iL - iL0 - 50)) + 'px', textAlign: 'left' });
   }
@@ -571,7 +575,7 @@ html.shipUiHidden #shipEye{opacity:.5}
     if (!ui.bar) return; ui.ctrl.replaceChildren(); ui.tabs.replaceChildren();
     if (!boarded || !fleet?.has(boarded)) return;
     const rec = fleet.get(boarded), c = ctl[boarded], v = rec.vessel, tab = (k, t) => $('button', { className: 'shipbtn' + (shipTab === k ? ' on' : ''), textContent: t, onclick: () => { shipTab = k; renderBar(); } });
-    ui.tabs.append(tab('rudder', '舵'), tab('sail', v.sails.length || v.oars.length ? '帆' : '推進'), tab('anchor', '錨'), tab('nav', '航海'), $('button', { className: 'shipbtn out', textContent: '降りる', onclick: () => disembark() }));
+    ui.tabs.append(tab('rudder', '舵'), tab('sail', v.sails.length ? '帆' : v.oars.length ? '漕ぐ' : '推進'), tab('anchor', '錨'), tab('nav', '航海'), $('button', { className: 'shipbtn out', textContent: '降りる', onclick: () => disembark() }));
     const hold = (label, dir) => { const b = $('button', { className: 'shipbtn big', textContent: label }); const on = (e) => { e.preventDefault(); c.held = dir; }, off = () => { if (c.held === dir) c.held = 0; }; b.addEventListener('pointerdown', on); ['pointerup', 'pointerleave', 'pointercancel'].forEach((t) => b.addEventListener(t, off)); return b; };
     if (shipTab === 'rudder') { ui.tgt = $('b', { textContent: '—' }); ui.ctrl.append(hold('◀ 左', -1), hold('右 ▶', 1), $('span', { className: 'lab' }, [document.createTextNode('目標方位 '), ui.tgt])); }
     else if (shipTab === 'sail') {
@@ -591,7 +595,10 @@ html.shipUiHidden #shipEye{opacity:.5}
             $('div', { className: 'row2', style: 'display:flex;align-items:center;gap:6px;flex:1 0 100%' }, [$('span', { className: 'lab', textContent: '角度' }), ang, angL, $('span', { className: 'lab', textContent: '展開' }), dep, depL]));
         }
       }
-      if (v.oars.length) { const r = $('input', { type: 'range', min: -100, max: 100, step: 5, value: Math.round(c.oar * 100) }); r.oninput = () => { c.oar = r.value / 100; }; ui.ctrl.append($('span', { className: 'lab', textContent: '櫂' }), r); }
+      if (v.oars.length && !v.sails.length) { // an oar-only boat: hold to row, release to rest the oars (steer with the rudder tab's left / right)
+        const hold = (label, effort) => { const b = $('button', { className: 'shipbtn big', textContent: label }); const on = (e) => { e.preventDefault(); c.oarHold = effort; b.classList.add('on'); }, off = () => { if (c.oarHold === effort) c.oarHold = undefined; b.classList.remove('on'); }; b.addEventListener('pointerdown', on); ['pointerup', 'pointerleave', 'pointercancel'].forEach((t) => b.addEventListener(t, off)); return b; };
+        ui.ctrl.append(hold('漕ぐ', 1), hold('ゆっくり', 0.45), hold('後ろへ', -0.6), $('span', { className: 'lab', textContent: '押している間だけ漕ぐ。向きは「舵」タブの左右' }));
+      } else if (v.oars.length) { const r = $('input', { type: 'range', min: -100, max: 100, step: 5, value: Math.round(c.oar * 100) }); r.oninput = () => { c.oar = r.value / 100; }; ui.ctrl.append($('span', { className: 'lab', textContent: '櫂' }), r); }
       if (!v.sails.length && !v.oars.length) ui.ctrl.append($('span', { className: 'lab', textContent: '帆も櫂もありません' }));
     } else if (shipTab === 'anchor') {
       ui.ctrl.append($('button', { className: 'shipbtn big' + (v.state.anchor ? ' on' : ''), textContent: v.state.anchor ? '錨を上げる' : '錨を下ろす', onclick: () => { if (v.state.anchor) v.raiseAnchor(); else { const r = v.dropAnchor(env, { anchorKg: 400, rodeM: 60 }); if (r.status !== 'ok') toast('投錨できない：' + r.status); } renderBar(); } }), $('span', { className: 'lab', textContent: v.state.anchor ? '錨泊中' : '錨は上がっている' }));
@@ -601,6 +608,12 @@ html.shipUiHidden #shipEye{opacity:.5}
       if (captainActive(rec)) ui.ctrl.append($('button', { className: 'shipbtn', textContent: '中止', onclick: () => { fleet.cancelDestination(boarded); updateRoute(null); v.setHeadingTarget(null); ctl[boarded].heading = v.snapshot().headingDeg; renderBar(); } }));
       ui.ctrl.append($('button', { className: 'shipbtn', textContent: `時間 ×${speedX}`, onclick: (e) => { speedX = speedX === 1 ? 4 : speedX === 4 ? 10 : 1; e.target.textContent = `時間 ×${speedX}`; } }));
     }
+  }
+  /** A "get in" button appears when the player stands beside a small boat (walk up to it, then tap). */
+  function updateBoardButton() {
+    if (!ui.board) return; let near = null;
+    if (devOn() && !boarded && fleet && ref && cp?.markerPoint) { const mp = cp.markerPoint; for (const r of fleet.list()) { if (Ship.sampleDesigns[r.designId]?.kind !== 'rowboat') continue; const st = fleet.get(r.id).vessel.state; if (Math.hypot(ref.xM + st.X - mp.xM, ref.yM - st.Y - mp.yM) < 4.5) { near = r.id; break; } } }
+    ui.board.style.display = near ? 'block' : 'none'; ui.board.dataset.ship = near ?? '';
   }
   function refreshList() {
     if (!ui.list) return;

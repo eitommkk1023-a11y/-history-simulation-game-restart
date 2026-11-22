@@ -55,6 +55,25 @@ export function galleyMassItems() {
   ];
 }
 
+
+/** Small rowing boat (~4.6 m, 1.5 m beam). Placeholder values for the game: a generic clinker-like skiff, NOT a historical specification (level D). */
+export function rowboatHull() {
+  const sec = (b, keelZ = 0) => [{ z: keelZ, b: 0.1 * b }, { z: keelZ + 0.1, b: 0.45 * b }, { z: keelZ + 0.28, b: 0.8 * b }, { z: keelZ + 0.48, b: 0.97 * b }, { z: keelZ + 0.62, b }];
+  return { stations: [
+    { x: 0, points: [{ z: 0.32, b: 0.12 }, { z: 0.5, b: 0.3 }, { z: 0.64, b: 0.38 }] },
+    { x: 0.5, points: sec(0.52, 0.1) }, { x: 1.4, points: sec(0.72) }, { x: 2.4, points: sec(0.76) }, { x: 3.4, points: sec(0.66) },
+    { x: 4.2, points: [{ z: 0.15, b: 0.06 }, { z: 0.3, b: 0.2 }, { z: 0.5, b: 0.34 }, { z: 0.7, b: 0.4 }] },
+    { x: 4.6, points: [{ z: 0.4, b: 0.03 }, { z: 0.72, b: 0.1 }] },
+  ] };
+}
+export function rowboatMassItems() {
+  return [
+    { id: 'hull-structure', massKg: 90, x: 2.3, y: 0, z: 0.25 },
+    { id: 'oars-and-gear', massKg: 14, x: 2.2, y: 0, z: 0.4 },
+    { id: 'rower', massKg: 75, x: 2.1, y: 0, z: 0.55 }, // the player, seated at the middle thwart
+  ];
+}
+
 /** Plain-data designs (JSON-safe) for the fleet. Placeholder values, NOT historical specifications. */
 export const sampleDesigns = {
   galleon: Object.freeze({
@@ -65,6 +84,13 @@ export const sampleDesigns = {
     interiorId: 'galleon',
     // Hull/rig tuning for the vessel model (EXPERIMENTAL, being calibrated against rough historical ranges).
     tuning: { roughnessCf: 0.0015, form: 0.4, waveK: 40, keelLiftSlope: 0.5, windageAreaM2: 150 },
+  }),
+  rowboat: Object.freeze({
+    kind: 'rowboat', label: '小舟(手漕ぎ)',
+    hull: rowboatHull(), massItems: rowboatMassItems(), sails: [], rudder: { x: 0.15, areaM2: 0.04 },
+    oars: [{ id: 'P', side: 'port', rowers: 1, x: 2.1, y: 0.8, powerPerRowerW: 90 }, { id: 'S', side: 'starboard', rowers: 1, x: 2.1, y: 0.8, powerPerRowerW: 90 }],
+    tuning: { roughnessCf: 0.0025, form: 0.25, waveK: 20, keelLiftSlope: 0.4, windageAreaM2: 1.2 },
+    interiorId: 'rowboat', visual: {},
   }),
   galley: Object.freeze({
     label: 'ガレー',
@@ -77,6 +103,10 @@ export const sampleDesigns = {
 
 /** Interior layouts (EXPERIMENTAL placeholders, NOT historical plans). x from the stern (0) to the bow, y + starboard, z above the keel. */
 export const sampleInteriors = {
+  rowboat: Object.freeze({
+    decks: [{ id: 'boat', z: 0.22, name: '小舟', exterior: true }],
+    rooms: [{ id: 'boat', deck: 'boat', name: '小舟', use: 'deck', open: true, floor: false, x0: 0.6, x1: 3.9, y0: -0.6, y1: 0.6 }],
+  }),
   galleon: Object.freeze({
     decks: [{ id: 'weather', z: 8.0, name: '上甲板', exterior: true }, { id: 'gun', z: 5.2, name: '砲甲板' }, { id: 'hold', z: 2.4, name: '船倉' }],
     rooms: [
