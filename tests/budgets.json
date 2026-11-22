@@ -1,0 +1,10 @@
+{
+  "_説明": "性能・世界の動きの予算（F8）。数字を変えるときは、理由を docs/budgets.md に書く。実機の記録は docs/device-measurements.md・device-diagnosis.md。",
+  "world": {
+    "s3_100y": { "popRatio": [1.8, 6.0], "starvationShareMax": 0.05, "groupsMin": 24, "idFailMax": 0 },
+    "s4_100y": { "pop": [12000, 60000], "groupsMax": 400, "starvingGroupsMax": 5, "idFailMax": 0 },
+    "monthMsNode": { "avgMax": 120 }
+  },
+  "render": { "trianglesMax": 800000, "callsMax": 200 },
+  "frame": { "monthStageMsMax": 16 }
+}

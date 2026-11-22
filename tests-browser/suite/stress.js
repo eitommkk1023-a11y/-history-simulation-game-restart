@@ -15,6 +15,8 @@ const { chromium } = require('playwright');
   await p.evaluate(() => { document.getElementById('godStress').closest('details').open = true; document.getElementById('godStress').click(); });
   await p.waitForFunction(() => /描画テストおわり|エラー/.test(document.getElementById('godBenchOut').value), null, { timeout: 300000 });
   const txt = await p.evaluate(() => document.getElementById('godBenchOut').value); console.log(txt); t('ボタンで一通り動く（建物 0/500/2000/5000 の結果が出る）', /建物 5000棟・引いた.*描いた建物 5000/.test(txt) && /建物 500棟・近い/.test(txt) && !/テストでエラー/.test(txt));
+  { const bud = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'tests', 'budgets.json'), 'utf8')).render; let triMax = 0, callMax = 0; for (const m of txt.matchAll(/三角形 (\d+)k／呼び出し (\d+)/g)) { triMax = Math.max(triMax, +m[1] * 1000); callMax = Math.max(callMax, +m[2]); }
+    t('描画の予算（F8）：建物5000棟でも、三角形・呼び出しが予算以内', triMax > 0 && triMax <= bud.trianglesMax && callMax <= bud.callsMax, `三角形 最大 ${triMax}（予算 ${bud.trianglesMax}）、呼び出し 最大 ${callMax}（予算 ${bud.callsMax}）`); }
   const after = await p.evaluate(() => ({ active: !!__wohStress.active, stress: __geo.people.groups.filter(g => g.layout && g.layout.stress).length })); t('テスト後は、元に戻っている', !after.active && after.stress === 0);
   console.log('errors', JSON.stringify(errs.slice(0, 3))); console.log(bad || errs.length ? 'NG あり' : 'ALL OK'); await b.close(); process.exit(bad || errs.length ? 1 : 0);
 })();

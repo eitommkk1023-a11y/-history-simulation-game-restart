@@ -27,6 +27,7 @@ async function run(b, slice) {
   t('分けない場合は、月の処理は1コマ', A.r.frames.length === 0, JSON.stringify(A.r.frames));
   t('分ける場合は、月の処理が複数のコマになる', B.r.frames.length >= 3 && B.r.frames.every(f => f >= 2), JSON.stringify(B.r.frames));
   t('分けても、3か月後の世界がまったく同じ', A.r.digest === B.r.digest, `${A.r.digest} / ${B.r.digest}（人口 ${A.r.pop} / ${B.r.pop}）`);
+  { const bud = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'tests', 'budgets.json'), 'utf8')).frame; t('1コマの計算の予算（F8）：月の処理の1段階が予算以内（ソフト描画の参考値）', B.r.stageMax <= bud.monthStageMsMax, `${B.r.stageMax.toFixed(1)}ms（予算 ${bud.monthStageMsMax}ms）`); }
   t('月の処理の途中で保存すると、先に済まされる', B.r.saveFinish.was === true && B.r.saveFinish.now === false, JSON.stringify(B.r.saveFinish));
   console.log('1か月の最大（一度に）', A.r.monthMax.toFixed(1), 'ms／段階の最大（分けた）', B.r.stageMax.toFixed(1), 'ms');
   const errs = [...A.errs, ...B.errs]; console.log('errors', JSON.stringify(errs.slice(0, 3)));
