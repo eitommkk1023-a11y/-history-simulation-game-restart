@@ -9102,8 +9102,8 @@ const LEADERSHIP = ['長老制', '能力制', '世襲', '合議'];
 const LEAD_W = [0.3, 0.3, 0.25, 0.15];
 // force：全集団を決め直す（開始時）。yearly：年に1回の見直し（今の首長より15%以上高い人がいれば交代）。それ以外は、首長が亡くなった・いなくなった集団だけ
 // ---------------------------------------------------------------- 経歴と市場の入れ物（M5 の土台：職業・身分・市場の中身は、設計が決まってから足す。今は、記録の形・保存・再現だけ）
-// 経歴：人物IDごとの出来事の列 [日, 種類, 値, 集落ID]（種類：status＝身分・役職、job＝職業、affil＝所属）。1人あたり最新32件まで。人物の正本は people.npc。ここは「履歴」だけを持つ
-const CAREER_MAX = 32, CAREER_KINDS = ['status', 'job', 'affil'];
+// 経歴：人物IDごとの出来事の列 [日, 種類, 値, 集落ID]（種類：office＝役職、rank＝身分、job＝職業、affil＝所属。GPT 設計資料の「職業・身分・役職・所属は別」に合わせて分ける）。1人あたり最新32件まで。人物の正本は people.npc。ここは「履歴」だけを持つ
+const CAREER_MAX = 32, CAREER_KINDS = ['office', 'rank', 'job', 'affil'];
 function peCareerAdd(people, personId, kind, value, groupId) {
   if (!Number.isInteger(personId) || personId < 0) throw new TypeError('人物IDは0以上の整数：' + personId);
   if (!CAREER_KINDS.includes(kind)) throw new TypeError('経歴の種類が違う：' + kind);
@@ -9148,11 +9148,11 @@ function peLeaders(people, ev, rel, force, yearly, silent) {
       if (rule === 3) { council = sorted.slice(0, 3); best = council.slice().sort((a, b) => rep[b] - rep[a])[0]; } else best = sorted[0];
     }
     if (best < 0) continue;
-    if (council) { for (const c of council) if (!(g.council || []).includes(c)) peCareerAdd(people, c, 'status', 'council', g.id); g.council = council; }
+    if (council) { for (const c of council) if (!(g.council || []).includes(c)) peCareerAdd(people, c, 'office', 'council', g.id); g.council = council; }
     // 今の首長が務まっているなら、15%以上高い人がいるときだけ交代（世襲は首長が亡くなったときだけ）
     if (ok && best !== old) { if (rule === 2) best = old; else if (!(score(best) > score(old) * 1.15 + 1)) best = old; }
     if (best !== old) {
-      g.leader = best; g.leaderSince = P.day; if (old >= 0) peCareerAdd(people, old, 'status', 'exleader', g.id); peCareerAdd(people, best, 'status', 'leader', g.id);   /* 経歴に残す */
+      g.leader = best; g.leaderSince = P.day; if (old >= 0) peCareerAdd(people, old, 'office', 'exleader', g.id); peCareerAdd(people, best, 'office', 'leader', g.id);   /* 経歴に残す */
       if (!silent) { const mine = you !== undefined && you >= 0 && P.group[you] === g.id; ev.push({ type: 'leaderChange', imp: mine ? 2 : 1, relevant: mine || rel(g.ethId), group: g.id, eth: g.ethId, x: g.x, y: g.y, to: best, from: old, you: best === you }); }
     } else if (g.leader === undefined) g.leader = best;
   }
