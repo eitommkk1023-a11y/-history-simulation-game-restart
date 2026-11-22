@@ -426,6 +426,16 @@ function peMarketRecord(people, gid, kind, ticks) {
   if (!o) { const town = Tier.tierIndex(g) >= 3, trader = people.npc.gcount[gid * NJOB + 11] > 0; if (!town && !trader) return false; o = m[gid] = { open: people.npc.day || 0, aidIn: 0, aidOut: 0, import: 0 }; }
   o[kind] += ticks; return true;
 }
+// 職業の変化を経歴に残す：毎月、前の月の職業と比べる（個人の住民だけ。15歳以上。最初の月は記録しない）。前の月の職業は保存しない（読み込み後の最初の月も記録しない）
+function peJobWatch(people) {
+  const P = people.npc, n = P.n; let prev = people._jobSnap;
+  if (!prev || prev.length < n) { const np = new Uint8Array(Math.max(n, 1024) * 2).fill(255); if (prev) np.set(prev); prev = people._jobSnap = np; }
+  for (let i = 0; i < n; i++) {
+    const j = P.job[i], was = prev[i]; prev[i] = P.death[i] === ALIVE ? j : 255;
+    if (was !== 255 && P.death[i] !== ALIVE) { const c = people.careers && people.careers[i]; if (c) { const jobs = c.filter(r => r[1] === 'job'); if (jobs.length > 3) people.careers[i] = c.filter(r => r[1] !== 'job' || jobs.indexOf(r) >= jobs.length - 3); } continue; }   /* 亡くなったら、職業の記録は最後の3件だけ残す（保存の大きさを抑える） */
+    if (was !== 255 && was !== j && P.death[i] === ALIVE && P.age(i) >= 15) peCareerAdd(people, i, 'job', j, P.group[i]);
+  }
+}
 function peMarketOf(people, gid) { const o = (people.markets || {})[gid]; return o ? Object.assign({}, o) : null; }
 function peLeaders(people, ev, rel, force, yearly, silent) {
   const P = people.npc, ng = people.groups.length + 1, cur = (g) => g.leader;
@@ -1144,6 +1154,7 @@ function* peopleMonthlySteps(people, ctx) {
   lap('layers');
   if (SL) { yield 0; pt = PR ? now() : 0; }
   peAidMonth(people, ctx, S, ev, rel);   /* 食料の助け合い（M2-a） */
+  peJobWatch(people);   /* 職業の変化を経歴へ */
   peStats(people);
   peopleSuccession(people, ev);   // プレイヤーの人物が亡くなっていれば、その文化の決まりで継承
   peApplyActivity(people);
