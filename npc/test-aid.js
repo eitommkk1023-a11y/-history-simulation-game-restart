@@ -36,7 +36,7 @@ const progS4 = `const v8=require('v8'),fs=require('fs'),G=require(${JSON.stringi
 for(let i=0;i<80*12;i++){const month=i%12;G.faunaMonthly(fa,{month,env,cc});P.peopleMonthly(pe,{month,day:i*30,world:w,fauna:fa,FA,plantFood:pf,env,cc,res:w.resources});}
 const A=pe.aid||{tot:{}},idf=pe.groups.filter(g=>g.ledger&&g.ledger.opened).map(g=>{const L=g.ledger,T=L.tot;return L.open0+T.prod-T.eat-T.spoil-T.lost-T.dryLoss-T.move+L.residNet-L.total();});
 console.log(JSON.stringify({tot:A.tot,idfBad:idf.filter(x=>x!==0).length,n:idf.length,pop:Math.round(pe.groups.reduce((a,g)=>a+(g.alive?g.pop:0),0))}));`;
-const W4 = JSON.parse(spawnSync('node', ['-e', progS4], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 26, timeout: 1500000 }).stdout.trim().split('\n').pop());
+const W4 = JSON.parse(spawnSync('node', ['-e', progS4], { cwd: __dirname, encoding: 'utf8', maxBuffer: 1 << 26, timeout: 1500000, env: Object.assign({}, process.env, { WOH_CONFIG: JSON.stringify({ population: { farmFeeds: 2, capBase: 50 } }) }) }).stdout.trim().split('\n').pop());   /* 土地で養える人数を少なくして、商人・買い入れが起きる状況にする */
 t('世界全体（80年）：船・家畜・人の背のどれかで荷が運ばれる', (W4.tot.boat || 0) + (W4.tot.pack || 0) + (W4.tot.walk || 0) + (W4.tot.cart || 0) > 0, JSON.stringify(W4.tot));
 t('世界全体（80年）：商人のいる村が、外から食料を買い入れる', (W4.tot.imported || 0) > 0 && (W4.tot.importN || 0) > 0, `${W4.tot.imported}刻み・${W4.tot.importN}回`);
 t('世界全体（80年）：台帳の収支の恒等式が、全集団でちょうど0', W4.idfBad === 0, `${W4.n}集団`);

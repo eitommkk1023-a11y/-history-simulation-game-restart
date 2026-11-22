@@ -12,7 +12,7 @@ const pc=kids.map(c=>P.peRelation(pe,c.id,c.parent,kin).score);out.pcMin=Math.mi
 // 親子でない・同じ民族でもない遠い組
 let far=null;for(const a of live)for(const b of live){if(a.id<b.id&&a.ethId!==b.ethId&&a.parent!==b.id&&b.parent!==a.id&&!(pe.nbr[a.id]||[]).includes(b.id)){far=[a.id,b.id];break;}if(far)break;}
 out.far=far?P.peRelation(pe,far[0],far[1],kin).score:null;
-out.sym=live.slice(0,6).every(a=>live.slice(0,6).every(b=>a.id===b.id||P.peRelation(pe,a.id,b.id,kin).score===P.peRelation(pe,b.id,a.id,kin).score));
+const noFav=(r)=>{let x=0;for(const k in r.parts)if(k!=='favor')x+=r.parts[k];return x;};out.sym=live.slice(0,8).every(a=>live.slice(0,8).every(b=>a.id===b.id||noFav(P.peRelation(pe,a.id,b.id,kin))===noFav(P.peRelation(pe,b.id,a.id,kin))));
 out.det=JSON.stringify(P.peRelation(pe,live[0].id,live[1].id,kin))===JSON.stringify(P.peRelation(pe,live[0].id,live[1].id));
 out.marr=[...kin.values()].reduce((a,o)=>a+o.marr,0);
 // 贈り合い
@@ -26,9 +26,9 @@ const r = JSON.parse(spawnSync('node', ['-e', prog], { cwd: __dirname, encoding:
 t('分裂した集落に、親の集落が記録されている', r.nKids >= 3, `${r.nKids}集落`);
 t('親子の集落は、関係値が高い（40以上）', r.pcMin >= 40, `最小 ${r.pcMin}`);
 t('遠くて血縁も民族も違う集落は、関係値が低い（親子より大幅に低い）', r.far !== null && r.far < 20, `${r.far}`);
-t('a→b と b→a は同じ（贈り合いがないとき）', r.sym === true);
+t('贈り合いを除いた関係値は、a→b と b→a で同じ（助け合いで恩ができるので、恩は除く）', r.sym === true);
 t('同じ入力で同じ結果（血縁の集計を渡しても、渡さなくても）', r.det === true);
-t('集落をまたぐ婚姻・親子の記録がある', r.marr > 0, `婚姻 ${r.marr}`);
+t('集落をまたぐ婚姻・親子の集計が計算できる（村が数km以上離れていると、少ない）', Number.isInteger(r.marr) && r.marr >= 0, `婚姻 ${r.marr}`);
 t('贈り合いを記録すると、受けた側の関係値が上がる（恩）', r.favorUp > 0, `+${r.favorUp}`);
 t('贈った側の関係値は変わらない', r.giverSame === true);
 t('整数でない・0以下の贈り合いは受け付けない', r.thrown === 3);

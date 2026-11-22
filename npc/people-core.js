@@ -91,7 +91,7 @@ const PE = {
   COLD_KNOW: 0.5,                                 // 狩猟の知識（毛皮の衣服）で寒さの害を減らす割合
   EPI_P: 0.0025,                                  // 疫病が始まる確率（1か月、人口 200 人あたり。接触した民族があると 1.5 倍）［仮］
   EPI_H: 1.0, EPI_MONTHS: [1, 3],                 // 疫病のあいだ加わるハザード、続く月数［仮］
-  SAN_EPI: 0.7, SAN_EPI_H: 0.5, SAN_CROWD: 0.8,   /* 水と衛生（M3）：受け持つ割合 1 のとき、疫病の起こりやすさ −70%、疫病の重さ −50%、密集による病気 −80% */
+  SAN_EPI: 0.5, SAN_EPI_H: 0.3, SAN_CROWD: 0.5,   /* 水と衛生（M3）：受け持つ割合 1 のとき、疫病の起こりやすさ −50%、疫病の重さ −30%、密集による病気 −50% */
   CROWD_POP: 200, CROWD_H: 0.03,                  // 人口がこれを超えると病気が増える（超えた割合×CROWD_H）［仮］
   HUNGER_FOOD: 0.9,                               // 充足率がこれ未満の月を「食料不足」と数える［仮］
   // ---- 知識（1か月あたり）［仮］
@@ -1466,7 +1466,7 @@ function peopleGrantTech(people, ethId, node) { const S = people.nation; if (!S 
 // 技術に合わせて、集団に農民・牧人の職が開く
 function peTechFlags(people) {
   const P = people.npc, memo = new Map();
-  for (const g of people.groups) { if (!g.alive) continue; let t = memo.get(g.ethId); if (!t) memo.set(g.ethId, t = peTechOf(people, g.ethId)); const A = CFG.aid, port = g.site && (g.site.kind === 'river' || g.site.kind === 'coast' || g.site.kind === 'lake'), trader = A && g.settle === 2 && g.pop >= A.importMinPop && ((t.dugout && port) || t.cart); P.gflags[g.id] = (trader ? 4 : 0) | (t.farm ? 1 : 0) | (t.herd ? 2 : 0); }   /* 商人（仕事11）：舟のある川・海・湖の村、または車のある村で、人口が一定以上のとき */
+  for (const g of people.groups) { if (!g.alive) continue; let t = memo.get(g.ethId); if (!t) memo.set(g.ethId, t = peTechOf(people, g.ethId)); const A = CFG.aid, port = g.site && (g.site.kind === 'river' || g.site.kind === 'coast' || g.site.kind === 'lake'), trader = A && g.settle === 2 && g.pop >= A.importMinPop && g.pop >= 0.7 * (g.landCap || 1e9) && ((t.dugout && port) || t.cart); P.gflags[g.id] = (trader ? 4 : 0) | (t.farm ? 1 : 0) | (t.herd ? 2 : 0); }   /* 商人（仕事11）：舟のある川・海・湖の村、または車のある村で、人口が一定以上、かつ土地で養える人数の7割に近づいた村（外の食料が要る村）だけ */
 }
 
 // ---------------------------------------------------------------- 村の施設（指導者が建てる）
@@ -1516,11 +1516,11 @@ function peopleBuildStart(people, kind, spot) {
   const sp = spot && Number.isFinite(spot.x) && Number.isFinite(spot.z) ? { x: spot.x, z: spot.z, rot: Number.isFinite(spot.rot) ? spot.rot : 0 } : null;
   r.group.build = { kind, left: FACIL[kind].months, spot: sp }; return { ok: true, kind, months: FACIL[kind].months, group: r.group.id, spot: sp };
 }
-// 水と衛生：指導者がいない集落（プレイヤー以外）は、人口が増えると、自分たちで井戸・排水路を少しずつ作る（材料は集落の共同のもの。月数と人手はかかる）。受け持つ割合が 0.7 に届くまで
+// 水と衛生：指導者がいない集落（プレイヤー以外）は、人口が増えると、自分たちで井戸・排水路を少しずつ作る（材料は集落の共同のもの。月数と人手はかかる）。受け持つ割合が目標（既定 1）に届くまで
 function peAiSanitation(people, g) {
-  if (g.build || g.moveTo || g.settle !== 2 || g.fed < 0.7 || (g.pop || 0) < 100) return;
+  if (!CFG.population.aiSanitation || g.build || g.moveTo || g.settle !== 2 || g.fed < 0.7 || (g.pop || 0) < 100) return;
   const pl = people.player; if (pl && pl.id >= 0 && people.npc.group[pl.id] === g.id) return;
-  const f = peFacil(g), served = f.well * FACIL_SERVES.well + f.drain * FACIL_SERVES.drain; if (served >= 0.7 * g.pop) return;
+  const f = peFacil(g), served = f.well * FACIL_SERVES.well + f.drain * FACIL_SERVES.drain; if (served >= CFG.population.sanitationTarget * g.pop) return;
   const t = peTechOf(people, g.ethId);
   if (t.chiefdom && g.pop >= 300 && f.drain < FACIL.drain.max && f.well >= 1) g.build = { kind: 'drain', left: FACIL.drain.months, spot: null };
   else if (f.well < FACIL.well.max) g.build = { kind: 'well', left: FACIL.well.months, spot: null };
@@ -1722,7 +1722,7 @@ function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
   const agri = peClamp01((g.farmFrac || 0) / 0.6);   // 農耕・牧畜が食料に占める割合の効き
   let sur = peClamp01(((g.food || 0) / Math.max(1, need) - PE.SURPLUS_FROM) / (PE.SURPLUS_FULL - PE.SURPLUS_FROM));   /* 蓄えの月数 → 余剰の効き（0〜1） */
   let over = 0;
-  if (pl.tech.farm) { const capPop = pl.farmCap * PE.FARM_FEEDS + PE.CAP_BASE + Math.max(g.impKg || 0, P.gcount[g.id * NJOB + 11] * CFG.aid.traderKg * CFG.aid.tradeShare) / Math.max(1, need / Math.max(1, pop)), rr = pop / capPop;   /* 外から買い入れる食料ぶん、養える人数が増える */ g.capPop = Math.round(capPop); sur *= peClamp01((1.2 - rr) / 0.5); over = Math.max(0, rr - 1); }   /* 土地の限り：養える人数に近づくと余剰の効きが減り、超えると病気が増える（行き過ぎを防ぐ） */
+  if (pl.tech.farm) { const capPop = pl.farmCap * PE.FARM_FEEDS + PE.CAP_BASE + Math.max(g.impKg || 0, P.gcount[g.id * NJOB + 11] * CFG.aid.traderKg * CFG.aid.tradeShare) / Math.max(1, need / Math.max(1, pop)), rr = pop / capPop;   /* 外から買い入れる食料ぶん、養える人数が増える */ g.capPop = Math.round(capPop); g.landCap = Math.round(pl.farmCap * PE.FARM_FEEDS + PE.CAP_BASE); sur *= peClamp01((1.2 - rr) / 0.5); over = Math.max(0, rr - 1); }   /* 土地の限り：養える人数に近づくと余剰の効きが減り、超えると病気が増える（行き過ぎを防ぐ） */
   hz.fert[id] = peClamp01((g.fed - PE.FERT_FOOD[0]) / (PE.FERT_FOOD[1] - PE.FERT_FOOD[0])) * (1 + PE.AGRI_FERT * agri) * (1 + PE.SURPLUS_FERT * sur);
   if (g.epi > 0) g.epi--;
   else if (rng() < PE.EPI_P * pop / 200 * (1 - PE.SAN_EPI * peSanitation(g))) {
