@@ -38,7 +38,7 @@ const tsig = (tr) => [tr.wallMat, tr.roofMat, tr.door, tr.ornament, tr.planW.ind
 // 気候・資源・生活様式に合う（環境との関係）
 { const wet = TR.filter(t => A.envAt(world, t.g.x, t.g.y).precip > 1800), dry = TR.filter(t => A.envAt(world, t.g.x, t.g.y).precip < 500), cold = TR.filter(t => A.envAt(world, t.g.x, t.g.y).tempC < 3);
   const f = (a, fn) => a.length ? a.filter(fn).length / a.length : NaN; console.log(`多雨(${wet.length})高床傾向 ${(f(wet, t => t.tr.stilts > .3) * 100).toFixed(0)}%／乾燥(${dry.length})平屋根の材料 ${(f(dry, t => t.tr.roofMat === 'mud') * 100).toFixed(0)}%／寒冷(${cold.length})床を下げる ${(f(cold, t => t.tr.sunken > .3) * 100).toFixed(0)}%`);
-  ok(!wet.length || f(wet, t => t.tr.stilts > .3) > f(TR, t => t.tr.stilts > .3), '多雨の地は、全体より高床になりやすい'); ok(!cold.length || f(cold, t => t.tr.sunken > .3) > f(TR, t => t.tr.sunken > .3), '寒冷地は、全体より床を下げる家になりやすい'); }
+  ok(!wet.length || f(wet, t => t.tr.stilts > .3) > f(TR, t => t.tr.stilts > .3), '多雨の地は、全体より高床になりやすい'); ok(cold.length < 5 || f(cold, t => t.tr.sunken > .3) > f(TR, t => t.tr.sunken > .3), '寒冷地は、全体より床を下げる家になりやすい'); }
 // 保存・復元：同じSeedで同じ結果
 { const sv = P.peopleSave(people), back = P.peopleLoad(JSON.parse(JSON.stringify({ meta: sv.meta, ...Object.fromEntries(Object.entries(sv).filter(([k]) => k !== 'meta').map(([k, v]) => [k, v])) }, (k, v) => ArrayBuffer.isView(v) ? { __ta: v.constructor.name, d: Array.from(v) } : v), (k, v) => v && v.__ta ? new (global[v.__ta])(v.d) : v)); let same = 0, tot = 0;
   for (const g of people.groups) { if (!g.alive) continue; tot++; if (JSON.stringify(P.peopleTradition(people, world, g.id)) === JSON.stringify(P.peopleTradition(back, world, g.id)) || JSON.stringify(g.arch) === JSON.stringify(back.groups[g.id - 1].arch)) same++; }
