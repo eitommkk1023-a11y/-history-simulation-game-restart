@@ -60,8 +60,9 @@ const S = tech.people.nation; t('技術の層が作られている', !!S && S.n 
   step(2); t('建設の途中では、まだ施設が増えない', (g.facil ? g.facil.field : 0) === 0 && !!g.build);
   step(5); t('月数がたつと完成する', g.facil && g.facil.field === 1 && !g.build, JSON.stringify([g.facil, g.build, g.fed, g.pop]));
   const gr = P.peopleGrowth(people, g.id); t('画面用の情報に施設が出る', gr.facil.field === 1 && gr.build === null);
-  for (let k = 0; k < 3; k++) { P.peopleBuildStart(people, 'well'); step(3); }
-  t('施設は上限を超えない（井戸は2つまで）', (g.facil.well || 0) <= 2 && P.peopleBuildCheck(people, 'well').reason === 'max');
+  const wmax = P.FACIL.well.max;   /* 井戸の上限は、水と衛生（M3）で 2→8 */
+  for (let k = 0; k < wmax + 2; k++) { P.peopleBuildStart(people, 'well'); step(3); }
+  t('施設は上限を超えない（井戸は ' + wmax + ' つまで）', (g.facil.well || 0) <= wmax && P.peopleBuildCheck(people, 'well').reason === 'max');
   // 分配
   g.share = 0.5; const sv = P.peopleSave ? 1 : 1; t('分配の割合は集団に残る', g.share === 0.5);
 }
