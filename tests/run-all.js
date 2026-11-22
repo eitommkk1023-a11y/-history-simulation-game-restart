@@ -7,7 +7,7 @@ const fs = require('fs'), path = require('path'), { spawnSync } = require('child
 const ROOT = path.resolve(__dirname, '..'), args = process.argv.slice(2), has = (f) => args.includes(f), only = has('--only') ? (args[args.indexOf('--only') + 1] || '').split(',').filter(Boolean) : [];
 const runNode = has('--node') || !has('--browser'), runBrowser = has('--browser') || !has('--node');
 // テストごとの追加の引数（世界データが要るもの：<生成器> <世界>、そのあとの引数）
-const EXTRA = { 'test-small-world': ['20', '42'], 'test-layers': ['12'], 'test-growth': ['20'], 'test-surplus': [], 'test-bigworld': [], 'test-relation': [], 'test-aid': [], 'test-sanitation': [] };
+const EXTRA = { 'test-small-world': ['20', '42'], 'test-layers': ['12'], 'test-growth': ['20'], 'test-surplus': [], 'test-bigworld': [], 'test-relation': [], 'test-aid': [], 'test-sanitation': [], 'test-careers': [] };
 const BROWSER = 'hudtest titletest devtest rocksmoke gotest avatartest proptest foragetest cooktest crafttest hometest fptest vitaltest deathtest tiestest survivaltest peopletest godtest stage uitog srcui drift layers saveschema smallfull bench stress monthslice foodunit'.split(' ');
 const SLOW = new Set(['smallfull', 'stage', 'bench', 'monthslice']);
 function judge(code, out) {
