@@ -8792,10 +8792,10 @@ const PE = {
   // ---- 移動・移住・分裂・接触・全滅［仮］
   CAMP_MOVE_P: 0.35,                              // 野営地を生活圏の中で移す確率（1か月）
   MIG_HUNGER: 4,                                  // 食料不足がこの月数続くと移住先を探す
-  MIG_RANGE: [12, 60],                            // 移住先を探す距離（ブロック）
+  MIG_RANGE: [90, 450],                           // 移住先を探す距離（座標。≒ 3〜15km）
   MIG_BETTER: 1.1,                                // 今の所よりこれだけ良くなければ移住しない
-  MIG_CLEAR: 22,                                  // 他の集団の生活圏の中心からこれ以上離れた所に移る（ブロック）
-  MOVE_SPEED: 25,                                 // 移動の速さ（ブロック/月 ≒ 80km）
+  MIG_CLEAR: 120,                                 // 他の集団の生活圏の中心からこれ以上離れた所に移る（座標 ≒ 4km）
+  MOVE_SPEED: 300,                                // 移動の速さ（座標/月 ≒ 10km。座標1つ＝約33m）
   MOVE_FOOD: 0.7,                                 // 移動中の食料集めの効率
   RIVER_SNAP: 60,                                 // 指定された移住先から川を探す距離（ブロック）
   SPLIT_POP: CFG.population.splitPop,                                 // この人口を超えると分かれることがある
@@ -8809,8 +8809,8 @@ const PE = {
   SURPLUS_FERT: CFG.population.surplusFert, SURPLUS_DIS: CFG.population.surplusDis, SURPLUS_FROM: CFG.population.surplusFrom, SURPLUS_FULL: CFG.population.surplusFull,   /* 余剰の効き（M1） */
   SPLIT_P: 0.08,                                  // 分かれる確率（1か月）
   SPLIT_SHARE: [0.3, 0.45],                       // 分かれて出ていく割合
-  SPLIT_RANGE: [12, 45],                          // 新しい集団の行き先の距離（ブロック）
-  CONTACT_EXTRA: 6,                               // 生活圏の半径の和＋これ以内に近づくと接触（ブロック）
+  SPLIT_RANGE: [90, 360],                         // 新しい集団の行き先の距離（座標 ≒ 3〜12km）
+  CONTACT_EXTRA: 200,                             // 生活圏の半径の和＋これ以内に近づくと接触（座標 ≒ 10km）
   EXTINCT_MIN: 3,                                 // これ未満になると全滅
   SITE_SAMPLES: 60,                               // 移住先・分裂先の候補の数
 };
@@ -9426,7 +9426,7 @@ function peInstall(people) {
   };
 }
 // 近くの集団（他の民族も含む）：結婚・接触・文化の影響の範囲
-const NBR_D = 35;   // ブロック（約115km）［仮］
+const NBR_D = 450;   // 近くの集団（結婚・接触・文化の影響）の距離（座標 ≒ 15km）［仮］
 function peNeighbors(people) {
   const live = people.groups.filter(g => g.alive), nb = {};
   for (const g of live) nb[g.id] = [];
