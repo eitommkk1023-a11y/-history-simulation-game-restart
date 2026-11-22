@@ -116,6 +116,7 @@ const PE = {
   FARM_FEEDS: CFG.population.farmFeeds, CAP_BASE: CFG.population.capBase, OVERCAP_DIS: CFG.population.overcapDis,
   FARM_PER_KM2: CFG.population.farmPerKm2, FARM_RADIUS_KM: CFG.population.farmRadiusKm,
   SURPLUS_FERT: CFG.population.surplusFert, SURPLUS_DIS: CFG.population.surplusDis, SURPLUS_FROM: CFG.population.surplusFrom, SURPLUS_FULL: CFG.population.surplusFull,   /* 余剰の効き（M1） */
+  SPLIT_POP_TOWN: CFG.population.splitPopTown,
   SPLIT_P: 0.08,                                  // 分かれる確率（1か月）
   SPLIT_SHARE: [0.3, 0.45],                       // 分かれて出ていく割合
   SPLIT_RANGE: [90, 360],                         // 新しい集団の行き先の距離（座標 ≒ 3〜12km）
@@ -1130,7 +1131,8 @@ function* peopleMonthlySteps(people, ctx) {
   // 分裂
   for (const g of alive) {
     if (!g.alive || g.moveTo) continue;
-    if (g.pop > (g.settle === 2 && g.fed >= PE.SPLIT_FED_MIN ? PE.SPLIT_POP_SETTLED : PE.SPLIT_POP) && rng() < PE.SPLIT_P) peSplit(people, g, S, world, rng, ev, rel);
+    const hub = P.gcount[g.id * NJOB + 11] > 0 && g.settle === 2;   /* 商人のいる村（川・海・湖の港、車のある村）は、町として育つ：分かれにくい */
+    if (g.pop > (hub ? PE.SPLIT_POP_TOWN : g.settle === 2 && g.fed >= PE.SPLIT_FED_MIN ? PE.SPLIT_POP_SETTLED : PE.SPLIT_POP) && rng() < PE.SPLIT_P) peSplit(people, g, S, world, rng, ev, rel);
   }
   // 全滅
   for (const g of people.groups) {
@@ -1350,9 +1352,9 @@ function peNationYear(people, ev, rel) {
 }
 // 民族が持っている農耕・牧畜の技術と、収穫への効き（乗数）
 function peTechOf(people, ethId) {
-  const S = people.nation, o = { farm: false, herd: false, kiln: false, mult: 1, farmSince: -1 }; if (!S) return o;
+  const S = people.nation, o = { farm: false, herd: false, kiln: false, dugout: false, draft: false, cart: false, mult: 1, farmSince: -1 }; if (!S) return o;
   const h = (n) => Nation.hasNode(S, ethId, n);
-  o.farm = h('cultivate'); o.herd = h('herd'); o.kiln = h('kiln');
+  o.farm = h('cultivate'); o.herd = h('herd'); o.kiln = h('kiln'); o.dugout = h('dugout'); o.draft = h('draft'); o.cart = h('cart');
   if (o.farm) { o.farmSince = Nation.sinceNode(S, ethId, 'cultivate'); o.mult = 1 + (h('irrigate') ? 0.35 : 0) + (h('rotation') ? 0.2 : 0) + (h('draft') ? 0.15 : 0) + (h('iron') ? 0.1 : 0); }
   return o;
 }
@@ -1463,7 +1465,7 @@ function peopleGrantTech(people, ethId, node) { const S = people.nation; if (!S 
 // 技術に合わせて、集団に農民・牧人の職が開く
 function peTechFlags(people) {
   const P = people.npc, memo = new Map();
-  for (const g of people.groups) { if (!g.alive) continue; let t = memo.get(g.ethId); if (!t) memo.set(g.ethId, t = peTechOf(people, g.ethId)); P.gflags[g.id] = (P.gflags[g.id] & 4) | (t.farm ? 1 : 0) | (t.herd ? 2 : 0); }
+  for (const g of people.groups) { if (!g.alive) continue; let t = memo.get(g.ethId); if (!t) memo.set(g.ethId, t = peTechOf(people, g.ethId)); const A = CFG.aid, port = g.site && (g.site.kind === 'river' || g.site.kind === 'coast' || g.site.kind === 'lake'), trader = A && g.settle === 2 && g.pop >= A.importMinPop && ((t.dugout && port) || t.cart); P.gflags[g.id] = (trader ? 4 : 0) | (t.farm ? 1 : 0) | (t.herd ? 2 : 0); }   /* 商人（仕事11）：舟のある川・海・湖の村、または車のある村で、人口が一定以上のとき */
 }
 
 // ---------------------------------------------------------------- 村の施設（指導者が建てる）
@@ -1557,6 +1559,17 @@ function peGiftRecord(people, from, to, ticks) {
 // 台帳の流れ `move` に、出した分を +、受けた分を − で記録する（収支の恒等式が保たれる）。運び手は、出した村の大人から決まった順で選んだ人物ID（人は動かさない。働く時間への影響は、まだ入れていない）
 function peAidState(people) { return people.aid || (people.aid = { seq: 0, ship: [], tot: { n: 0, sent: 0, arrived: 0, lost: 0 } }); }
 function peLedSync(g) { const L = g.ledger, K = TICKS_PER_KG; g.fresh = L.bal.fresh / K; g.dried = L.bal.dried / K; g.food = L.total() / K; }
+// 運び方：車（荷車）→ 船（水路の村どうし）→ 家畜 → 人の背、の中で、運べる量が多いものを選ぶ。運べる量（kg）と速さ（km/h）、日数の上限を返す
+function peAidMode(A, tech, d, r, km) {
+  const porters = A.maxPorters * A.porterKg;
+  const port = (g) => g.site && (g.site.kind === 'river' || g.site.kind === 'coast' || g.site.kind === 'lake');
+  let best = { mode: 'walk', kg: porters, kmh: A.walkKmH, maxDays: A.maxDays };
+  const consider = (m) => { if (m.kg > best.kg) best = m; };
+  if (tech && tech.cart && d.pop >= 50) consider({ mode: 'cart', kg: Math.min(A.maxCarts, Math.max(1, Math.floor(d.pop / A.cartsPer))) * A.cartKg + porters, kmh: A.carKmH, maxDays: A.maxDaysCart });
+  if (tech && tech.dugout && port(d) && port(r) && km <= A.boatMaxKm) consider({ mode: 'boat', kg: Math.min(A.maxBoats, Math.max(1, Math.floor(d.pop / A.boatsPer))) * A.boatKg + porters, kmh: A.boatKmH, maxDays: A.maxDaysBoat });
+  if (tech && tech.herd && (d.herdN || 0) >= 8) consider({ mode: 'pack', kg: Math.min(A.maxPacks, Math.floor(d.herdN * A.packPerHerd)) * A.packKg + porters, kmh: A.walkKmH, maxDays: A.maxDays });
+  return best;
+}
 function peAidMonth(people, ctx, S, ev, rel) {
   people.kmPerCell = 99.8667 / S.W;
   const A = CFG.aid; if (!A || !A.enabled || !CFG.ledger.enabled || !CFG.ledger.authority) return;
@@ -1578,28 +1591,41 @@ function peAidMonth(people, ctx, S, ev, rel) {
   const live = people.groups.filter(g => g.alive && g.ledger && g.ledger.opened && g.pop > 0 && g.lastFood && g.lastFood.need > 0), K = TICKS_PER_KG;
   const months = (g) => g.food / g.lastFood.need, inflight = new Set(st.ship.map(s => s.to));
   const needy = live.filter(g => !inflight.has(g.id) && months(g) < A.needBelowMonths).sort((a, b) => months(a) - months(b) || a.id - b.id);
-  if (!needy.length) return;
-  const kin = peKinTies(people), kmPerCell = 99.8667 / S.W; let sent = 0;   /* 世界は一辺 約99.87km：座標1つぶんの実際の長さ（S.kmBlock は、生活圏の広さの計算に使う仮想の単位なので、道のりには使わない） */
+  if (!needy.length) { peImportMonth(people, S, ev, rel, st); return; }
+  const kin = peKinTies(people), kmPerCell = 99.8667 / S.W, techMemo = new Map(), techOf = (e) => { let t = techMemo.get(e); if (!t) techMemo.set(e, t = peTechOf(people, e)); return t; }; let sent = 0;   /* 世界は一辺 約99.87km：座標1つぶんの実際の長さ（S.kmBlock は、生活圏の広さの計算に使う仮想の単位なので、道のりには使わない） */
   for (const r of needy) {
     if (sent >= A.maxPerMonth) break;
     let best = null;
     for (const d of live) {
-      if (d.id === r.id || months(d) < A.keepMonths + 1) continue;
-      const km = Math.hypot(d.x - r.x, d.y - r.y) * kmPerCell * A.detour, days = km / (A.walkKmH * A.walkHoursPerDay); if (days > A.maxDays) continue;
+      if (d.id === r.id || months(d) < A.keepMonths + 0.5) continue;
+      const km = Math.hypot(d.x - r.x, d.y - r.y) * kmPerCell * A.detour, md = peAidMode(A, techOf(d.ethId), d, r, km), days = km / (md.kmh * A.walkHoursPerDay); if (days > md.maxDays) continue;
       const rl = peRelation(people, d.id, r.id, kin).score; if (rl < A.minRelation) continue;
-      if (!best || rl > best.rl || (rl === best.rl && (km < best.km || (km === best.km && d.id < best.d.id)))) best = { d, rl, km, days };
+      if (!best || rl > best.rl || (rl === best.rl && (km < best.km || (km === best.km && d.id < best.d.id)))) best = { d, rl, km, days, md };
     }
     if (!best) continue;
     const d = best.d, L = d.ledger, spare = Math.floor((months(d) - A.keepMonths) * d.lastFood.need * K), want = Math.ceil((A.wantMonths - months(r)) * r.lastFood.need * K);
-    const avail = L.bal.dur + L.bal.dried, cap = A.maxPorters * A.porterKg * K;   /* 運び手の数の上限 × 1人の荷 */
+    const avail = L.bal.dur + L.bal.dried, cap = best.md.kg * K;   /* 運び方ごとの、運べる量 */
     let n = Math.min(spare, want, avail, cap); if (n < K * 5) continue;   /* 5kg に満たない荷は出さない */
-    const ship = { id: ++st.seq, from: d.id, to: r.id, ticks: { dur: 0, dried: 0 }, sent: day, eta: day + Math.ceil(best.days), days: Math.max(1, Math.ceil(best.days)), km: Math.round(best.km), porters: Math.ceil(n / (A.porterKg * K)) };
+    const ship = { id: ++st.seq, from: d.id, to: r.id, ticks: { dur: 0, dried: 0 }, sent: day, eta: day + Math.ceil(best.days), days: Math.max(1, Math.ceil(best.days)), km: Math.round(best.km), porters: Math.min(A.maxPorters, Math.ceil(n / (A.porterKg * K))), mode: best.md.mode };
     const t1 = Math.min(n, L.bal.dur); ship.ticks.dur = t1; ship.ticks.dried = n - t1; if (ship.ticks.dried > L.bal.dried) continue;
     L.debit('dur', ship.ticks.dur); L.debit('dried', ship.ticks.dried); L.record('move', n); peLedSync(d);
     const adults = []; for (let i = 0; i < P.n && adults.length < 2000; i++) if (P.group[i] === d.id && P.death[i] === ALIVE) { const a = P.age(i); if (a >= 16 && a < 50) adults.push(i); }
     const pick = Math.min(adults.length, ship.porters), ids = []; for (let k = 0; k < pick; k++) ids.push(adults[Math.floor(mix(P.seed, d.id * 7919 + k, day, 91) / 4294967296 * adults.length)]);
     ship.carriers = ids.slice(0, 8);   /* 運び手の人物ID（先頭 8 人まで記録） */
-    st.ship.push(ship); st.tot.sent += n; sent++;
+    st.ship.push(ship); st.tot.sent += n; sent++; st.tot[ship.mode] = (st.tot[ship.mode] || 0) + 1;
+  }
+  peImportMonth(people, S, ev, rel, st);
+}
+// 外との交易の入口（M2）：商人のいる村（川・海・湖の村の舟、または車のある村）が、地図の外から食料（穀物）を買い入れる。蓄えが少ないときだけ、商人の数 × 1人あたりの量（traderKg）まで。値段はまだない（M5）
+function peImportMonth(people, S, ev, rel, st) {
+  const A = CFG.aid, P = people.npc, K = TICKS_PER_KG; let budget = Math.floor((CFG.trade.externalFoodPerMonth || 0) * K);
+  for (const g of people.groups) {
+    if (!g.alive || !g.ledger || !g.ledger.opened || !g.lastFood || g.lastFood.need <= 0) continue;
+    const tr = P.gcount[g.id * NJOB + 11]; g.impKg = (g.impKg || 0) * 0.8;   /* 買い入れ量の移動平均（kg/月）。養える人数に足す */
+    if (!(tr > 0) || g.food / g.lastFood.need >= A.importBelowMonths || budget <= 0) continue;
+    const n = Math.min(Math.ceil((A.importBelowMonths - g.food / g.lastFood.need) * g.lastFood.need * K), Math.floor(tr * A.traderKg * K), budget); if (n <= 0) continue;
+    g.ledger.credit('dur', n); g.ledger.record('move', -n); peLedSync(g); budget -= n; g.impKg += n / K * 0.2; st.tot.imported = (st.tot.imported || 0) + n; st.tot.importN = (st.tot.importN || 0) + 1;
+    if (n >= K * 1000) ev.push({ type: 'import', imp: 0, relevant: rel(g.ethId), group: g.id, ticks: n, x: g.x, y: g.y });
   }
 }
 function peLedgerMonth(g, R, fresh, dried, dur) {
@@ -1682,7 +1708,7 @@ function peGroupMonth(people, g, ctx, S, rng, ev, sc, st, rel) {
   const agri = peClamp01((g.farmFrac || 0) / 0.6);   // 農耕・牧畜が食料に占める割合の効き
   let sur = peClamp01(((g.food || 0) / Math.max(1, need) - PE.SURPLUS_FROM) / (PE.SURPLUS_FULL - PE.SURPLUS_FROM));   /* 蓄えの月数 → 余剰の効き（0〜1） */
   let over = 0;
-  if (pl.tech.farm) { const capPop = pl.farmCap * PE.FARM_FEEDS + PE.CAP_BASE, rr = pop / capPop; g.capPop = Math.round(capPop); sur *= peClamp01((1.2 - rr) / 0.5); over = Math.max(0, rr - 1); }   /* 土地の限り：養える人数に近づくと余剰の効きが減り、超えると病気が増える（行き過ぎを防ぐ） */
+  if (pl.tech.farm) { const capPop = pl.farmCap * PE.FARM_FEEDS + PE.CAP_BASE + (g.impKg || 0) / Math.max(1, need / Math.max(1, pop)) * 0.9, rr = pop / capPop;   /* 外から買い入れる食料ぶん、養える人数が増える */ g.capPop = Math.round(capPop); sur *= peClamp01((1.2 - rr) / 0.5); over = Math.max(0, rr - 1); }   /* 土地の限り：養える人数に近づくと余剰の効きが減り、超えると病気が増える（行き過ぎを防ぐ） */
   hz.fert[id] = peClamp01((g.fed - PE.FERT_FOOD[0]) / (PE.FERT_FOOD[1] - PE.FERT_FOOD[0])) * (1 + PE.AGRI_FERT * agri) * (1 + PE.SURPLUS_FERT * sur);
   if (g.epi > 0) g.epi--;
   else if (rng() < PE.EPI_P * pop / 200 * (1 - 0.25 * peFacil(g).well)) {
@@ -1835,6 +1861,6 @@ function peopleEthCounts(people) {
   const P = people.npc, o = {}; for (let i = 0; i < P.n; i++) { if (P.death[i] !== ALIVE) continue; const e = P.eth[i] || P.groupEth[P.group[i]]; o[e] = (o[e] || 0) + 1; } return o;
 }
 
-if (typeof module !== 'undefined' && module.exports) module.exports = { peAidState, peAidMonth, peKinTies, peRelation, peGiftRecord, PE_REL, peFoodUnits, peopleMonthlySteps, peLedgerSummary, peopleLayerDemote, peopleLayerPromote, peopleLayerFocusNow, peopleLayerSummary, peAggTotal, peopleDaily, peopleDailyFoodNeed, peopleStorageStrides, PE, resetSiteCache() { peCache = null; }, peSites, peSiteScore, peNearestSite, peopleSiteInfo, SITE_KINDS, SITE_LABEL, peNationEnsure, peChron, peArchInit, peArchYear, ARCH, peStatRecord, peopleStatSeries, peopleStatChange, FACIL_SERVES, peCover, TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, peCultureRules, PROPOSALS, peopleProposal, LEADERSHIP, peLeaders, ACTIVITIES, peopleSetActivity, peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
-else root.WohPeople = { peAidState, peAidMonth, peKinTies, peRelation, peGiftRecord, PE_REL, peFoodUnits, peopleMonthlySteps, peLedgerSummary, peTierLabel: (g) => Tier.tierLabel(g), peopleLayerDemote, peopleLayerPromote, peopleLayerFocusNow, peopleLayerSummary, peAggTotal, peopleDaily, peopleDailyFoodNeed, peopleStorageStrides, peStats, peSites, peSiteScore, peNearestSite, peopleSiteInfo, SITE_KINDS, SITE_LABEL, peNationEnsure, peChron, peArchInit, peArchYear, ARCH, peStatRecord, peopleStatSeries, peopleStatChange, FACIL_SERVES, peCover, TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peopleSuccession, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, PROPOSALS, peopleProposal, LEADERSHIP, ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+if (typeof module !== 'undefined' && module.exports) module.exports = { peAidMode, peAidState, peAidMonth, peKinTies, peRelation, peGiftRecord, PE_REL, peFoodUnits, peopleMonthlySteps, peLedgerSummary, peopleLayerDemote, peopleLayerPromote, peopleLayerFocusNow, peopleLayerSummary, peAggTotal, peopleDaily, peopleDailyFoodNeed, peopleStorageStrides, PE, resetSiteCache() { peCache = null; }, peSites, peSiteScore, peNearestSite, peopleSiteInfo, SITE_KINDS, SITE_LABEL, peNationEnsure, peChron, peArchInit, peArchYear, ARCH, peStatRecord, peopleStatSeries, peopleStatChange, FACIL_SERVES, peCover, TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, peCultureRules, PROPOSALS, peopleProposal, LEADERSHIP, peLeaders, ACTIVITIES, peopleSetActivity, peFindHeir, peopleYou, peopleCreatePlayer, peopleSuccession, SUCCESSION, peopleEthCounts, PE, PE_H0, PE_ASFR, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
+else root.WohPeople = { peAidMode, peAidState, peAidMonth, peKinTies, peRelation, peGiftRecord, PE_REL, peFoodUnits, peopleMonthlySteps, peLedgerSummary, peTierLabel: (g) => Tier.tierLabel(g), peopleLayerDemote, peopleLayerPromote, peopleLayerFocusNow, peopleLayerSummary, peAggTotal, peopleDaily, peopleDailyFoodNeed, peopleStorageStrides, peStats, peSites, peSiteScore, peNearestSite, peopleSiteInfo, SITE_KINDS, SITE_LABEL, peNationEnsure, peChron, peArchInit, peArchYear, ARCH, peStatRecord, peopleStatSeries, peopleStatChange, FACIL_SERVES, peCover, TECH_SKILL, TECH_AX, peopleTechSummary, FACIL, SHARE_OF, peopleBuildCheck, peopleBuildStart, peopleGrowth, peopleGrantTech, peTechOf, GROWTH_LABELS, peopleSuccession, peCampCenter, peopleHouseholds, peopleEconomy, peopleTradition, peRootEth, peopleForceEthSplit, ETHNO, CULT_NAMES, PROPOSALS, peopleProposal, LEADERSHIP, ACTIVITIES, peopleSetActivity, peopleYou, SUCCESSION, peopleEthCounts, PE, peopleGenerate, peopleMonthly, peopleSetMove, peopleCounts, peopleSummary, peopleSave, peopleLoad, peTotal, peNeed, peRng, peRadius, peStats };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
